@@ -154,9 +154,13 @@ decisions:
   scoped (DICe's sigma/beta formulas — see Engine capability roadmap
   above); how to surface it in the GUI (quality heatmap layer, per-POI
   overlay) is still to be designed.
-- **ROI tooling**: auto-detect/threshold-based segmentation is unclaimed by
-  every tool reviewed (open or commercial) — a real differentiation
-  opportunity, not yet scoped as a commitment.
+- **ROI tooling**: auto-detect/threshold-based segmentation was unclaimed by
+  every tool reviewed (open or commercial) — engine-side implementation now
+  done (`AutoROI`/`SpeckleQualityMap`, fork issues #11/#12 — MIG/SSSIG/
+  SIFT-density quality maps feeding an Otsu-threshold segmentation into the
+  existing `Polygon2D` ROI model). Known limitation: single-region-only, no
+  hole support. The GUI/UX for surfacing this (live quality indicator,
+  auto-detect button/workflow) is still to be designed.
 - **VTK `.vtu` export**: confirmed a real differentiator empirically — only
   1 of 11 tools reviewed has any VTK-family export. Reinforces the existing
   VTK decision; no new action needed.
