@@ -99,6 +99,43 @@ graphics/compute API.
   own prototype spike before it's a real commitment.
 - Sequencing: after a working CPU-path GUI exists, not before.
 
+## Engine capability roadmap (OpenCorr fork)
+
+OpenCorr remains the correlation engine — re-validated 2026-07-18 against
+the broader headless C++ DIC/DVC landscape (DICe, ncorr_2D_cpp; both read
+down to actual source, not just docs). Neither is a viable alternative
+*engine*: DICe is Trilinos-coupled (an HPC framework built for clusters,
+wrong shape for a single-workstation desktop app); ncorr_2D_cpp is
+unmaintained since 2018, with unfixed compiler-breaking issues and a
+heavier dependency footprint than OpenCorr. Both are, however, sources of
+small, self-contained, BSD-3-Clause capabilities worth porting.
+
+We maintain **katalystnord/OpenCorr**, a fork for SurView-driven capability
+work (new classes mirroring OpenCorr's own patterns, or changes touching
+private internals) — distinct from small, generically-useful fixes, which
+go upstream directly (e.g. PR #24, the missing `<random>` include on
+Linux/GCC builds).
+
+Punch list tracked in [fork issue #1](https://github.com/katalystnord/OpenCorr/issues/1)
+is complete (9/9): uncertainty quantification (sigma/beta, from DICe),
+calibration — checkerboard + dot-target/donut-marker detection + stereo
+epipolar quality metric (from DICe), `.cine` high-speed-camera file I/O
+(from DICe's `hypercine`), gradient-free simplex matching (from DICe),
+phase-correlation initializer (from DICe), RG-DIC seed-propagation
+flood-fill (from ncorr_2D_cpp), sequence/reference-update tracking (from
+both), conformal subset shapes — data model only (from DICe). Two small,
+generically-useful fixes found along the way went upstream directly instead
+of staying fork-only (PRs [#25](https://github.com/vincentjzy/OpenCorr/pull/25),
+[#26](https://github.com/vincentjzy/OpenCorr/pull/26)).
+
+Explicitly rejected as not worth porting: DICe's global/regularized
+(mesh/FE) DIC as literal code (Trilinos-saturated — a future clean-room
+reimplementation against Eigen, not a port, and a large lift); MPI
+parallelism (wrong parallelism model for a desktop app — OpenCorr's
+existing per-POI OpenMP threading already covers it); DICe's Exodus/HDF5
+export (Trilinos/SEACAS-locked — the existing VTK `.vtu` decision already
+covers this niche).
+
 ## Not yet decided — pending from 2026-07-17 research
 
 Two research passes (competitive review of 11 open/commercial DIC GUIs;
@@ -106,11 +143,17 @@ deep OpenCorr source review) surfaced findings not yet turned into scope
 decisions:
 
 - **Calibration module**: adopt live numeric pose-coaching UX (angle/height
-  variance thresholds, color-coded pass/fail) — the pattern GOM/ZEISS use.
-  Cheap, concrete, addresses the calibration gap already scoped.
-- **Uncertainty quantification module**: DICe's SIGMA/GAMMA/BETA
-  (displacement-variation estimate, match residual, cost-function
-  conditioning) is the closest existing template to design against.
+  variance thresholds, color-coded pass/fail, per GOM/ZEISS), a visual
+  coverage heat-map (per MatchID), and drag-to-exclude-outlier on a live
+  reprojection-error chart (per MATLAB Stereo Camera Calibrator/DuoDIC —
+  the strongest single calibration screen found across the competitive
+  review). Engine-side detection/quality-metric is now fully implemented
+  (checkerboard and dot-target, both mono and stereo — see Engine capability
+  roadmap above); the GUI/UX itself is still to be designed.
+- **Uncertainty quantification module**: engine-side implementation now
+  scoped (DICe's sigma/beta formulas — see Engine capability roadmap
+  above); how to surface it in the GUI (quality heatmap layer, per-POI
+  overlay) is still to be designed.
 - **ROI tooling**: auto-detect/threshold-based segmentation is unclaimed by
   every tool reviewed (open or commercial) — a real differentiation
   opportunity, not yet scoped as a commitment.
