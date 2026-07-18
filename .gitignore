@@ -1,0 +1,31 @@
+# Build output
+build/
+build-*/
+cmake-build-*/
+
+# CMake
+CMakeCache.txt
+CMakeFiles/
+CMakeScripts/
+cmake_install.cmake
+install_manifest.txt
+compile_commands.json
+CTestTestfile.cmake
+_deps/
+
+# Qt
+*.autosave
+moc_*.cpp
+moc_*.h
+ui_*.h
+qrc_*.cpp
+.qmake.stash
+
+# IDE
+.vscode/
+.idea/
+*.user
+
+# OS
+.DS_Store
+Thumbs.db
