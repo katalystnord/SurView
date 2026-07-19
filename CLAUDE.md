@@ -250,11 +250,12 @@ flag, and an `oc_io.cpp` cluster (sentinel values leaking into exported
 heat-maps, a binary/text file-mode mismatch, missing CSV bounds-checking,
 a save function with no load counterpart).
 
-Remaining findings — items needing real design judgment before fixing
-(e.g. `Uncertainty2D::beta`'s math may be measuring the wrong thing
-entirely), plus a longer tail of smaller/structural findings — are tracked
-in [fork issue #17](https://github.com/katalystnord/OpenCorr/issues/17),
-not itemized here.
+Remaining findings — items needing real design judgment before fixing,
+plus a longer tail of smaller/structural findings — are tracked in
+[fork issue #17](https://github.com/katalystnord/OpenCorr/issues/17)
+(closed 2026-07-19: all of Wave 2 and the Tier 2/3 backlog fixed or
+explicitly resolved as "not pursued, with reasoning recorded"), not
+itemized here.
 
 ## Not yet decided — pending from 2026-07-17 research
 
