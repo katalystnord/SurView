@@ -136,6 +136,82 @@ existing per-POI OpenMP threading already covers it); DICe's Exodus/HDF5
 export (Trilinos/SEACAS-locked — the existing VTK `.vtu` decision already
 covers this niche).
 
+## Second-pass capability candidates (DICe/ncorr deep dive, 2026-07-19)
+
+With the original 9/9 punch list closed, a deeper pass over DICe and
+ncorr_2D_cpp source (not just docs) surfaced further candidates, this time
+including higher-effort ones previously passed over as "too big." Not yet
+turned into fork issues — listed here for scoping, ordered by suggested
+priority.
+
+**Done:**
+
+- Per-point failure-reason taxonomy — done, fork issue
+  [#13](https://github.com/katalystnord/OpenCorr/issues/13). Named
+  `StatusFlag` enum + `statusDescription()` (was DICe's `Status_Flag`),
+  wired through every solver's existing bail-out points. Also added
+  Hessian-invertibility rejection to ICGN (not ICLM, whose
+  Levenberg-Marquardt damping already handles ill-conditioning).
+- Dynamic obstruction/occlusion masking — done, fork issue
+  [#14](https://github.com/katalystnord/OpenCorr/issues/14), but re-scoped
+  to phase 1 (data model only) on `Subset2D`: making it actually affect
+  correlation results turned out to need the same cross-cutting
+  correlation-kernel integration as conformal shapes' own deferred phase 2
+  below, not a small self-contained addition.
+
+**Large, worth a deliberate scoping pass — no license issues if built as clean-room:**
+
+- Topology-aware ROI: multiply-connected masks with holes, and
+  discontinuity-safe subset/strain windowing (from ncorr's
+  `ROI2D`/`nlinfo`). This is the actual mechanism behind ncorr's
+  reputation for handling cracks/holes well — every subset and strain-fit
+  neighborhood is clipped to the ROI's real connected-component topology.
+  Would deliver genuine hole support for `Polygon2D` (currently
+  single-region-only, per the roadmap note above) and make ncorr's
+  discontinuity-aware strain fitting a direct follow-on. Foundational
+  (touches `Subset2D`, gradient computation, and ICGN/ICLM interpolation),
+  not a self-contained utility.
+- Global/regularized (mesh/FE) DIC — re-scoped from "infeasible" to "large
+  but well-scoped": DICe's element-level physics (Horn-Schunck/elasticity
+  regularization formulas in `DICe_GlobalUtils`) is Trilinos-free and
+  portable; only the mesh/DOF bookkeeping needs a from-scratch
+  Eigen-based replacement (Trilinos's MPI-distributed generality isn't
+  needed, matching the existing MPI rejection above). **License note:**
+  DICe's own mesh generator vendors Shewchuk's Triangle, which is not an
+  OSI license (commercial redistribution requires the author's direct
+  permission) — never vendor Triangle; use `artem-ogre/CDT` (MPL-2.0,
+  same license as OpenCorr) instead.
+
+**Medium effort, license-blocked as shipped — needs clean-room reimplementation:**
+
+- Harmonic/Laplacian inpainting for ROI-edge extrapolation (ncorr's
+  `Data2D::inpaint_nlinfo`). Ncorr's implementation links
+  SuiteSparseQR/CHOLMOD, which is **GPL-2.0-or-later** — disqualifying to
+  link directly under SurView's LGPL posture. The algorithm itself (a
+  sparse Laplacian least-squares solve) is simple enough to reimplement
+  against Eigen's own sparse solvers (already a dependency) as a
+  clean-room port, never a code lift.
+
+**Medium effort, lower priority:**
+
+- Crack/discontinuity full-field diagnostic (DICe's
+  `Crack_Locator_Post_Processor`): backward-warps the deformed image using
+  the fitted displacement field and diffs against the reference; bright
+  residuals flag places a smooth field can't explain. Valuable idea, but
+  unfinished/prototype even in DICe itself (literal TODOs) — would need
+  real productization, not translation.
+- Virtual-extensometer/line-probe UX (DICe's `Live_Plot_Post_Processor`):
+  not a port target itself (trivial/file-driven in DICe), but a roadmap
+  idea — point/line probes interpolated from the same strain-fit
+  machinery the items above already need.
+
+**Confirmed no gap, nothing to port:** DICe has no DVC/volumetric support,
+no true >2-camera triangulation (hard-coded to a stereo pair), and no
+adaptive subset sizing beyond OpenCorr's own; its VSG strain is already
+matched by `oc_strain.cpp`. Ncorr's `std::thread` domain-decomposition
+parallelism is superseded by OpenCorr's existing per-POI OpenMP threading
+— confirmed by reading the code, not assumed.
+
 ## Not yet decided — pending from 2026-07-17 research
 
 Two research passes (competitive review of 11 open/commercial DIC GUIs;
