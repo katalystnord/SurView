@@ -257,6 +257,23 @@ plus a longer tail of smaller/structural findings — are tracked in
 explicitly resolved as "not pursued, with reasoning recorded"), not
 itemized here.
 
+A second full-branch audit, same methodology, run against the fork state
+after #17 closed (to check whether that round's own fixes introduced
+anything new and catch what the first pass missed), is tracked and closed
+in [fork issue #18](https://github.com/katalystnord/OpenCorr/issues/18):
+three hypercine `read_header()` crash bugs (div-by-zero, an out-of-bounds
+read, a 32-bit-overflowing truncation check), a missing `num_threads()`
+guard on `CrackResidual2D`, a `stereoCalibrate()` call missing
+`CALIB_USE_INTRINSIC_GUESS` (silently discarding the previous round's own
+per-camera intrinsics fix — confirmed empirically against OpenCV
+directly), a genuine coordinate-frame mismatch in `SequenceTracker2D`'s
+reference-update bank step, a `Uncertainty2D` beta-sentinel inconsistency
+plus a matching out-of-bounds probe gap, a `Polygon2D::contains()`
+degenerate-edge bug, missing validation in `loadTable2D`'s legacy-format
+inference, a real (if modest) perf regression in `ransacAffineFit`'s
+per-trial hot loop, and one more upstream PR sent
+([vincentjzy/OpenCorr#27](https://github.com/vincentjzy/OpenCorr/pull/27)).
+
 ## Not yet decided — pending from 2026-07-17 research
 
 Two research passes (competitive review of 11 open/commercial DIC GUIs;
