@@ -234,6 +234,28 @@ matched by `oc_strain.cpp`. Ncorr's `std::thread` domain-decomposition
 parallelism is superseded by OpenCorr's existing per-POI OpenMP threading
 — confirmed by reading the code, not assumed.
 
+## Full-branch code audit (2026-07-19)
+
+A 3-chunk, 12-agent code review across all 8 established angles, covering
+~11K lines of fork content (calibration/cine I/O, matching strategies/
+diagnostics, core taxonomy/hot-path) — not scoped to a single feature's
+diff, looking for cross-module issues a per-feature review wouldn't catch.
+
+Five confirmed, unambiguous bugs (mechanical fixes, no design judgment
+needed) are fixed and committed to `surview-dev`: `FeatureAffine3D`'s
+wy/wz copy-paste bug, `CameraCalibrator`'s missing `Calibration::prepare()`
+call and an epipolar-residual distortion-domain mismatch, `CrackResidual2D`
+missing its `zncc<0` gate, `SimplexMatch2D` discarding its own convergence
+flag, and an `oc_io.cpp` cluster (sentinel values leaking into exported
+heat-maps, a binary/text file-mode mismatch, missing CSV bounds-checking,
+a save function with no load counterpart).
+
+Remaining findings — items needing real design judgment before fixing
+(e.g. `Uncertainty2D::beta`'s math may be measuring the wrong thing
+entirely), plus a longer tail of smaller/structural findings — are tracked
+in [fork issue #17](https://github.com/katalystnord/OpenCorr/issues/17),
+not itemized here.
+
 ## Not yet decided — pending from 2026-07-17 research
 
 Two research passes (competitive review of 11 open/commercial DIC GUIs;
