@@ -207,24 +207,21 @@ priority.
   disqualifying under SurView's LGPL posture; would need a clean-room
   Eigen-sparse reimplementation, never a code lift.)
 
-**Small, worth building — do next:**
+**Done:**
 
-- Crack/discontinuity full-field diagnostic (DICe's
-  `Crack_Locator_Post_Processor`, productized rather than translated —
-  DICe's own version is unfinished/prototype, literal TODOs, hardcoded
-  PNG dumps). Backward-warps the reference image through a densely
-  re-evaluated local displacement fit and diffs against the real target
-  image; residuals flag where a smooth neighborhood-fitted field can't
-  explain the real image content — a genuinely different, non-redundant
-  failure signal from every pointwise metric already shipped
-  (`StatusFlag`, sigma/beta, `SpeckleQualityMap`), since two POIs on
-  either side of a crack can each individually look like a perfectly
-  good correlation. ~80% of the machinery (KD-tree + local
-  least-squares fit) already exists in `oc_strain.cpp` — this is mostly
-  adaptation, not new algorithm work. Small effort (days, not weeks).
-  Along the way, add the degenerate-fit (rcond-style) guard `oc_strain.cpp`
-  is currently missing (unlike DICe's equivalent) — a free fix surfaced
-  by this scoping, worth doing regardless.
+- Crack/discontinuity full-field diagnostic — done, fork issue
+  [#16](https://github.com/katalystnord/OpenCorr/issues/16), as
+  `CrackResidual2D`. Backward-warps the reference image through a
+  densely re-evaluated local displacement fit and diffs against the
+  real target image. Verified empirically, not just argued: the smoke
+  test's synthetic two-rigid-piece image gives every placed POI
+  zncc>0.9 (56/56, individually perfect correlations) while the
+  residual is ~26x higher right at the known discontinuity — confirming
+  it catches exactly what pointwise metrics (`StatusFlag`, sigma/beta,
+  `SpeckleQualityMap`) can't. Bonus fix landed alongside: `oc_strain.cpp`
+  had no degenerate-fit guard and redundantly decomposed the same
+  matrix twice — fixed, plus `Strain` got its first test coverage in
+  this fork.
 - Virtual-extensometer/line-probe UX (DICe's `Live_Plot_Post_Processor`):
   not a port target itself (trivial/file-driven in DICe), but a roadmap
   idea — point/line probes interpolated from the same strain-fit
