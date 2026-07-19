@@ -276,9 +276,11 @@ decisions:
   overlay) is still to be designed.
 - **ROI tooling**: auto-detect/threshold-based segmentation was unclaimed by
   every tool reviewed (open or commercial) — engine-side implementation now
-  done (`AutoROI`/`SpeckleQualityMap`, fork issues #11/#12 — MIG/SSSIG/
-  SIFT-density quality maps feeding an Otsu-threshold segmentation into the
-  existing `Polygon2D` ROI model). Known limitation: single-region-only, no
+  done (`AutoROI`/`SpeckleQualityMap`, fork issues #11/#12 — an MIG quality
+  map feeding an Otsu-threshold segmentation into the existing `Polygon2D`
+  ROI model; SSSIG and SIFT-density/evenness are separate whole-image
+  quality scalars `SpeckleQualityMap` also computes, not inputs to
+  `AutoROI`'s own segmentation). Known limitation: single-region-only, no
   hole support. The GUI/UX for surfacing this (live quality indicator,
   auto-detect button/workflow) is still to be designed.
 - **VTK `.vtu` export**: confirmed a real differentiator empirically — only
