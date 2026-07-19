@@ -161,16 +161,19 @@ priority.
 
 **Large, worth a deliberate scoping pass — no license issues if built as clean-room:**
 
-- Topology-aware ROI: multiply-connected masks with holes, and
-  discontinuity-safe subset/strain windowing (from ncorr's
-  `ROI2D`/`nlinfo`). This is the actual mechanism behind ncorr's
-  reputation for handling cracks/holes well — every subset and strain-fit
-  neighborhood is clipped to the ROI's real connected-component topology.
-  Would deliver genuine hole support for `Polygon2D` (currently
-  single-region-only, per the roadmap note above) and make ncorr's
-  discontinuity-aware strain fitting a direct follow-on. Foundational
-  (touches `Subset2D`, gradient computation, and ICGN/ICLM interpolation),
-  not a self-contained utility.
+- Topology-aware ROI — scoped, then split. Phase 1a (multiply-connected
+  regions: an outer shape minus holes, point-membership only) shipped as
+  `RegionWithHoles2D`, fork issue
+  [#15](https://github.com/katalystnord/OpenCorr/issues/15). The rest
+  (ncorr's connectivity-aware `contig_subregion_generator`, clipping a
+  subset's own interior to the ROI's real connected-component topology
+  right up to a hole/crack edge, plus discontinuity-aware strain fitting
+  as a direct follow-on) is **not currently planned**: its value is real
+  but concentrated in near-discontinuity precision (fracture-mechanics
+  crack-tip fields), not the common case phase 1a already covers, and its
+  cost (~6-9 weeks) is risk-concentrated in modifying OpenCorr's
+  already-validated ICGN/ICLM hot loops. Revisit if a concrete need for
+  precise near-discontinuity measurement comes up.
 - Global/regularized (mesh/FE) DIC — re-scoped from "infeasible" to "large
   but well-scoped": DICe's element-level physics (Horn-Schunck/elasticity
   regularization formulas in `DICe_GlobalUtils`) is Trilinos-free and
