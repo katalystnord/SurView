@@ -159,7 +159,7 @@ priority.
   correlation-kernel integration as conformal shapes' own deferred phase 2
   below, not a small self-contained addition.
 
-**Large, worth a deliberate scoping pass — no license issues if built as clean-room:**
+**Large, scoped and deferred — not currently planned, revisit on concrete need:**
 
 - Topology-aware ROI — scoped, then split. Phase 1a (multiply-connected
   regions: an outer shape minus holes, point-membership only) shipped as
@@ -174,16 +174,21 @@ priority.
   cost (~6-9 weeks) is risk-concentrated in modifying OpenCorr's
   already-validated ICGN/ICLM hot loops. Revisit if a concrete need for
   precise near-discontinuity measurement comes up.
-- Global/regularized (mesh/FE) DIC — re-scoped from "infeasible" to "large
-  but well-scoped": DICe's element-level physics (Horn-Schunck/elasticity
-  regularization formulas in `DICe_GlobalUtils`) is Trilinos-free and
-  portable; only the mesh/DOF bookkeeping needs a from-scratch
-  Eigen-based replacement (Trilinos's MPI-distributed generality isn't
-  needed, matching the existing MPI rejection above). **License note:**
-  DICe's own mesh generator vendors Shewchuk's Triangle, which is not an
-  OSI license (commercial redistribution requires the author's direct
-  permission) — never vendor Triangle; use `artem-ogre/CDT` (MPL-2.0,
-  same license as OpenCorr) instead.
+- Global/regularized (mesh/FE) DIC — scoped in depth (~6-9 weeks, same
+  order as topology-aware ROI above), and **not currently planned**, but
+  for a different reason than topology-aware ROI: this one is purely
+  additive (a new `GlobalDIC2D` solver alongside ICGN/ICLM, touching none
+  of their already-validated code) with real, if narrower-than-universal,
+  value — specimens with patchy/low-texture speckle or thin membranes,
+  where local subset solving simply diverges and a whole-ROI regularized
+  solve borrows information from well-textured neighbors. Third solver
+  family alongside local (current) and topology-aware, selected per
+  correlation run, not simultaneously. Meshing doesn't need
+  `artem-ogre/CDT`/Delaunay at all for a v1: OpenCorr's ROI model has no
+  hole concept today, so a simple regular-grid mesh (DICe's own fallback
+  for hole-free rectangular ROIs) covers the realistic case — CDT only
+  becomes relevant if/when ROI holes reach meshing. Revisit if a specimen
+  class needing this shows up.
 
 **Medium effort, license-blocked as shipped — needs clean-room reimplementation:**
 
