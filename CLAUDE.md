@@ -190,28 +190,45 @@ priority.
   becomes relevant if/when ROI holes reach meshing. Revisit if a specimen
   class needing this shows up.
 
-**Medium effort, license-blocked as shipped — needs clean-room reimplementation:**
+**Scoped and not worth building — revisit only on concrete need:**
 
 - Harmonic/Laplacian inpainting for ROI-edge extrapolation (ncorr's
-  `Data2D::inpaint_nlinfo`). Ncorr's implementation links
-  SuiteSparseQR/CHOLMOD, which is **GPL-2.0-or-later** — disqualifying to
-  link directly under SurView's LGPL posture. The algorithm itself (a
-  sparse Laplacian least-squares solve) is simple enough to reimplement
-  against Eigen's own sparse solvers (already a dependency) as a
-  clean-room port, never a code lift.
+  `Data2D::inpaint_nlinfo`). Reality-checked, not just license-checked:
+  the problem it solves in ncorr (a global FFTW-deconvolution biquintic
+  interpolator that's fragile to garbage pixels near a cropped ROI edge)
+  doesn't exist in OpenCorr — `BicubicBspline` computes coefficients from
+  a small local stencil over the whole dense image, never a
+  cropped/masked region. The one real present-day use case (failed POIs
+  leaking unfiltered into exported raster maps) is cosmetic/export-only,
+  already mostly covered by `Strain`'s existing neighbor-regression
+  output, and SurView has no GUI export consumer yet to even show the
+  artifact. (License note for if this ever gets revisited: ncorr's own
+  implementation links SuiteSparseQR/CHOLMOD, GPL-2.0-or-later —
+  disqualifying under SurView's LGPL posture; would need a clean-room
+  Eigen-sparse reimplementation, never a code lift.)
 
-**Medium effort, lower priority:**
+**Small, worth building — do next:**
 
 - Crack/discontinuity full-field diagnostic (DICe's
-  `Crack_Locator_Post_Processor`): backward-warps the deformed image using
-  the fitted displacement field and diffs against the reference; bright
-  residuals flag places a smooth field can't explain. Valuable idea, but
-  unfinished/prototype even in DICe itself (literal TODOs) — would need
-  real productization, not translation.
+  `Crack_Locator_Post_Processor`, productized rather than translated —
+  DICe's own version is unfinished/prototype, literal TODOs, hardcoded
+  PNG dumps). Backward-warps the reference image through a densely
+  re-evaluated local displacement fit and diffs against the real target
+  image; residuals flag where a smooth neighborhood-fitted field can't
+  explain the real image content — a genuinely different, non-redundant
+  failure signal from every pointwise metric already shipped
+  (`StatusFlag`, sigma/beta, `SpeckleQualityMap`), since two POIs on
+  either side of a crack can each individually look like a perfectly
+  good correlation. ~80% of the machinery (KD-tree + local
+  least-squares fit) already exists in `oc_strain.cpp` — this is mostly
+  adaptation, not new algorithm work. Small effort (days, not weeks).
+  Along the way, add the degenerate-fit (rcond-style) guard `oc_strain.cpp`
+  is currently missing (unlike DICe's equivalent) — a free fix surfaced
+  by this scoping, worth doing regardless.
 - Virtual-extensometer/line-probe UX (DICe's `Live_Plot_Post_Processor`):
   not a port target itself (trivial/file-driven in DICe), but a roadmap
   idea — point/line probes interpolated from the same strain-fit
-  machinery the items above already need.
+  machinery the item above already needs.
 
 **Confirmed no gap, nothing to port:** DICe has no DVC/volumetric support,
 no true >2-camera triangulation (hard-coded to a stereo pair), and no
