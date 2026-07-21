@@ -10,7 +10,8 @@ See [CLAUDE.md](CLAUDE.md) for design rationale and roadmap.
 
 ## Status
 
-Early scaffolding — no working build yet.
+Early scaffolding. Builds and runs (Qt shell + VTK link) on Linux with
+Qt6, VTK 9.5, CMake ≥ 3.21.
 
 ## License
 
