@@ -8,13 +8,21 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets)
 
 # Some distro VTK builds (e.g. Ubuntu's VTK 9.5) are compiled with MPI and
 # re-export MPI::MPI_C through their imported targets, but leave it to the
 # consuming project to locate MPI. Find it up front so VTK's config succeeds.
 find_package(MPI QUIET)
 
-find_package(VTK REQUIRED COMPONENTS CommonCore CommonDataModel RenderingCore GUISupportQt)
+find_package(VTK REQUIRED COMPONENTS
+    CommonCore
+    CommonDataModel
+    RenderingCore
+    RenderingOpenGL2      # OpenGL backend + object-factory overrides (rendering)
+    InteractionStyle      # vtkInteractorStyleImage (2D pan/zoom in the viewport)
+    IOImage               # vtkImageReader2Factory (TIFF/PNG/JPEG speckle images)
+    GUISupportQt          # QVTKOpenGLNativeWidget (VTK inside a Qt widget)
+)
 
 add_subdirectory(src)
