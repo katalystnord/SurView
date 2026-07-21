@@ -1,5 +1,64 @@
 # SurView DIC — Context File
 
+---
+
+# ⚑⚑⚑ THE TEN TENETS — the premise, above everything else in this file
+
+**Stated by David, 2026-07-21.** Everything else in this file is subordinate
+to these. Where the rest of the file disagrees with a tenet, **the tenet wins
+and the rest is wrong.**
+
+1. **Speckle images and video in → trustworthy displacement/strain fields
+   out.** This is the whole product. It stands on two co-equal pillars:
+   1) faithfully record the pixel evidence, and 2) correlate them into
+   fields. Everything else may only *augment or add to* it, without getting
+   in the way of it.
+
+2. **There was no technically all-encompassing, cross-platform,
+   ecosystem-native DIC GUI a working scientist could adopt.** There are
+   several good engines, but only rudimentary GUIs. This is why SurView
+   exists.
+
+3. **We chose the best open-source engine available as the starting point for
+   our own development. A starting point. Not a parent.**
+
+4. **We will incorporate vetted good solutions into our own DIC stack** —
+   from wherever they come, bound to no single line of heritage.
+
+5. **We hold no allegiance to any upstream at the code level** — licensing
+   and attribution only.
+
+6. **All interoperability with other tools happens at the file level** —
+   never at the model or code level.
+
+7. **The GUI is also the product: UX has the same parity as measurement
+   capability.** Not a hierarchy. A UX defect is a defect.
+
+8. **We will introduce alternative designs and break with inherited
+   approaches** whenever that is required to achieve the solution we want.
+
+9. **We quantify and report the reliability of both what we record and what
+   we interpret from it** — with a clear account of the known accuracy. We
+   never present a number as more trustworthy than we can substantiate.
+
+10. **We keep the record pristine with retained provenance** — no silent
+    loss, conversion, or resampling; the record is the foundation everything
+    stands on. We seek the simplest, most robust solution for reliable and
+    trustworthy results, never over-interpreting where a simpler approach
+    will do.
+
+### Mechanism that lives outside the tenets
+
+The tenets stay pure principle; three operating mechanisms that came up while
+sharpening them live in their natural sections below, not in a tenet:
+
+- **Upstreaming policy** (from tenet 5) and **fork-idiom conformance** (from
+  tenet 8) — see *Engine capability roadmap (OpenCorr fork)*.
+- **CPU-first, heavier-machinery-on-need sequencing** (from tenet 10) — see
+  *Roadmap: cross-vendor GPU acceleration*.
+
+---
+
 ## What this is
 
 The open-source DIC (Digital Image Correlation) world has good engines and
@@ -97,7 +156,10 @@ graphics/compute API.
 - VTK's WebGPU compute path is new (still landing per VTK's own 2026
   roadmap) and unproven for a workload this numerically heavy — needs its
   own prototype spike before it's a real commitment.
-- Sequencing: after a working CPU-path GUI exists, not before.
+- Sequencing: after a working CPU-path GUI exists, not before. This is
+  tenet 10's relocated mechanism — prefer the validated CPU path; add heavier
+  machinery (GPU, global/regularized DIC) only on concrete need, never
+  speculatively.
 
 ## Engine capability roadmap (OpenCorr fork)
 
@@ -115,6 +177,12 @@ work (new classes mirroring OpenCorr's own patterns, or changes touching
 private internals) — distinct from small, generically-useful fixes, which
 go upstream directly (e.g. PR #24, the missing `<random>` include on
 Linux/GCC builds).
+
+This paragraph is where two mechanisms relocated from the Ten Tenets live:
+the **upstreaming policy** (tenet 5 — small generic fixes upstream, capability
+work in the fork) and **fork-idiom conformance** (tenet 8 — diverge from
+upstream on *direction*, but mirror OpenCorr's own patterns inside the fork so
+fixes stay upstreamable and the code stays legible).
 
 Punch list tracked in [fork issue #1](https://github.com/katalystnord/OpenCorr/issues/1)
 is complete (9/9): uncertainty quantification (sigma/beta, from DICe),
