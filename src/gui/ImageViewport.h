@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/ImageRecord.h"
+
 #include <QSize>
 #include <QVTKOpenGLNativeWidget.h>
 #include <vtkNew.h>
@@ -29,13 +31,19 @@ public:
     bool loadImage(const QString &path);
 
     bool hasImage() const { return m_hasImage; }
-    QSize imageSize() const { return m_imageSize; }  // invalid until an image loads
+
+    // Provenance and pixel facts for the currently displayed image.
+    const ImageRecord &record() const { return m_record; }
 
 protected:
     void showEvent(QShowEvent *event) override;
 
 private:
     void applyImageInteractorStyle();
+
+    // Chooses the intensity window sent to screen and writes it into the
+    // record, so the mapping is reported rather than silently applied.
+    void applyDisplayMapping(ImageRecord &record);
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
@@ -44,5 +52,5 @@ private:
 
     QLabel *m_hint = nullptr;
     bool m_hasImage = false;
-    QSize m_imageSize;
+    ImageRecord m_record;
 };

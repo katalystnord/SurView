@@ -7,6 +7,7 @@ class QLabel;
 class QPlainTextEdit;
 class QTreeWidgetItem;
 class ImageViewport;
+class RecordPanel;
 
 class MainWindow : public QMainWindow
 {
@@ -14,6 +15,10 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+
+    // Import a reference image by path — the same route the File menu takes,
+    // exposed so the image can also be named on the command line.
+    void openReferenceImage(const QString &path);
 
 private slots:
     void importReferenceImage();
@@ -29,6 +34,7 @@ private:
     void createStatusBar();
 
     QWidget *createProjectPanel();
+    QWidget *createRecordPanel();
     QWidget *createAnalysisPanel();
     QWidget *createLogPanel();
 
@@ -37,6 +43,7 @@ private:
     void updateActionStates();
 
     ImageViewport *m_viewport = nullptr;
+    RecordPanel *m_record = nullptr;
     QPlainTextEdit *m_log = nullptr;
     QLabel *m_stageLabel = nullptr;
 

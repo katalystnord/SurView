@@ -8,6 +8,7 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkImageActor.h>
 #include <vtkImageData.h>
+#include <vtkImageProperty.h>
 #include <vtkImageReader2.h>
 #include <vtkImageReader2Factory.h>
 #include <vtkInteractorStyleImage.h>
@@ -71,7 +72,25 @@ bool ImageViewport::loadImage(const QString &path)
     if (dims[0] <= 0 || dims[1] <= 0)
         return false;  // reader produced nothing usable
 
+    // Record what arrived, before anything is done with it. The pixels are
+    // handed to the actor exactly as decoded — the only thing that varies is
+    // how they are mapped to screen intensities, and that mapping is recorded
+    // too rather than left implicit.
+    ImageRecord record = ImageRecord::fromFile(path);
+    record.decoderClass = QString::fromLatin1(reader->GetClassName());
+    record.width        = dims[0];
+    record.height       = dims[1];
+    record.components   = image->GetNumberOfScalarComponents();
+    record.scalarType   = image->GetScalarType();
+
+    double range[2] = {0.0, 0.0};
+    image->GetScalarRange(range);
+    record.dataMin = range[0];
+    record.dataMax = range[1];
+
     m_imageActor->SetInputData(image);
+    applyDisplayMapping(record);
+
     if (!m_hasImage) {
         m_renderer->AddActor(m_imageActor);
         m_hasImage = true;
@@ -79,7 +98,30 @@ bool ImageViewport::loadImage(const QString &path)
     m_renderer->ResetCamera();
     m_renderWindow->Render();
 
-    m_imageSize = QSize(dims[0], dims[1]);
+    m_record = record;
     m_hint->hide();
     return true;
+}
+
+void ImageViewport::applyDisplayMapping(ImageRecord &record)
+{
+    // Single-channel scientific images routinely occupy a small part of their
+    // type's range (a 16-bit speckle image sitting in 0–5000 would render very
+    // nearly black), so the full data range is mapped to black..white. Colour
+    // images already sit in their type range, so they are left alone rather
+    // than having their appearance stretched.
+    double lo = record.dataMin;
+    double hi = record.dataMax;
+    if (record.components > 1 && record.hasTypeRange()) {
+        lo = record.typeMin();
+        hi = record.typeMax();
+    }
+    if (hi <= lo)
+        hi = lo + 1.0;  // a constant image still needs a valid window
+
+    m_imageActor->GetProperty()->SetColorWindow(hi - lo);
+    m_imageActor->GetProperty()->SetColorLevel(0.5 * (lo + hi));
+
+    record.displayMin = lo;
+    record.displayMax = hi;
 }

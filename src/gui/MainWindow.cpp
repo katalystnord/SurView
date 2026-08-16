@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "ImageViewport.h"
+#include "RecordPanel.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -175,9 +176,18 @@ void MainWindow::createDockPanels()
         addDockWidget(area, dock);
         if (viewMenu)
             viewMenu->addAction(dock->toggleViewAction());
+        return dock;
     };
 
-    addDock(tr("Project"), createProjectPanel(), Qt::LeftDockWidgetArea);
+    // The two pillars are seated in the geometry: what was recorded on the
+    // left, what is interpreted from it on the right.
+    QDockWidget *project = addDock(tr("Project"), createProjectPanel(),
+                                   Qt::LeftDockWidgetArea);
+    QDockWidget *record = addDock(tr("Record"), createRecordPanel(),
+                                  Qt::LeftDockWidgetArea);
+    splitDockWidget(project, record, Qt::Vertical);
+    resizeDocks({project, record}, {200, 560}, Qt::Vertical);
+
     addDock(tr("Analysis"), createAnalysisPanel(), Qt::RightDockWidgetArea);
     addDock(tr("Log"), createLogPanel(), Qt::BottomDockWidgetArea);
 }
@@ -201,6 +211,13 @@ QWidget *MainWindow::createProjectPanel()
 
     tree->expandAll();
     return tree;
+}
+
+QWidget *MainWindow::createRecordPanel()
+{
+    m_record = new RecordPanel;
+    m_record->setMinimumWidth(300);
+    return m_record;
 }
 
 QWidget *MainWindow::createAnalysisPanel()
@@ -277,6 +294,11 @@ void MainWindow::importReferenceImage()
     if (path.isEmpty())
         return;
 
+    openReferenceImage(path);
+}
+
+void MainWindow::openReferenceImage(const QString &path)
+{
     const QString name = QFileInfo(path).fileName();
     if (!m_viewport->loadImage(path)) {
         QMessageBox::warning(
@@ -286,13 +308,20 @@ void MainWindow::importReferenceImage()
         return;
     }
 
-    const QSize size = m_viewport->imageSize();
-    m_referenceItem->setText(
-        0, tr("Reference image — %1 (%2×%3)").arg(name).arg(size.width()).arg(size.height()));
+    const ImageRecord &record = m_viewport->record();
+    m_record->setRecord(record);
+
+    m_referenceItem->setText(0, tr("Reference image — %1 (%2×%3)")
+                                    .arg(name)
+                                    .arg(record.width)
+                                    .arg(record.height));
     m_stageLabel->setText(tr("Reference loaded"));
     statusBar()->showMessage(tr("Loaded %1").arg(name), 4000);
-    log(tr("Loaded reference image: %1 (%2×%3 px)")
-            .arg(name).arg(size.width()).arg(size.height()));
+    log(tr("Loaded reference image: %1 — %2×%3 px, %4, %5, no conversion")
+            .arg(name)
+            .arg(record.width)
+            .arg(record.height)
+            .arg(record.pixelTypeName(), record.channelsText()));
     updateActionStates();
 }
 
