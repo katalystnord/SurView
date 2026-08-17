@@ -34,6 +34,10 @@ private:
     void addSection(QVBoxLayout *layout, const QString &title,
                     QFormLayout **form);
 
+    // Fills one of the two "pixels sitting at an extreme value" rows.
+    void setExtremeRow(QLabel *row, const ImageRecord &record, qint64 pixels,
+                       double fraction, double value, bool isTypeLimit);
+
     QWidget *m_placeholder = nullptr;
     QWidget *m_scroll = nullptr;  // holds the populated rows
 
@@ -52,6 +56,8 @@ private:
     QLabel *m_typeRange = nullptr;
     QLabel *m_dataRange = nullptr;
     QLabel *m_rangeUsed = nullptr;
+    QLabel *m_atDataMin = nullptr;
+    QLabel *m_atDataMax = nullptr;
 
     // Pristineness
     QLabel *m_conversions = nullptr;

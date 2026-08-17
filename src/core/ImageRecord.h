@@ -27,6 +27,27 @@ struct ImageRecord
     double dataMin    = 0.0;  // range actually present in the pixels
     double dataMax    = 0.0;
 
+    // --- How much of the evidence sits against the extremes -----------------
+    // Pixels holding the lowest and the highest value present. A handful is
+    // ordinary; a large share means the sensor ran out of range there and the
+    // true values were never captured — the speckle in those pixels is gone,
+    // not merely dark or bright.
+    //
+    // Counted against the extremes actually present rather than against the
+    // type's limits, because they are frequently not the same: 12-bit sensor
+    // data stored in a 16-bit file clips at 4095 while the type allows 65535,
+    // and counting only pixels at 65535 would report no clipping at all. The
+    // type range is reported separately, so whether the two coincide is
+    // visible without being asserted here.
+    bool   extremesCounted = false;
+    qint64 pixelCount      = 0;
+    qint64 pixelsAtDataMin = 0;
+    qint64 pixelsAtDataMax = 0;
+
+    // Share of the image sitting at each extreme, 0..1.
+    double fractionAtDataMin() const;
+    double fractionAtDataMax() const;
+
     // --- Display mapping applied by the viewport (view only) ----------------
     // The intensity window mapped to black..white on screen. Never applied to
     // the data itself; recorded here so the mapping is visible, not implicit.

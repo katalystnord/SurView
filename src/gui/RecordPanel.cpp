@@ -90,6 +90,8 @@ RecordPanel::RecordPanel(QWidget *parent)
     m_typeRange  = addRow(form, tr("Type range"));
     m_dataRange  = addRow(form, tr("Data range"));
     m_rangeUsed  = addRow(form, tr("Range used"));
+    m_atDataMin  = addRow(form, tr("At lowest value"), true);
+    m_atDataMax  = addRow(form, tr("At highest value"), true);
 
     addSection(layout, tr("Pristineness"), &form);
     m_conversions    = addRow(form, tr("Conversions"), /*wide=*/true);
@@ -215,6 +217,40 @@ void RecordPanel::clear()
     m_scroll->hide();
 }
 
+// One "at the extreme" row: how many pixels hold that value, what share of the
+// image that is, and the value itself. Whether the value is also the type's own
+// limit is stated because it is a fact about the file, not an inference about
+// the sensor — a reader can see that the two coincide without this claiming
+// anything about what was or was not clipped.
+void RecordPanel::setExtremeRow(QLabel *row, const ImageRecord &record,
+                                qint64 pixels, double fraction, double value,
+                                bool isTypeLimit)
+{
+    if (!record.extremesCounted) {
+        row->setText(tr("not counted — sample type not recognised"));
+        return;
+    }
+
+    const QLocale locale;
+    const QString channels =
+        record.components > 1 ? tr(" (any channel)") : QString();
+
+    // A percentage that rounds to 0.00% would read as "none", which is a
+    // different statement from "a few".
+    const double percent = 100.0 * fraction;
+    const QString share = (pixels > 0 && percent < 0.01)
+                              ? tr("<0.01%")
+                              : tr("%1%").arg(percent, 0, 'f', 2);
+
+    QString text = tr("%1 px%2 — %3 of the image, at %4")
+                       .arg(locale.toString(pixels), channels, share,
+                            locale.toString(value, 'g', 6));
+    if (isTypeLimit)
+        text += tr(" (the type's own limit)");
+
+    row->setText(text);
+}
+
 void RecordPanel::setRecord(const ImageRecord &record)
 {
     // Nothing selected at all — as opposed to a file we could not decode,
@@ -253,6 +289,8 @@ void RecordPanel::setRecord(const ImageRecord &record)
         m_typeRange->setText(unread);
         m_dataRange->setText(unread);
         m_rangeUsed->setText(unread);
+        m_atDataMin->setText(unread);
+        m_atDataMax->setText(unread);
         m_conversions->setText(
             tr("none — the file could not be decoded, so no pixels were read "
                "and nothing was converted"));
@@ -284,6 +322,12 @@ void RecordPanel::setRecord(const ImageRecord &record)
     m_dataRange->setText(tr("%1 to %2")
                              .arg(locale.toString(record.dataMin, 'g', 6),
                                   locale.toString(record.dataMax, 'g', 6)));
+    setExtremeRow(m_atDataMin, record, record.pixelsAtDataMin,
+                  record.fractionAtDataMin(), record.dataMin,
+                  record.hasTypeRange() && record.dataMin == record.typeMin());
+    setExtremeRow(m_atDataMax, record, record.pixelsAtDataMax,
+                  record.fractionAtDataMax(), record.dataMax,
+                  record.hasTypeRange() && record.dataMax == record.typeMax());
 
     m_conversions->setText(tr("none — pixels held exactly as decoded"));
     if (record.displayed) {

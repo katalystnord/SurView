@@ -68,6 +68,20 @@ double ImageRecord::rangeUtilization() const
     return (dataMax - dataMin) / span;
 }
 
+double ImageRecord::fractionAtDataMin() const
+{
+    if (pixelCount <= 0)
+        return 0.0;
+    return double(pixelsAtDataMin) / double(pixelCount);
+}
+
+double ImageRecord::fractionAtDataMax() const
+{
+    if (pixelCount <= 0)
+        return 0.0;
+    return double(pixelsAtDataMax) / double(pixelCount);
+}
+
 QString ImageRecord::pixelTypeName() const
 {
     switch (scalarType) {
