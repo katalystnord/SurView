@@ -12,8 +12,11 @@
 #include <vtkGenericOpenGLRenderWindow.h>
 #include <vtkImageActor.h>
 #include <vtkInteractorStyleImage.h>
+#include <vtkLookupTable.h>
 #include <vtkRenderer.h>
+#include <vtkScalarBarActor.h>
 
+struct CorrelationResult;
 class QLabel;
 
 // Central viewport of the workspace: renders a speckle image (and, later,
@@ -35,6 +38,12 @@ public:
     // one on screen would attribute those pixels to the current selection.
     void showMessage(const QString &text);
 
+    // Overlay a measured displacement field on the reference image, with the
+    // colour scale that makes it readable as numbers rather than as a picture.
+    void showField(const CorrelationResult &result);
+    void clearField();
+    bool hasField() const { return m_hasField; }
+
     bool hasImage() const { return m_hasImage; }
 
     // Provenance and pixel facts for the currently displayed image.
@@ -53,9 +62,13 @@ private:
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
     vtkNew<vtkImageActor> m_imageActor;
+    vtkNew<vtkImageActor> m_fieldActor;
+    vtkNew<vtkLookupTable> m_fieldColours;
+    vtkNew<vtkScalarBarActor> m_scalarBar;
     vtkNew<vtkInteractorStyleImage> m_style;
 
     QLabel *m_hint = nullptr;
     bool m_hasImage = false;
+    bool m_hasField = false;
     ImageRecord m_record;
 };

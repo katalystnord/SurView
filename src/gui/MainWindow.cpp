@@ -2,6 +2,7 @@
 
 #include "ImageViewport.h"
 #include "RecordPanel.h"
+#include "core/Correlation.h"
 #include "core/ImageDecode.h"
 #include "core/ImagePairing.h"
 
@@ -17,6 +18,9 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QProgressBar>
+#include <QStandardItemModel>
+#include <QThread>
 #include <QSpinBox>
 #include <QStatusBar>
 #include <QStyle>
@@ -81,8 +85,7 @@ void MainWindow::createActions()
     m_actStop = new QAction(
         style()->standardIcon(QStyle::SP_MediaStop), tr("Stop"), this);
     m_actStop->setEnabled(false);
-    connect(m_actStop, &QAction::triggered, this,
-            [this] { notImplemented(tr("Stopping a correlation run")); });
+    connect(m_actStop, &QAction::triggered, this, &MainWindow::stopCorrelation);
 
     m_actExport = new QAction(tr("Export Results (.vtu)…"), this);
     m_actExport->setStatusTip(
@@ -223,8 +226,8 @@ QWidget *MainWindow::createProjectPanel()
     auto *rois = new QTreeWidgetItem(tree);
     rois->setText(0, tr("Regions of interest — none"));
 
-    auto *results = new QTreeWidgetItem(tree);
-    results->setText(0, tr("Results — none"));
+    m_resultsItem = new QTreeWidgetItem(tree);
+    m_resultsItem->setText(0, tr("Results — none"));
 
     tree->expandAll();
     return tree;
@@ -244,44 +247,105 @@ QWidget *MainWindow::createAnalysisPanel()
     auto *panel = new QWidget;
     auto *form = new QFormLayout(panel);
 
-    auto *solver = new QComboBox;
-    solver->addItems({tr("ICGN"), tr("Newton–Raphson"), tr("IC-LM")});
-    form->addRow(tr("Solver"), solver);
+    m_solver = new QComboBox;
+    m_solver->addItem(tr("ICGN"), CorrelationSettings::ICGN);
+    m_solver->addItem(tr("Newton–Raphson"), CorrelationSettings::NewtonRaphson);
+    m_solver->addItem(tr("IC-LM"), CorrelationSettings::ICLM);
+    connect(m_solver, &QComboBox::currentIndexChanged, this,
+            &MainWindow::updateSolverConstraints);
+    form->addRow(tr("Solver"), m_solver);
 
-    auto *shape = new QComboBox;
-    shape->addItems({tr("First order (affine)"), tr("Second order (quadratic)")});
-    form->addRow(tr("Shape function"), shape);
+    m_shape = new QComboBox;
+    m_shape->addItem(tr("First order (affine)"), 1);
+    m_shape->addItem(tr("Second order (quadratic)"), 2);
+    form->addRow(tr("Shape function"), m_shape);
 
-    auto *subset = new QSpinBox;
-    subset->setRange(3, 100);
-    subset->setValue(16);
-    subset->setSuffix(tr(" px"));
-    form->addRow(tr("Subset radius"), subset);
+    m_subsetRadius = new QSpinBox;
+    m_subsetRadius->setRange(3, 100);
+    m_subsetRadius->setValue(16);
+    m_subsetRadius->setSuffix(tr(" px"));
+    form->addRow(tr("Subset radius"), m_subsetRadius);
 
-    auto *step = new QSpinBox;
-    step->setRange(1, 100);
-    step->setValue(5);
-    step->setSuffix(tr(" px"));
-    form->addRow(tr("Grid step"), step);
+    m_gridStep = new QSpinBox;
+    m_gridStep->setRange(1, 100);
+    m_gridStep->setValue(5);
+    m_gridStep->setSuffix(tr(" px"));
+    form->addRow(tr("Grid step"), m_gridStep);
 
-    auto *iterations = new QSpinBox;
-    iterations->setRange(1, 100);
-    iterations->setValue(10);
-    form->addRow(tr("Max iterations"), iterations);
+    m_maxIterations = new QSpinBox;
+    m_maxIterations->setRange(1, 100);
+    m_maxIterations->setValue(10);
+    form->addRow(tr("Max iterations"), m_maxIterations);
 
-    auto *convergence = new QDoubleSpinBox;
-    convergence->setDecimals(4);
-    convergence->setRange(0.0001, 1.0);
-    convergence->setSingleStep(0.0001);
-    convergence->setValue(0.001);
-    convergence->setPrefix(tr("‖Δp‖ ≤ "));
-    form->addRow(tr("Convergence"), convergence);
+    m_convergence = new QDoubleSpinBox;
+    m_convergence->setDecimals(4);
+    m_convergence->setRange(0.0001, 1.0);
+    m_convergence->setSingleStep(0.0001);
+    m_convergence->setValue(0.001);
+    m_convergence->setPrefix(tr("‖Δp‖ ≤ "));
+    form->addRow(tr("Convergence"), m_convergence);
 
-    auto *interpolation = new QComboBox;
-    interpolation->addItem(tr("Bicubic B-spline"));
+    // Stated, not offered. The engine builds a bicubic B-spline interpolator
+    // inside every solver and exposes no way to choose another, so a dropdown
+    // here would imply a choice that does not exist.
+    auto *interpolation = new QLabel(tr("Bicubic B-spline"));
+    interpolation->setToolTip(
+        tr("The engine's solvers interpolate the target subset with a bicubic "
+           "B-spline and offer no alternative."));
     form->addRow(tr("Interpolation"), interpolation);
 
+    updateSolverConstraints();
     return panel;
+}
+
+void MainWindow::updateSolverConstraints()
+{
+    if (!m_solver || !m_shape)
+        return;
+
+    const auto solver = CorrelationSettings::Solver(m_solver->currentData().toInt());
+
+    CorrelationSettings probe;
+    probe.solver = solver;
+    probe.shapeOrder = 2;
+    const bool secondOrderAvailable = probe.isAvailable();
+
+    // Disabled in place rather than removed: the option still exists in the
+    // engine for other solvers, and a control that vanishes teaches nothing
+    // about why.
+    if (auto *model = qobject_cast<QStandardItemModel *>(m_shape->model())) {
+        if (QStandardItem *item = model->item(1)) {
+            item->setEnabled(secondOrderAvailable);
+            item->setToolTip(secondOrderAvailable ? QString()
+                                                  : probe.unavailableReason());
+        }
+    }
+    if (!secondOrderAvailable && m_shape->currentIndex() == 1)
+        m_shape->setCurrentIndex(0);
+}
+
+CorrelationSettings MainWindow::currentSettings() const
+{
+    CorrelationSettings settings;
+    settings.solver = CorrelationSettings::Solver(m_solver->currentData().toInt());
+    settings.shapeOrder = m_shape->currentData().toInt();
+    settings.subsetRadius = m_subsetRadius->value();
+    settings.gridStep = m_gridStep->value();
+    settings.maxIterations = m_maxIterations->value();
+    settings.convergence = m_convergence->value();
+    return settings;
+}
+
+int MainWindow::firstUsableTarget() const
+{
+    for (int i = 0; i < m_targetRecords.size(); i++) {
+        const ImageRecord &target = m_targetRecords.at(i);
+        if (target.isValid()
+            && compareToReference(m_referenceRecord, target).matches()) {
+            return i;
+        }
+    }
+    return -1;
 }
 
 QWidget *MainWindow::createLogPanel()
@@ -294,6 +358,12 @@ QWidget *MainWindow::createLogPanel()
 
 void MainWindow::createStatusBar()
 {
+    m_progress = new QProgressBar;
+    m_progress->setMaximumWidth(180);
+    m_progress->setTextVisible(true);
+    m_progress->hide();
+    statusBar()->addPermanentWidget(m_progress);
+
     m_stageLabel = new QLabel(tr("No project"));
     statusBar()->addPermanentWidget(m_stageLabel);
     statusBar()->showMessage(tr("Ready"));
@@ -517,9 +587,173 @@ void MainWindow::showSelectedImage()
 
 void MainWindow::runCorrelation()
 {
-    // The engine is not wired yet; be explicit rather than appearing to run.
-    log(tr("Correlation requested — OpenCorr engine not yet connected."));
-    notImplemented(tr("Running the correlation"));
+    if (m_workerThread)
+        return;  // already running
+
+    const int targetIndex = firstUsableTarget();
+    if (targetIndex < 0) {
+        QMessageBox::warning(
+            this, tr("Nothing to correlate"),
+            tr("No imported target image matches the reference. Correlation "
+               "compares the same pixel grid before and after deformation."));
+        return;
+    }
+
+    const CorrelationSettings settings = currentSettings();
+    if (!settings.isAvailable()) {
+        QMessageBox::warning(this, tr("Settings not available"),
+                             settings.unavailableReason());
+        return;
+    }
+
+    const ImageRecord &target = m_targetRecords.at(targetIndex);
+
+    // Which target was used is part of the result. With several imported, a run
+    // that silently picked one would leave the field unattributable.
+    log(tr("Correlating %1 against %2 — %3, %4, subset radius %5 px, grid step %6 px")
+            .arg(m_referenceRecord.fileName, target.fileName,
+                 m_solver->currentText(), m_shape->currentText())
+            .arg(settings.subsetRadius)
+            .arg(settings.gridStep));
+
+    m_hasResult = false;
+    m_viewport->clearField();
+
+    m_workerThread = new QThread(this);
+    m_runner = new CorrelationRunner(settings, m_referenceRecord.filePath,
+                                     target.filePath);
+    m_runner->moveToThread(m_workerThread);
+
+    connect(m_workerThread, &QThread::started, m_runner, &CorrelationRunner::run);
+    connect(m_runner, &CorrelationRunner::progress, this,
+            &MainWindow::onCorrelationProgress);
+    connect(m_runner, &CorrelationRunner::finished, this,
+            &MainWindow::onCorrelationFinished);
+    connect(m_runner, &CorrelationRunner::failed, this,
+            &MainWindow::onCorrelationFailed);
+
+    m_progress->setRange(0, 100);
+    m_progress->setValue(0);
+    m_progress->show();
+    m_stageLabel->setText(tr("Correlating"));
+
+    m_workerThread->start();
+    updateActionStates();
+}
+
+void MainWindow::stopCorrelation()
+{
+    if (!m_runner)
+        return;
+    // The engine cannot be interrupted mid-call, so this takes effect at the
+    // next chunk boundary rather than instantly. Whatever was measured before
+    // that point is kept and reported as partial.
+    log(tr("Stop requested — finishing the current block."));
+    m_runner->cancel();
+    m_actStop->setEnabled(false);
+}
+
+void MainWindow::onCorrelationProgress(int done, int total, const QString &stage)
+{
+    if (total <= 0)
+        return;
+    m_progress->setValue(int(100.0 * done / total));
+    statusBar()->showMessage(tr("%1 — %2 of %3 points")
+                                 .arg(stage)
+                                 .arg(done)
+                                 .arg(total));
+}
+
+void MainWindow::onCorrelationFinished(const CorrelationResult &result)
+{
+    m_result = result;
+    m_hasResult = result.converged > 0;
+
+    if (m_hasResult)
+        m_viewport->showField(result);
+
+    const double share =
+        result.total() > 0 ? 100.0 * result.converged / result.total() : 0.0;
+
+    log(result.cancelled
+            ? tr("Correlation stopped after %1 s — %2 of %3 points solved "
+                 "(%4%) before stopping")
+                  .arg(result.secondsElapsed, 0, 'f', 1)
+                  .arg(result.converged)
+                  .arg(result.total())
+                  .arg(share, 0, 'f', 1)
+            : tr("Correlation finished in %1 s — %2 of %3 points solved (%4%)")
+                  .arg(result.secondsElapsed, 0, 'f', 1)
+                  .arg(result.converged)
+                  .arg(result.total())
+                  .arg(share, 0, 'f', 1));
+
+    // Every failure reason the engine gave, each with its own count. A single
+    // "N failed" would hide that "subset out of bounds" and "did not converge"
+    // call for different responses.
+    for (auto it = result.failuresByReason.constBegin();
+         it != result.failuresByReason.constEnd(); ++it) {
+        log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
+    }
+
+    // The tree said "Results — none" through the first working run. A field
+    // that exists but is not named in the project is the same defect as a
+    // target image we claimed to have added and never read.
+    double lowest = 0.0;
+    double highest = 0.0;
+    if (m_hasResult && result.magnitudeRange(lowest, highest)) {
+        const QString summary =
+            tr("Displacement field — %1 of %2 points, %3 to %4 px")
+                .arg(result.converged)
+                .arg(result.total())
+                .arg(lowest, 0, 'f', 2)
+                .arg(highest, 0, 'f', 2);
+        m_resultsItem->setText(0, summary);
+        // The panel is narrow enough to clip the range off the end.
+        m_resultsItem->setToolTip(0, summary);
+    } else {
+        m_resultsItem->setText(0, tr("Results — none"));
+        m_resultsItem->setToolTip(0, QString());
+    }
+
+    m_stageLabel->setText(m_hasResult ? tr("Field measured") : tr("No result"));
+    statusBar()->showMessage(
+        m_hasResult ? tr("%1 points solved").arg(result.converged)
+                    : tr("No point could be solved"),
+        6000);
+
+    if (!m_hasResult && !result.cancelled) {
+        QMessageBox::warning(
+            this, tr("No result"),
+            tr("The engine solved none of the %1 points. The log lists the "
+               "reason it gave for each.")
+                .arg(result.total()));
+    }
+
+    m_progress->hide();
+    m_workerThread->quit();
+    m_workerThread->wait();
+    m_runner->deleteLater();
+    m_runner = nullptr;
+    m_workerThread->deleteLater();
+    m_workerThread = nullptr;
+    updateActionStates();
+}
+
+void MainWindow::onCorrelationFailed(const QString &reason)
+{
+    log(tr("Correlation failed: %1").arg(reason));
+    QMessageBox::warning(this, tr("Correlation failed"), reason);
+
+    m_progress->hide();
+    m_stageLabel->setText(tr("Correlation failed"));
+    m_workerThread->quit();
+    m_workerThread->wait();
+    m_runner->deleteLater();
+    m_runner = nullptr;
+    m_workerThread->deleteLater();
+    m_workerThread = nullptr;
+    updateActionStates();
 }
 
 void MainWindow::showAbout()
@@ -551,17 +785,32 @@ void MainWindow::notImplemented(const QString &feature)
 void MainWindow::updateActionStates()
 {
     const bool hasImage = m_viewport->hasImage();
+    const bool running = m_workerThread != nullptr;
+    const bool hasReference = m_referenceRecord.isValid();
+    const bool hasPair = hasReference && firstUsableTarget() >= 0;
 
-    m_actDefineRoi->setEnabled(hasImage);
-    m_actAutoRoi->setEnabled(hasImage);
+    m_actDefineRoi->setEnabled(hasImage && !running);
+    m_actAutoRoi->setEnabled(hasImage && !running);
 
-    // Run needs at least a reference image; keep the precondition visible via
-    // the tooltip rather than letting the button fail silently.
-    m_actRun->setEnabled(hasImage);
-    m_actRun->setToolTip(hasImage
-                             ? tr("Run DIC correlation")
-                             : tr("Import a reference image first"));
+    // Run needs a reference AND a target that matches it. The tooltip says
+    // which of the two is missing, so the disabled button explains itself
+    // instead of merely refusing.
+    m_actRun->setEnabled(hasPair && !running);
+    if (running)
+        m_actRun->setToolTip(tr("A correlation is already running"));
+    else if (!hasReference)
+        m_actRun->setToolTip(tr("Import a reference image first"));
+    else if (!hasPair)
+        m_actRun->setToolTip(
+            tr("Import a target image that matches the reference"));
+    else
+        m_actRun->setToolTip(tr("Run DIC correlation"));
 
-    // Export needs results, which do not exist yet.
+    m_actStop->setEnabled(running);
+
+    // Export needs results, and writing them is not built yet.
     m_actExport->setEnabled(false);
+    m_actExport->setToolTip(m_hasResult
+                                ? tr("Exporting results is not implemented yet")
+                                : tr("Run a correlation first"));
 }

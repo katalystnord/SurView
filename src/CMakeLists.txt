@@ -1,5 +1,7 @@
 add_executable(SurView
     main.cpp
+    core/Correlation.cpp
+    core/Correlation.h
     core/ImageDecode.cpp
     core/ImageDecode.h
     core/ImagePairing.cpp
@@ -22,6 +24,7 @@ target_compile_definitions(SurView PRIVATE
 )
 
 target_link_libraries(SurView PRIVATE
+    opencorr
     Qt6::Widgets
     Qt6::OpenGLWidgets
     ${VTK_LIBRARIES}
