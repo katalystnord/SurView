@@ -98,6 +98,13 @@ QString ImageRecord::channelsText() const
 QString ImageRecord::fileSizeText() const
 {
     const QLocale locale;
-    return QStringLiteral("%1 (%2 bytes)")
-        .arg(locale.formattedDataSize(fileBytes), locale.toString(fileBytes));
+    const QString human = locale.formattedDataSize(fileBytes);
+    const QString exact = locale.toString(fileBytes);
+
+    // Under a kilobyte the human-readable form is already the exact byte count,
+    // and "28 bytes (28 bytes)" reads as a mistake rather than as precision.
+    if (human == QStringLiteral("%1 bytes").arg(exact))
+        return human;
+
+    return QStringLiteral("%1 (%2 bytes)").arg(human, exact);
 }

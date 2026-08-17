@@ -2,8 +2,11 @@
 
 #include "ImageViewport.h"
 #include "RecordPanel.h"
+#include "core/ImageDecode.h"
+#include "core/ImagePairing.h"
 
 #include <QApplication>
+#include <QGuiApplication>
 #include <QComboBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
@@ -21,6 +24,17 @@
 #include <QToolBar>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+namespace {
+
+// Which record a project-tree item stands for, and which one of them, so a
+// selection can be resolved back to the record it names.
+constexpr int kRecordKindRole  = Qt::UserRole;
+constexpr int kRecordIndexRole = Qt::UserRole + 1;
+
+enum RecordKind { None = 0, Reference = 1, Target = 2 };
+
+}  // namespace
 
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
@@ -196,6 +210,9 @@ QWidget *MainWindow::createProjectPanel()
 {
     auto *tree = new QTreeWidget;
     tree->setHeaderHidden(true);
+    m_projectTree = tree;
+    connect(tree, &QTreeWidget::itemSelectionChanged, this,
+            &MainWindow::showSelectedImage);
 
     m_referenceItem = new QTreeWidgetItem(tree);
     m_referenceItem->setText(0, tr("Reference image — none"));
@@ -308,13 +325,15 @@ void MainWindow::openReferenceImage(const QString &path)
         return;
     }
 
-    const ImageRecord &record = m_viewport->record();
+    m_referenceRecord = m_viewport->record();
+    const ImageRecord &record = m_referenceRecord;
     m_record->setRecord(record);
 
     m_referenceItem->setText(0, tr("Reference image — %1 (%2×%3)")
                                     .arg(name)
                                     .arg(record.width)
                                     .arg(record.height));
+    m_referenceItem->setData(0, kRecordKindRole, RecordKind::Reference);
     m_stageLabel->setText(tr("Reference loaded"));
     statusBar()->showMessage(tr("Loaded %1").arg(name), 4000);
     log(tr("Loaded reference image: %1 — %2×%3 px, %4, %5, no conversion")
@@ -327,18 +346,173 @@ void MainWindow::openReferenceImage(const QString &path)
 
 void MainWindow::importTargetImages()
 {
-    const QStringList paths = QFileDialog::getOpenFileNames(
+    addTargetImages(QFileDialog::getOpenFileNames(
         this, tr("Import Target Image(s)"), QString(),
-        tr("Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp);;All files (*)"));
+        tr("Images (*.tif *.tiff *.png *.jpg *.jpeg *.bmp);;All files (*)")));
+}
+
+void MainWindow::addTargetImages(const QStringList &paths)
+{
     if (paths.isEmpty())
         return;
 
-    m_targetsItem->setText(0, tr("Target images — %n file(s)", nullptr, paths.size()));
-    for (const QString &path : paths)
-        log(tr("Added target image: %1").arg(QFileInfo(path).fileName()));
-    statusBar()->showMessage(
-        tr("Added %n target image(s)", nullptr, paths.size()), 4000);
+    // Each target is decoded and recorded on the way in, exactly as the
+    // reference is. Reading every file costs time on a long sequence, and that
+    // is the intended trade: an image we have not read is an image we cannot
+    // make any truthful statement about, and the record is the foundation the
+    // measurement stands on.
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+
+    int recorded = 0;
+    int unreadable = 0;
+    int mismatched = 0;
+
+    for (const QString &path : paths) {
+        const QString name = QFileInfo(path).fileName();
+
+        ImageRecord record;
+        const bool decoded = decodeImage(path, record) != nullptr;
+
+        auto *item = new QTreeWidgetItem(m_targetsItem);
+        item->setData(0, kRecordKindRole, RecordKind::Target);
+        item->setData(0, kRecordIndexRole, int(m_targetRecords.size()));
+        m_targetRecords.append(record);
+
+        if (!decoded) {
+            // Kept in the list rather than dropped: it was named as a target,
+            // and silently omitting it would leave the count disagreeing with
+            // what was selected.
+            ++unreadable;
+            item->setText(0, tr("%1 — could not be read").arg(name));
+            item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxCritical));
+            log(tr("Target image could not be read: %1").arg(name));
+            continue;
+        }
+
+        ++recorded;
+        const PairCompatibility pairing =
+            compareToReference(m_referenceRecord, record);
+
+        if (pairing.matches()) {
+            item->setText(0, tr("%1 (%2×%3)")
+                                 .arg(name)
+                                 .arg(record.width)
+                                 .arg(record.height));
+            log(tr("Recorded target image: %1 — %2×%3 px, %4, %5, no conversion")
+                    .arg(name)
+                    .arg(record.width)
+                    .arg(record.height)
+                    .arg(record.pixelTypeName(), record.channelsText()));
+        } else {
+            ++mismatched;
+            // The reason is stated in the log and the tooltip, but this panel
+            // is narrow enough to truncate the text — so the item also carries
+            // an icon, which survives any width.
+            item->setText(0, tr("%1 (%2×%3) — does not match the reference")
+                                 .arg(name)
+                                 .arg(record.width)
+                                 .arg(record.height));
+            item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+            item->setToolTip(0, pairing.mismatches.join(QStringLiteral("\n")));
+            log(tr("Recorded target image: %1 — does not match the reference: %2")
+                    .arg(name, pairing.mismatches.join(QStringLiteral("; "))));
+        }
+    }
+
+    QGuiApplication::restoreOverrideCursor();
+
+    // "recorded" means the pixels were read; a file we could not decode is
+    // listed but not recorded, and the heading has to keep those apart rather
+    // than folding both into one flattering total.
+    // Counted from the records themselves, not from this batch's tally, so the
+    // heading stays right across repeated imports. A record whose pixels could
+    // not be read holds provenance only, and is not valid.
+    const int listed = m_targetRecords.size();
+    int readable = 0;
+    for (const ImageRecord &target : m_targetRecords) {
+        if (target.isValid())
+            ++readable;
+    }
+    m_targetsItem->setText(0, readable == listed
+                                  ? tr("Target images — %1 recorded").arg(listed)
+                                  : tr("Target images — %1 of %2 recorded")
+                                        .arg(readable)
+                                        .arg(listed));
+    m_targetsItem->setExpanded(true);
+
+    // Say what happened in one line, including the parts that went wrong —
+    // a count of successes alone would read as a clean import. Written with
+    // explicit singular/plural rather than tr()'s %n, which only selects a
+    // plural form when a translation catalogue supplies one; untranslated, the
+    // source string prints verbatim and "1 do not match" ships.
+    QStringList summary;
+    summary << (recorded == 1 ? tr("1 target image recorded")
+                              : tr("%1 target images recorded").arg(recorded));
+    if (mismatched > 0) {
+        summary << (mismatched == 1
+                        ? tr("1 does not match the reference")
+                        : tr("%1 do not match the reference").arg(mismatched));
+    }
+    if (unreadable > 0) {
+        summary << (unreadable == 1 ? tr("1 could not be read")
+                                    : tr("%1 could not be read").arg(unreadable));
+    }
+    statusBar()->showMessage(summary.join(tr(", ")), 6000);
+
+    if (mismatched > 0 || unreadable > 0) {
+        QMessageBox::warning(this, tr("Target images imported"),
+                             summary.join(QStringLiteral("\n")));
+    }
+
     updateActionStates();
+}
+
+// Show a record in the record panel, and its pixels in the viewport. The
+// viewport re-reads the file rather than holding every frame's pixels in
+// memory; the record it produces is used only for the display mapping, since
+// everything else was already recorded at import.
+void MainWindow::displayRecord(const ImageRecord &record)
+{
+    // A record we hold but cannot display: still report it, and say why the
+    // viewport is empty rather than leaving the previously shown image up,
+    // which would read as this selection's pixels.
+    if (!record.isValid()) {
+        m_viewport->showMessage(
+            tr("%1\n\ncould not be read — recorded, but no pixels to show")
+                .arg(record.fileName));
+        m_record->setRecord(record);
+        return;
+    }
+
+    ImageRecord shown = record;
+    if (m_viewport->loadImage(record.filePath)) {
+        const ImageRecord &displayed = m_viewport->record();
+        shown.displayed  = displayed.displayed;
+        shown.displayMin = displayed.displayMin;
+        shown.displayMax = displayed.displayMax;
+    }
+
+    m_record->setRecord(shown);
+}
+
+void MainWindow::showSelectedImage()
+{
+    const QList<QTreeWidgetItem *> selected = m_projectTree->selectedItems();
+    if (selected.isEmpty())
+        return;
+
+    const QTreeWidgetItem *item = selected.first();
+    const int kind = item->data(0, kRecordKindRole).toInt();
+
+    if (kind == RecordKind::Reference) {
+        displayRecord(m_referenceRecord);
+    } else if (kind == RecordKind::Target) {
+        const int index = item->data(0, kRecordIndexRole).toInt();
+        if (index >= 0 && index < m_targetRecords.size())
+            displayRecord(m_targetRecords.at(index));
+    }
+    // Anything else (ROIs, results) has no record to show; leave the panel on
+    // whatever it was showing rather than blanking it for a non-image node.
 }
 
 void MainWindow::runCorrelation()

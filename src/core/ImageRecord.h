@@ -30,6 +30,12 @@ struct ImageRecord
     // --- Display mapping applied by the viewport (view only) ----------------
     // The intensity window mapped to black..white on screen. Never applied to
     // the data itself; recorded here so the mapping is visible, not implicit.
+    //
+    // Only set once the image has actually been displayed. An image that has
+    // been recorded but not shown — every target image on import — has no
+    // mapping to report, and reporting 0..0 as if it were one would be a
+    // claim about a rendering that never happened.
+    bool   displayed  = false;
     double displayMin = 0.0;
     double displayMax = 0.0;
 

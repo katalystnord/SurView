@@ -1,5 +1,7 @@
 #include "ImageViewport.h"
 
+#include "core/ImageDecode.h"
+
 #include <QLabel>
 #include <QShowEvent>
 #include <QVBoxLayout>
@@ -9,8 +11,6 @@
 #include <vtkImageActor.h>
 #include <vtkImageData.h>
 #include <vtkImageProperty.h>
-#include <vtkImageReader2.h>
-#include <vtkImageReader2Factory.h>
 #include <vtkInteractorStyleImage.h>
 #include <vtkRenderWindowInteractor.h>
 #include <vtkRenderer.h>
@@ -54,39 +54,14 @@ void ImageViewport::applyImageInteractorStyle()
 
 bool ImageViewport::loadImage(const QString &path)
 {
-    vtkSmartPointer<vtkImageReader2> reader;
-    reader.TakeReference(
-        vtkImageReader2Factory::CreateImageReader2(path.toUtf8().constData()));
-    if (!reader)
-        return false;  // no reader for this file type
-
-    reader->SetFileName(path.toUtf8().constData());
-    reader->Update();
-
-    vtkImageData *image = reader->GetOutput();
-    if (!image)
-        return false;
-
-    int dims[3] = {0, 0, 0};
-    image->GetDimensions(dims);
-    if (dims[0] <= 0 || dims[1] <= 0)
-        return false;  // reader produced nothing usable
-
     // Record what arrived, before anything is done with it. The pixels are
     // handed to the actor exactly as decoded — the only thing that varies is
     // how they are mapped to screen intensities, and that mapping is recorded
     // too rather than left implicit.
-    ImageRecord record = ImageRecord::fromFile(path);
-    record.decoderClass = QString::fromLatin1(reader->GetClassName());
-    record.width        = dims[0];
-    record.height       = dims[1];
-    record.components   = image->GetNumberOfScalarComponents();
-    record.scalarType   = image->GetScalarType();
-
-    double range[2] = {0.0, 0.0};
-    image->GetScalarRange(range);
-    record.dataMin = range[0];
-    record.dataMax = range[1];
+    ImageRecord record;
+    vtkSmartPointer<vtkImageData> image = decodeImage(path, record);
+    if (!image)
+        return false;
 
     m_imageActor->SetInputData(image);
     applyDisplayMapping(record);
@@ -101,6 +76,18 @@ bool ImageViewport::loadImage(const QString &path)
     m_record = record;
     m_hint->hide();
     return true;
+}
+
+void ImageViewport::showMessage(const QString &text)
+{
+    if (m_hasImage) {
+        m_renderer->RemoveActor(m_imageActor);
+        m_hasImage = false;
+        m_renderWindow->Render();
+    }
+    m_record = ImageRecord();
+    m_hint->setText(text);
+    m_hint->show();
 }
 
 void ImageViewport::applyDisplayMapping(ImageRecord &record)
@@ -122,6 +109,7 @@ void ImageViewport::applyDisplayMapping(ImageRecord &record)
     m_imageActor->GetProperty()->SetColorWindow(hi - lo);
     m_imageActor->GetProperty()->SetColorLevel(0.5 * (lo + hi));
 
+    record.displayed  = true;
     record.displayMin = lo;
     record.displayMax = hi;
 }

@@ -217,7 +217,9 @@ void RecordPanel::clear()
 
 void RecordPanel::setRecord(const ImageRecord &record)
 {
-    if (!record.isValid()) {
+    // Nothing selected at all — as opposed to a file we could not decode,
+    // which is a different situation and reported below.
+    if (record.filePath.isEmpty()) {
         clear();
         return;
     }
@@ -236,6 +238,30 @@ void RecordPanel::setRecord(const ImageRecord &record)
                              : record.sha256);
     m_decoder->setText(record.decoderClass.isEmpty() ? unknownText()
                                                      : record.decoderClass);
+
+    // A file we could not decode still has provenance worth stating — it was
+    // named, found, measured and hashed. Reporting that half and saying plainly
+    // that the pixels were never read beats falling back to "no image
+    // imported", which denies a record we are holding.
+    if (!record.isValid()) {
+        // Short enough not to truncate in this column; the reason is stated
+        // once below rather than repeated across six rows that all clip.
+        const QString unread = tr("not read");
+        m_dimensions->setText(unread);
+        m_channels->setText(unread);
+        m_pixelType->setText(unread);
+        m_typeRange->setText(unread);
+        m_dataRange->setText(unread);
+        m_rangeUsed->setText(unread);
+        m_conversions->setText(
+            tr("none — the file could not be decoded, so no pixels were read "
+               "and nothing was converted"));
+        m_displayMapping->setText(tr("not displayed — no pixels to map"));
+
+        m_placeholder->hide();
+        m_scroll->show();
+        return;
+    }
 
     m_dimensions->setText(tr("%1 × %2 px")
                               .arg(locale.toString(record.width),
@@ -260,11 +286,17 @@ void RecordPanel::setRecord(const ImageRecord &record)
                                   locale.toString(record.dataMax, 'g', 6)));
 
     m_conversions->setText(tr("none — pixels held exactly as decoded"));
-    m_displayMapping->setText(
-        tr("%1 to %2 shown as black to white — view only, the pixels are "
-           "unchanged")
-            .arg(locale.toString(record.displayMin, 'g', 6),
-                 locale.toString(record.displayMax, 'g', 6)));
+    if (record.displayed) {
+        m_displayMapping->setText(
+            tr("%1 to %2 shown as black to white — view only, the pixels are "
+               "unchanged")
+                .arg(locale.toString(record.displayMin, 'g', 6),
+                     locale.toString(record.displayMax, 'g', 6)));
+    } else {
+        // Recorded but never rendered, so there is no mapping to report. Saying
+        // so beats printing a window that was never applied to anything.
+        m_displayMapping->setText(tr("not displayed yet — no mapping applied"));
+    }
 
     m_placeholder->hide();
     m_scroll->show();

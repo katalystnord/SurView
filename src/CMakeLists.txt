@@ -1,5 +1,9 @@
 add_executable(SurView
     main.cpp
+    core/ImageDecode.cpp
+    core/ImageDecode.h
+    core/ImagePairing.cpp
+    core/ImagePairing.h
     core/ImageRecord.cpp
     core/ImageRecord.h
     gui/MainWindow.cpp

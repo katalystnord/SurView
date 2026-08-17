@@ -30,6 +30,11 @@ public:
     // Load and display an image. Returns false if the file could not be read.
     bool loadImage(const QString &path);
 
+    // Show a message instead of an image, and stop displaying whatever was
+    // there. Used when the selected image cannot be shown: leaving the previous
+    // one on screen would attribute those pixels to the current selection.
+    void showMessage(const QString &text);
+
     bool hasImage() const { return m_hasImage; }
 
     // Provenance and pixel facts for the currently displayed image.
