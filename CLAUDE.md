@@ -184,6 +184,16 @@ work in the fork) and **fork-idiom conformance** (tenet 8 — diverge from
 upstream on *direction*, but mirror OpenCorr's own patterns inside the fork so
 fixes stay upstreamable and the code stays legible).
 
+The upstreaming policy has a failure mode we actually hit: a fix authored on a
+standalone branch off upstream and merged *there* does not thereby exist on
+`surview-dev` — #25 and #26 were missing from the branch SurView consumes for
+two weeks. **Upstreaming a fix is not finished until it is merged back down
+into the fork**, and that is checked by content, never by the commit graph
+(their commits are not ancestors of `surview-dev`, so `git log` looks fine
+while the code is absent). Merge upstream with `-X renormalize`: the fork
+normalizes to LF via `.gitattributes` and upstream is CRLF, so without it every
+file conflicts end-to-end on line endings alone.
+
 Punch list tracked in [fork issue #1](https://github.com/katalystnord/OpenCorr/issues/1)
 is complete (9/9): uncertainty quantification (sigma/beta, from DICe),
 calibration — checkerboard + dot-target/donut-marker detection + stereo
@@ -339,8 +349,9 @@ reference-update bank step, a `Uncertainty2D` beta-sentinel inconsistency
 plus a matching out-of-bounds probe gap, a `Polygon2D::contains()`
 degenerate-edge bug, missing validation in `loadTable2D`'s legacy-format
 inference, a real (if modest) perf regression in `ransacAffineFit`'s
-per-trial hot loop, and one more upstream PR sent
-([vincentjzy/OpenCorr#27](https://github.com/vincentjzy/OpenCorr/pull/27)).
+per-trial hot loop, and one more upstream PR
+([vincentjzy/OpenCorr#27](https://github.com/vincentjzy/OpenCorr/pull/27)),
+merged 2026-08-01 along with #24-#26.
 
 ## Not yet decided — pending from 2026-07-17 research
 
@@ -372,8 +383,14 @@ decisions:
 - **VTK `.vtu` export**: confirmed a real differentiator empirically — only
   1 of 11 tools reviewed has any VTK-family export. Reinforces the existing
   VTK decision; no new action needed.
-- **Build integration**: OpenCorr has no upstream CMake library target (we
-  write our own); dependencies are Eigen 3.4.0, OpenCV 4.10.0, FFTW 3.3.5,
-  nanoflann 1.7.0, OpenMP; Linux needs two small header-include patches (one
-  still open upstream and unfixed: `oc_feature_affine.cpp` missing the
-  `random` header).
+- **Build integration**: upstream OpenCorr still ships no CMake library
+  target, so the fork provides its own (`5d88cea`, written with SurView as
+  the named consumer). Dependencies as built today: Eigen 3.4.0, OpenCV
+  4.10.0, FFTW 3.3.10, nanoflann 1.7.0, OpenMP. Both header-include patches
+  Linux once needed are now upstream and carry-free — `oc_feature_affine.cpp`'s
+  missing `<random>` (our PR #24, merged 2026-08-01) and the older `world.hpp`
+  removal (upstream since 2024). Gotcha worth keeping: FFTW's *headers*
+  (`libfftw3-dev`) are a hard build requirement, not just the runtime libs —
+  without them `oc_fftcc.cpp`/`oc_phase_correlation.cpp` fail to compile and
+  every smoke test with them, since all of them include the `opencorr.h`
+  umbrella that pulls in `oc_fftcc.h`.
