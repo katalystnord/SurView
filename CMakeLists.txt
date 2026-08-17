@@ -25,4 +25,8 @@ find_package(VTK REQUIRED COMPONENTS
     GUISupportQt          # QVTKOpenGLNativeWidget (VTK inside a Qt widget)
 )
 
+# Which OpenCorr engine commit this build is verified against. Advisory: it
+# reports drift and continues. Full three-way check: tools/check-engine.sh
+include(cmake/OpenCorrPin.cmake)
+
 add_subdirectory(src)

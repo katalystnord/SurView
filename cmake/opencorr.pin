@@ -1,0 +1,24 @@
+# The exact OpenCorr engine commit SurView is built and verified against.
+#
+# Single source of truth, read by both cmake/OpenCorrPin.cmake (configure-time
+# advisory check) and tools/check-engine.sh (the full three-way check). Plain
+# KEY=VALUE with no spaces or quoting so a POSIX shell can source it directly
+# and CMake can parse it with file(STRINGS).
+#
+# Bumping this is a deliberate, visible commit -- that is the point. SurView
+# recording no engine version at all is what let two of our own correctness
+# fixes go missing from the engine branch for two weeks (see CLAUDE.md, the
+# upstreaming-policy paragraph). The pin is tenet 10 applied to our own
+# dependency: no silent drift in the foundation everything stands on.
+#
+# When bumping, say in the commit message what moved in the engine and what
+# was re-verified against it -- a SHA on its own records that something
+# changed while hiding what.
+
+SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
+SURVIEW_OPENCORR_BRANCH=surview-dev
+SURVIEW_OPENCORR_PIN=71671c60c5f5895bc8da3e1f8e7e32466d35aae6
+
+# What the pinned commit is, in words, so a reader knows what they are on
+# without resolving the SHA:
+SURVIEW_OPENCORR_PIN_NOTE=first-upstream-merge-plus-partial-oob-regression-test
