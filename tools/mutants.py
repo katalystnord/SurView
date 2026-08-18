@@ -183,7 +183,11 @@ def main():
 
     if args.engine:
         root = Path(os.environ.get("SURVIEW_OPENCORR_DIR", REPO.parent / "OpenCorr")).resolve()
-        build = REPO / "build-ninja" / "engine-tests"
+        # Its own tree, beside the engine rather than inside SurView's build
+        # directory: mutating the engine has nothing to do with SurView's build,
+        # and burying it there made the engine's own instruments look like they
+        # belonged to its consumer.
+        build = root / "build-mutants"
         configure = ["cmake", "-S", str(root), "-B", str(build), "-G", "Ninja",
                      "-DOPENCORR_BUILD_SMOKE_TEST=ON"]
         # Only the sources whose behaviour the FAST smoke tests actually cover.
@@ -223,13 +227,17 @@ def main():
     # it took itself, so an edit made while it runs is silently reverted -- and
     # if it dies between writing a mutant and restoring, an uncommitted change
     # would be indistinguishable from the damage.
-    dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "tests"],
-                           cwd=REPO, capture_output=True, text=True).stdout.strip()
+    #
+    # Checked against the repository being MUTATED, which is the engine in
+    # --engine mode. Checking SurView's tree while editing the fork's files was
+    # a guard pointed at the wrong repository.
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", "src"],
+                           cwd=root, capture_output=True, text=True).stdout.strip()
     if dirty and not os.environ.get("MUTANTS_ALLOW_DIRTY"):
-        print("mutants.py: the working tree has uncommitted changes under src/ "
-              "or tests/. Commit or stash them first -- this harness edits those "
-              "files and restores them, and cannot tell your changes from its "
-              "own.\n", file=sys.stderr)
+        print(f"mutants.py: {root} has uncommitted changes under src/. Commit "
+              "or stash them first -- this harness edits those files and "
+              "restores them, and cannot tell your changes from its own.\n",
+              file=sys.stderr)
         print(dirty, file=sys.stderr)
         return 2
 

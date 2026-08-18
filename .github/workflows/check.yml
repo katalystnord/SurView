@@ -30,7 +30,13 @@ env:
 jobs:
   surview:
     name: SurView build + tests
-    runs-on: ubuntu-latest
+    # ⚑ NOT ubuntu-latest. On 24.04 the distro's `libvtk9-qt-dev` is built
+    # against Qt5, while SurView is a Qt6 application -- so the packages install
+    # cleanly and then find_package(VTK COMPONENTS GUISupportQt) hands back a
+    # Qt5 binding that cannot be combined with Qt6::Widgets. The failure is at
+    # configure time and says nothing about Qt, which is why it took a run to
+    # find. 26.04 is the first image whose VTK is a Qt6 build.
+    runs-on: ubuntu-26.04
     steps:
       - name: Check out SurView
         uses: actions/checkout@v4
@@ -65,6 +71,14 @@ jobs:
           # else's schedule, and the first two attempts here were both guesses.
           vtk_qt=$(apt-cache search --names-only '^libvtk[0-9.]+-qt-dev$' \
                    | awk '{print $1}' | sort -V | tail -1)
+          # Guard the toolkit, not just the name: a VTK Qt binding built against
+          # Qt5 installs perfectly and fails much later, in a message about
+          # neither Qt nor VTK.
+          if apt-cache depends "$vtk_qt" | grep -q 'libqt5'; then
+            echo "$vtk_qt on this image is a Qt5 build; SurView is Qt6." >&2
+            echo "Use a runner image whose VTK is built against Qt6." >&2
+            exit 1
+          fi
           if [ -z "$vtk_qt" ]; then
             echo "No libvtkN-qt-dev package on this image. Candidates were:"
             apt-cache search --names-only '^libvtk' || true
