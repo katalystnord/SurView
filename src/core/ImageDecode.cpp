@@ -3,8 +3,11 @@
 #include <QString>
 
 #include <vtkImageData.h>
+#include <vtkImageFlip.h>
 #include <vtkImageReader2.h>
 #include <vtkImageReader2Factory.h>
+#include <vtkNew.h>
+#include <vtkTIFFReader.h>
 #include <vtkType.h>
 
 namespace {
@@ -60,9 +63,20 @@ vtkSmartPointer<vtkImageData> decodeImage(const QString &path,
         return nullptr;  // no reader for this file type
 
     reader->SetFileName(path.toUtf8().constData());
+
+    // vtkTIFFReader is the one reader whose row order is not fixed: it honours
+    // the file's own orientation tag, so the same code path yields top-down
+    // rows for one TIFF and bottom-up for the next. Pinning it to the file's
+    // own row order makes what arrives here depend on the reader alone, which
+    // is what the single flip below is then able to reason about.
+    if (auto *tiff = vtkTIFFReader::SafeDownCast(reader.Get())) {
+        constexpr unsigned int kOrientationTopLeft = 1;  // row 0 top, col 0 left
+        tiff->SetOrientationType(kOrientationTopLeft);
+    }
+
     reader->Update();
 
-    vtkImageData *image = reader->GetOutput();
+    vtkSmartPointer<vtkImageData> image = reader->GetOutput();
     if (!image)
         return nullptr;
 
@@ -70,6 +84,30 @@ vtkSmartPointer<vtkImageData> decodeImage(const QString &path,
     image->GetDimensions(dims);
     if (dims[0] <= 0 || dims[1] <= 0)
         return nullptr;  // reader produced nothing usable
+
+    // Put every image into one row order — the file's own, row 0 at the top —
+    // so that a pixel's position means the same thing whatever decoded it.
+    // Without this the viewport shows TIFFs mirrored top-to-bottom while PNGs
+    // come out upright, and a measured field drawn in engine coordinates lines
+    // up with one of them and not the other.
+    //
+    // Which readers need it was established by reading a known image through
+    // each of the four this application offers to import: with the TIFF reader
+    // pinned above, it alone emits the file's rows in file order, and the PNG,
+    // JPEG and BMP readers all emit them bottom-up.
+    if (!vtkTIFFReader::SafeDownCast(reader.Get())) {
+        vtkNew<vtkImageFlip> flip;
+        flip->SetInputData(image);
+        flip->SetFilteredAxis(1);
+        flip->Update();
+
+        image = flip->GetOutput();
+        // The flip mirrors about the input's centre and leaves the origin at
+        // -(height-1); the pixels are the ones we want, so put the origin back
+        // rather than carrying an offset every later coordinate would inherit.
+        image->SetOrigin(0.0, 0.0, 0.0);
+        record.rowsReversedByDecoder = true;
+    }
 
     record.decoderClass = QString::fromLatin1(reader->GetClassName());
     record.width        = dims[0];

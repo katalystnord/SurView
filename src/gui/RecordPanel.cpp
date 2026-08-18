@@ -94,6 +94,7 @@ RecordPanel::RecordPanel(QWidget *parent)
     m_atDataMax  = addRow(form, tr("At highest value"), true);
 
     addSection(layout, tr("Pristineness"), &form);
+    m_rowOrder       = addRow(form, tr("Row order"), /*wide=*/true);
     m_conversions    = addRow(form, tr("Conversions"), /*wide=*/true);
     m_displayMapping = addRow(form, tr("Display mapping"), /*wide=*/true);
 
@@ -291,6 +292,7 @@ void RecordPanel::setRecord(const ImageRecord &record)
         m_rangeUsed->setText(unread);
         m_atDataMin->setText(unread);
         m_atDataMax->setText(unread);
+        m_rowOrder->setText(tr("not read"));
         m_conversions->setText(
             tr("none — the file could not be decoded, so no pixels were read "
                "and nothing was converted"));
@@ -328,6 +330,18 @@ void RecordPanel::setRecord(const ImageRecord &record)
     setExtremeRow(m_atDataMax, record, record.pixelsAtDataMax,
                   record.fractionAtDataMax(), record.dataMax,
                   record.hasTypeRange() && record.dataMax == record.typeMax());
+
+    // Reported rather than assumed: VTK's readers disagree about which way up
+    // they hand the rows over, and an image held the other way round is one
+    // whose every later coordinate — a region's corners, a measured point —
+    // would refer to the wrong row.
+    m_rowOrder->setText(
+        record.rowsReversedByDecoder
+            ? tr("the decoder returned the rows bottom-up; held in the file's "
+                 "own order, row 0 at the top. A reordering only — no pixel "
+                 "value is changed by it")
+            : tr("the file's own order, row 0 at the top, exactly as the "
+                 "decoder returned it"));
 
     m_conversions->setText(tr("none — pixels held exactly as decoded"));
     if (record.displayed) {

@@ -1,0 +1,63 @@
+#!/usr/bin/env bash
+#
+# Refuse a commit that does not build and pass SurView's own tests.
+#
+# ⚑ WHY THIS EXISTS. The regime is "run the suite, then commit" -- and a regime
+# that depends on remembering is a regime that lapses exactly when it matters,
+# under time pressure at the end of a long piece of work. This makes the fast
+# half automatic.
+#
+# WHAT IT DOES NOT DO: it does not run the engine's smoke suite. That takes
+# about eight and a half minutes, which is too slow to sit in front of every
+# commit, and it would train people to use --no-verify. The full run --
+# tools/run-tests.sh, SurView plus engine -- is required after a major piece of
+# work and before pushing; that is stated in CLAUDE.md and is the author's job,
+# not this hook's.
+#
+# Install (per clone, since git does not ship hooks):
+#     git config core.hooksPath tools/git-hooks
+#
+# Skipping is deliberate and visible: `git commit --no-verify`.
+
+set -uo pipefail
+
+repo=$(git rev-parse --show-toplevel)
+cd "$repo" || exit 1
+
+# A docs- or notes-only commit cannot break the build, so it pays nothing.
+# Uses the STAGED list, which is what is about to be committed.
+if ! git diff --cached --name-only --diff-filter=ACMR \
+     | grep -qE '\.(cpp|h|hpp|cc|cxx)$|CMakeLists\.txt$|\.cmake$|opencorr\.pin$'; then
+    exit 0
+fi
+
+if ! command -v cmake >/dev/null 2>&1; then
+    echo "pre-commit: cmake not found -- cannot verify. Fix your PATH, or commit with --no-verify." >&2
+    exit 1
+fi
+
+build="$repo/build-ninja"
+
+echo "pre-commit: building..."
+if ! cmake -S "$repo" -B "$build" -G Ninja >/dev/null 2>&1; then
+    echo "pre-commit: CMake configure FAILED. Commit refused." >&2
+    exit 1
+fi
+if ! cmake --build "$build" >/tmp/surview-pre-commit-build.log 2>&1; then
+    echo "pre-commit: BUILD FAILED. Commit refused." >&2
+    tail -30 /tmp/surview-pre-commit-build.log >&2
+    exit 1
+fi
+
+echo "pre-commit: running SurView's test suite..."
+# ctest brings its own display for the walkthrough tests, so this does not throw
+# windows onto the screen of whoever is committing.
+if ! ( cd "$build" && ctest --output-on-failure ) ; then
+    echo "" >&2
+    echo "pre-commit: TESTS FAILED. Commit refused." >&2
+    echo "            Run tools/run-tests.sh for the full picture, engine included." >&2
+    exit 1
+fi
+
+echo "pre-commit: build and SurView tests green."
+exit 0

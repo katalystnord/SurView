@@ -60,6 +60,7 @@ private:
     QLabel *m_atDataMax = nullptr;
 
     // Pristineness
+    QLabel *m_rowOrder = nullptr;
     QLabel *m_conversions = nullptr;
     QLabel *m_displayMapping = nullptr;
 };

@@ -1,5 +1,7 @@
 #include "core/Correlation.h"
 
+#include "core/PoiGrid.h"
+
 #include <QElapsedTimer>
 #include <QFileInfo>
 #include <QThread>
@@ -90,10 +92,12 @@ QString CorrelationSettings::unavailableReason() const
 }
 
 CorrelationRunner::CorrelationRunner(CorrelationSettings settings,
+                                     RegionOfInterest roi,
                                      QString referencePath, QString targetPath,
                                      QObject *parent)
     : QObject(parent)
     , m_settings(settings)
+    , m_roi(std::move(roi))
     , m_referencePath(std::move(referencePath))
     , m_targetPath(std::move(targetPath))
 {
@@ -130,36 +134,45 @@ void CorrelationRunner::run()
             return;
         }
 
-        // A subset must lie wholly inside the image, so the grid starts one
-        // subset radius in and stops one short of the far edge.
+        // Where the points go is worked out by buildPoiGrid() (core/PoiGrid.h),
+        // which is engine-free and therefore testable on its own. Membership in
+        // the region is still the engine's own judgement — it is handed in as
+        // the predicate, so the boundary means the same thing here as it does
+        // wherever else the shape is used.
         const int radius = m_settings.subsetRadius;
-        const int step   = m_settings.gridStep;
-        const int firstX = radius;
-        const int firstY = radius;
-        const int lastX  = ref_img.width - 1 - radius;
-        const int lastY  = ref_img.height - 1 - radius;
 
-        if (lastX < firstX || lastY < firstY) {
-            emit failed(tr("A subset radius of %1 px leaves no room for a "
-                           "single point in a %2×%3 image.")
-                            .arg(radius)
-                            .arg(ref_img.width)
-                            .arg(ref_img.height));
+        std::unique_ptr<Polygon2D> region;
+        if (m_roi.isValid()) {
+            std::vector<int> vertex_x;
+            std::vector<int> vertex_y;
+            vertex_x.reserve(size_t(m_roi.vertices.size()));
+            vertex_y.reserve(size_t(m_roi.vertices.size()));
+            for (const QPoint &vertex : m_roi.vertices) {
+                vertex_x.push_back(vertex.x());
+                vertex_y.push_back(vertex.y());
+            }
+            region = std::make_unique<Polygon2D>(vertex_x, vertex_y);
+        }
+
+        const PoiGrid grid = buildPoiGrid(
+            ref_img.width, ref_img.height, radius, m_settings.gridStep, m_roi,
+            [&region](int x, int y) { return region->contains(x, y); });
+
+        if (!grid.isValid()) {
+            emit failed(grid.refusal);
             return;
         }
 
-        const int columns = (lastX - firstX) / step + 1;
-        const int rows    = (lastY - firstY) / step + 1;
-
         std::vector<POI2D> queue;
-        queue.reserve(size_t(columns) * size_t(rows));
-        for (int r = 0; r < rows; r++) {
-            for (int c = 0; c < columns; c++) {
-                queue.emplace_back(Point2D(float(firstX + c * step),
-                                           float(firstY + r * step)));
-            }
+        std::vector<int> gridIndex;
+        queue.reserve(size_t(grid.cells.size()));
+        gridIndex.reserve(size_t(grid.cells.size()));
+        for (const PoiGridCell &cell : grid.cells) {
+            queue.emplace_back(Point2D(float(cell.x), float(cell.y)));
+            gridIndex.push_back(cell.gridIndex);
         }
 
+        // An empty grid is already a refusal from buildPoiGrid(), handled above.
         const int total = int(queue.size());
         emit progress(0, total, tr("estimating displacement"));
 
@@ -177,11 +190,14 @@ void CorrelationRunner::run()
         solver->prepare();
 
         CorrelationResult result;
-        result.gridColumns = columns;
-        result.gridRows    = rows;
-        result.originX     = float(firstX);
-        result.originY     = float(firstY);
-        result.step        = step;
+        result.gridColumns = grid.columns;
+        result.gridRows    = grid.rows;
+        result.originX     = float(grid.originX);
+        result.originY     = float(grid.originY);
+        result.step        = grid.step;
+        result.restrictedToRoi = grid.restricted;
+        if (grid.restricted)
+            result.roi = m_roi;
         result.points.reserve(total);
 
         // How far the SOLVER got. Points beyond this still hold the integer-
@@ -220,6 +236,7 @@ void CorrelationRunner::run()
         for (int i = 0; i < total; i++) {
             const POI2D &poi = queue[size_t(i)];
             CorrelationPoint point;
+            point.gridIndex = gridIndex[size_t(i)];
             point.x    = poi.x;
             point.y    = poi.y;
             point.u    = poi.deformation.u;

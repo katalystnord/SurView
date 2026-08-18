@@ -115,6 +115,33 @@ etc.), which is BSD-3-Clause and imposes no such constraint. Qt itself stays
 scoped to the application shell (windows, menus, dialogs, docking) under its
 LGPLv3 essential modules.
 
+### One coordinate frame: world = image = engine (2026-08-18)
+
+The viewport's VTK world coordinates **are** image pixel coordinates — x right,
+y **down**, origin at the top-left pixel — which is also the file's own row
+order and the engine's `Point2D` convention. A click, a region's corners, a
+measured point and a rendered field are all in that one frame, and nothing
+converts between conventions.
+
+This had to be established before the ROI work, because it was not true before:
+
+- VTK's image readers disagree about row order. `vtkTIFFReader` honours the
+  file's orientation tag (top-down by default); the PNG, JPEG and BMP readers
+  all emit bottom-up. Verified by reading a known image through each.
+- VTK renders y up, so TIFFs — the usual speckle format — were displayed
+  **vertically mirrored**, and PNG/JPEG/BMP were not.
+- `showField()` placed the field using engine coordinates straight into world y,
+  so the field agreed with the photograph only for TIFF, by accident.
+
+Fixed in two places: `decodeImage()` normalises every decoded image to the
+file's own row order (TIFF pinned to `ORIENTATION_TOPLEFT`, everything else
+flipped once with `vtkImageFlip`, recorded in `ImageRecord::rowsReversedByDecoder`
+and reported in the Record panel), and the camera views the image plane from
+**-z** with view-up **-y**. Turning the camera around rather than only inverting
+the up vector matters: inverting up alone rotates the view 180° and mirrors x
+too. Consequence to remember: overlays drawn in front of the photograph sit at
+**negative** z.
+
 ## License
 
 SurView DIC is licensed **LGPL-2.1-or-later**, matching FreeCAD's choice in
@@ -135,6 +162,119 @@ Reasons:
   the contributor-friendliness and ecosystem fit above.
 - Neither OpenCorr's MPL-2.0 nor Qt's LGPLv3 essential modules constrain this
   choice — both permit combination with a differently-licensed larger work.
+
+## ⚑⚑ How this project is run — tests, and the order things happen in
+
+**Stated by David, 2026-08-18**, after a piece of work was delivered, verified by
+driving the GUI, and reported complete while the repository contained no test
+suite at all. The regime below is PlotTracer's, carried over deliberately: same
+author, same standards, same expectations. Where anything else in this file
+conflicts with it, this section wins.
+
+### The one command
+
+```bash
+tools/run-tests.sh      # SurView (unit + walkthrough) AND the pinned engine
+```
+
+That is this project's `npm test`. It runs **both halves** — SurView's own CTest
+suite and the OpenCorr fork's smoke tests — because SurView builds the engine
+from a pinned checkout, and a green SurView suite against a broken engine is a
+green suite that tells you nothing. The engine is where the measurement happens.
+
+```bash
+cd build-ninja && ctest --output-on-failure    # SurView's half alone, ~3 s
+```
+
+⚑ **The suite is headless by construction, not by invocation.** The walkthrough
+tests call `show()` on a real main window; registered plainly they inherit
+whatever `DISPLAY` the developer has and throw windows onto their desktop
+mid-session — which is what happened the first time this suite was run.
+`tests/CMakeLists.txt` wraps them in `xvfb-run -a`, so `ctest`, the hook and CI
+all behave identically. They cannot merely run offscreen:
+`QT_QPA_PLATFORM=offscreen` crashes the VTK OpenGL widget outright, and mapping a
+click to an image pixel goes through the renderer's real projection — the thing
+those tests exist to check.
+
+### The order things happen in
+
+1. **A failing test first.** The cases become named failing tests **before the
+   first line of implementation**. Named for the CASE, not the function —
+   `a region touching the image edge keeps its subsets inside`, not
+   `buildPoiGrid returns cells`. A design doc reads as satisfied; a red test
+   does not.
+2. **Then the code**, written so it CAN be covered: pure functions taking values
+   and returning values, separated from widgets, threads, files and the engine.
+   Where logic cannot be reached by a test, that is a structural defect to fix,
+   not a fact to accept. `core/PoiGrid.h` and `core/FieldLayout.h` exist for
+   exactly this reason — both were carved out of code that was untestable where
+   it sat.
+3. **Then the full suite** — `tools/run-tests.sh`, engine included — after every
+   major piece of work.
+4. **Then commit.** Not before.
+
+### What a green test is worth
+
+- ⚑ **A green test proves nothing until it has been shown to fail WITHOUT the
+  fix.** Break the code, watch the test go red, put it back. Record what the
+  negative check showed in the test file, including what it did *not* catch —
+  see the header of `tests/test_image_decode.cpp`, which says plainly that one
+  of its cases passes either way, and why.
+- ⚑ **A comment may say WHY a mechanism is what it is. It may NOT assert what
+  the design requires unless a test of that name enforces it.** A comment
+  restating a design is false evidence of compliance: every later reader,
+  including its author, checks the header, sees the agreement, and stops looking.
+- ⚑ **A walkthrough test may only do what something on screen tells it to do.**
+  If a step needs a coordinate, an order or a precondition that no visible text
+  describes, that is a **UI defect found at the moment the test is written** —
+  not a detail of the test. This is what turns "could Parallel Universe David do
+  it?" from a judgement call into a test-authoring constraint.
+- **A test must not re-derive the arithmetic it is testing.** The first
+  walkthrough helper recomputed the camera's framing instead of asking the
+  viewport, assumed `ResetCamera` fits exactly (it leaves a margin), and failed
+  by 16 px while the application was correct. Where a test must aim through the
+  code under test, prove the property that matters independently — as
+  `moving_down_and_right_on_screen_moves_down_and_right_in_the_image` does for
+  the coordinate frame, asserting only the direction of travel.
+- **Add coverage as part of the same change, never as an afterthought.**
+
+### Layout
+
+```
+tests/                        SurView's suite. One executable per subject.
+  test_*.cpp                  Qt Test; unit tests run offscreen.
+  test_workspace_walkthrough  The e2e half: the real MainWindow, real clicks.
+  fixtures/                   Committed inputs with independently verified
+                              properties (row-order markers; a pair whose
+                              target IS the reference shifted +3 px in x).
+tools/run-tests.sh            The one command.
+tools/git-hooks/pre-commit    Refuses a commit that does not build and pass.
+```
+
+Fixtures are **committed, not generated**: generating them needs a writer whose
+own convention would then be the thing under test. Each carries a stated,
+independently checked property, and the tests assert against that property rather
+than against whatever the code currently happens to produce.
+
+### The hook
+
+```bash
+git config core.hooksPath tools/git-hooks      # once per clone
+```
+
+Refuses a commit touching C++ or CMake that does not build and pass SurView's own
+tests. It deliberately does **not** run the engine suite (~8.5 min) — too slow to
+sit in front of every commit, and it would train everyone to use `--no-verify`.
+The full run stays the author's job, per step 3 above.
+
+### Deliberately not done yet
+
+- **Mutation testing.** PlotTracer has Stryker; the C++ equivalent (mull) needs
+  LLVM instrumentation and is a real piece of work. Noted, not silently omitted.
+- **Coverage reporting.** `gcov` is present; `lcov`/`gcovr` are not.
+- **CI.** No workflow yet, so the hook and the author are the only gates — which
+  is the arrangement that survives a fresh clone and `--no-verify` least well,
+  and should be fixed.
 
 ## Roadmap: cross-vendor GPU acceleration
 
@@ -213,6 +353,28 @@ parallelism (wrong parallelism model for a desktop app — OpenCorr's
 existing per-POI OpenMP threading already covers it); DICe's Exodus/HDF5
 export (Trilinos/SEACAS-locked — the existing VTK `.vtu` decision already
 covers this niche).
+
+### Build integration (settled)
+
+Upstream OpenCorr still ships no CMake library target, so the fork provides its
+own (`5d88cea`, written with SurView as the named consumer), and SurView builds
+it from a pinned checkout via `add_subdirectory`. Dependencies as built today:
+Eigen 3.4.0, OpenCV 4.10.0, FFTW 3.3.10, nanoflann 1.7.0, OpenMP. Both
+header-include patches Linux once needed are now upstream and carry-free —
+`oc_feature_affine.cpp`'s missing `<random>` (our PR #24, merged 2026-08-01) and
+the older `world.hpp` removal (upstream since 2024).
+
+Two gotchas worth keeping:
+
+- FFTW's *headers* (`libfftw3-dev`) are a hard build requirement, not just the
+  runtime libs — without them `oc_fftcc.cpp`/`oc_phase_correlation.cpp` fail to
+  compile, and every smoke test with them, since all of them include the
+  `opencorr.h` umbrella that pulls in `oc_fftcc.h`.
+- `add_subdirectory(OpenCorr)` makes `find_package(VTK)` fail on
+  `JsonCpp::JsonCpp`. CMake validates imported link interfaces at *generate*
+  time, so it surfaces after "Configuring done" and blames the `find_package(VTK)`
+  line that already succeeded. Fixed with a `find_package(jsoncpp QUIET)` up
+  front, like the existing MPI workaround.
 
 ## Second-pass capability candidates (DICe/ncorr deep dive, 2026-07-19)
 
@@ -372,25 +534,18 @@ decisions:
   above); how to surface it in the GUI (quality heatmap layer, per-POI
   overlay) is still to be designed.
 - **ROI tooling**: auto-detect/threshold-based segmentation was unclaimed by
-  every tool reviewed (open or commercial) — engine-side implementation now
-  done (`AutoROI`/`SpeckleQualityMap`, fork issues #11/#12 — an MIG quality
+  every tool reviewed (open or commercial) — engine-side implementation done
+  (`AutoROI`/`SpeckleQualityMap`, fork issues #11/#12 — an MIG quality
   map feeding an Otsu-threshold segmentation into the existing `Polygon2D`
   ROI model; SSSIG and SIFT-density/evenness are separate whole-image
   quality scalars `SpeckleQualityMap` also computes, not inputs to
   `AutoROI`'s own segmentation). Known limitation: single-region-only, no
-  hole support. The GUI/UX for surfacing this (live quality indicator,
-  auto-detect button/workflow) is still to be designed.
+  hole support. **The GUI is now built too** (2026-08-18): click-to-place
+  polygon drawing in the viewport with an on-screen mode bar carrying its own
+  Undo/Close/Cancel, an Auto-detect button over the same `AutoROI`, and the
+  region restricting the POI grid via the engine's own `Polygon2D::contains()`.
+  Still to be designed: the live speckle-quality indicator, and editing a
+  boundary after it is committed (today it is redrawn, not adjusted).
 - **VTK `.vtu` export**: confirmed a real differentiator empirically — only
   1 of 11 tools reviewed has any VTK-family export. Reinforces the existing
   VTK decision; no new action needed.
-- **Build integration**: upstream OpenCorr still ships no CMake library
-  target, so the fork provides its own (`5d88cea`, written with SurView as
-  the named consumer). Dependencies as built today: Eigen 3.4.0, OpenCV
-  4.10.0, FFTW 3.3.10, nanoflann 1.7.0, OpenMP. Both header-include patches
-  Linux once needed are now upstream and carry-free — `oc_feature_affine.cpp`'s
-  missing `<random>` (our PR #24, merged 2026-08-01) and the older `world.hpp`
-  removal (upstream since 2024). Gotcha worth keeping: FFTW's *headers*
-  (`libfftw3-dev`) are a hard build requirement, not just the runtime libs —
-  without them `oc_fftcc.cpp`/`oc_phase_correlation.cpp` fail to compile and
-  every smoke test with them, since all of them include the `opencorr.h`
-  umbrella that pulls in `oc_fftcc.h`.

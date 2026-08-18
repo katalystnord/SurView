@@ -1,13 +1,39 @@
-add_executable(SurView
-    main.cpp
+# SurView is built as two libraries plus a thin executable, rather than as one
+# monolithic target, so the tests link the SAME code the application runs. A
+# test that links a re-compiled copy, or a re-implementation, is testing
+# something the user never gets.
+
+# --- core: the measurement half, no widgets -------------------------------
+add_library(surview_core STATIC
     core/Correlation.cpp
     core/Correlation.h
+    core/FieldLayout.cpp
+    core/FieldLayout.h
     core/ImageDecode.cpp
     core/ImageDecode.h
     core/ImagePairing.cpp
     core/ImagePairing.h
     core/ImageRecord.cpp
     core/ImageRecord.h
+    core/PoiGrid.cpp
+    core/PoiGrid.h
+    core/Roi.cpp
+    core/Roi.h
+    core/RoiDetect.cpp
+    core/RoiDetect.h
+)
+
+# Headers are included by their path from src/ (e.g. "core/ImageRecord.h").
+target_include_directories(surview_core PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+
+target_link_libraries(surview_core PUBLIC
+    opencorr
+    Qt6::Core
+    ${VTK_LIBRARIES}
+)
+
+# --- gui: the widgets ------------------------------------------------------
+add_library(surview_gui STATIC
     gui/MainWindow.cpp
     gui/MainWindow.h
     gui/ImageViewport.cpp
@@ -16,21 +42,22 @@ add_executable(SurView
     gui/RecordPanel.h
 )
 
-# Headers are included by their path from src/ (e.g. "core/ImageRecord.h").
-target_include_directories(SurView PRIVATE ${CMAKE_CURRENT_SOURCE_DIR})
+target_link_libraries(surview_gui PUBLIC
+    surview_core
+    Qt6::Widgets
+    Qt6::OpenGLWidgets
+)
 
-target_compile_definitions(SurView PRIVATE
+target_compile_definitions(surview_gui PUBLIC
     SURVIEW_VERSION="${PROJECT_VERSION}"
 )
 
-target_link_libraries(SurView PRIVATE
-    opencorr
-    Qt6::Widgets
-    Qt6::OpenGLWidgets
-    ${VTK_LIBRARIES}
-)
+# --- the application ------------------------------------------------------
+add_executable(SurView main.cpp)
+
+target_link_libraries(SurView PRIVATE surview_gui)
 
 vtk_module_autoinit(
-    TARGETS SurView
+    TARGETS SurView surview_core surview_gui
     MODULES ${VTK_LIBRARIES}
 )

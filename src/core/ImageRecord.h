@@ -27,6 +27,16 @@ struct ImageRecord
     double dataMin    = 0.0;  // range actually present in the pixels
     double dataMax    = 0.0;
 
+    // --- Row order as the decoder handed the pixels over --------------------
+    // VTK's readers disagree about this, so it cannot be left implicit:
+    // vtkTIFFReader emits the file's rows in file order, while the PNG, JPEG
+    // and BMP readers emit them bottom-up. SurView holds every image in the
+    // file's own row order — row 0 at the top — so an image that arrived
+    // reversed had its rows put back. That reordering touches no pixel value
+    // and loses nothing, but it is a change to what the decoder produced, so
+    // it is stated rather than left for the reader to assume.
+    bool rowsReversedByDecoder = false;
+
     // --- How much of the evidence sits against the extremes -----------------
     // Pixels holding the lowest and the highest value present. A handful is
     // ordinary; a large share means the sensor ran out of range there and the

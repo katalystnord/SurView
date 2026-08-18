@@ -2,6 +2,7 @@
 
 #include "core/Correlation.h"
 #include "core/ImageRecord.h"
+#include "core/Roi.h"
 
 #include <QMainWindow>
 #include <QVector>
@@ -31,6 +32,13 @@ public:
     void openReferenceImage(const QString &path);
     void addTargetImages(const QStringList &paths);
 
+    // The most recent measurement, and the region in force. Exposed so the
+    // walkthrough tests can assert on what a run actually produced rather than
+    // on what the screen appears to show; nothing in the application reads
+    // these.
+    const CorrelationResult &lastResult() const { return m_result; }
+    const RegionOfInterest &roi() const { return m_roi; }
+
 private slots:
     void importReferenceImage();
     void importTargetImages();
@@ -41,6 +49,11 @@ private slots:
     // in the viewport. Without this a target's record would exist but be
     // unreachable from the interface, which is the same as not having it.
     void showSelectedImage();
+
+    // A boundary was completed in the viewport, or discarded from the project.
+    void onRoiDrawn(const RegionOfInterest &roi);
+    void detectRoi();
+    void clearRoi();
 
     void stopCorrelation();
     void onCorrelationProgress(int done, int total, const QString &stage);
@@ -79,6 +92,15 @@ private:
     // -1 if there is none.
     int firstUsableTarget() const;
 
+    // Restate the region in the project tree and the log. One place, so a
+    // region set by hand and one proposed by the detector are reported in the
+    // same words.
+    void showRoiInProject();
+
+    // Drop a measured field once the region it was measured over stops being
+    // the region in force.
+    void discardStaleResult();
+
     ImageViewport *m_viewport = nullptr;
     RecordPanel *m_record = nullptr;
     QPlainTextEdit *m_log = nullptr;
@@ -87,12 +109,17 @@ private:
     QTreeWidget *m_projectTree = nullptr;
     QTreeWidgetItem *m_referenceItem = nullptr;
     QTreeWidgetItem *m_targetsItem = nullptr;
+    QTreeWidgetItem *m_roiItem = nullptr;
     QTreeWidgetItem *m_resultsItem = nullptr;
 
     // The records themselves, held here rather than in the viewport: an image
     // is recorded when it is imported, whether or not it is ever displayed.
     ImageRecord m_referenceRecord;
     QVector<ImageRecord> m_targetRecords;
+
+    // The region the next run will measure inside. Held here rather than in the
+    // viewport: it is part of the project, and the viewport only draws it.
+    RegionOfInterest m_roi;
 
     // Analysis panel — held so the run can read them. Controls nothing reads
     // are controls that do nothing.
@@ -116,5 +143,6 @@ private:
     QAction *m_actStop = nullptr;
     QAction *m_actDefineRoi = nullptr;
     QAction *m_actAutoRoi = nullptr;
+    QAction *m_actClearRoi = nullptr;
     QAction *m_actExport = nullptr;
 };

@@ -8,7 +8,7 @@ set(CMAKE_AUTOMOC ON)
 set(CMAKE_AUTORCC ON)
 set(CMAKE_AUTOUIC ON)
 
-find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets)
+find_package(Qt6 REQUIRED COMPONENTS Widgets OpenGLWidgets Test)
 
 # Some distro VTK builds (e.g. Ubuntu's VTK 9.5) are compiled against system
 # libraries and re-export them through their imported targets, but leave it to
@@ -51,3 +51,12 @@ endif()
 add_subdirectory("${SURVIEW_OPENCORR_DIR}" opencorr EXCLUDE_FROM_ALL)
 
 add_subdirectory(src)
+
+# Tests are part of the build by default, not an opt-in extra. A suite that has
+# to be asked for is a suite that stops being run. `tools/run-tests.sh` is the
+# single entry point; it drives this and the engine's own suite together.
+option(SURVIEW_BUILD_TESTS "Build SurView's test suite" ON)
+if(SURVIEW_BUILD_TESTS)
+    enable_testing()
+    add_subdirectory(tests)
+endif()

@@ -5,8 +5,10 @@
 #include "core/Correlation.h"
 #include "core/ImageDecode.h"
 #include "core/ImagePairing.h"
+#include "core/RoiDetect.h"
 
 #include <QApplication>
+#include <QEventLoop>
 #include <QGuiApplication>
 #include <QComboBox>
 #include <QDockWidget>
@@ -49,6 +51,12 @@ MainWindow::MainWindow(QWidget *parent)
     m_viewport = new ImageViewport(this);
     setCentralWidget(m_viewport);
 
+    connect(m_viewport, &ImageViewport::roiDrawn, this, &MainWindow::onRoiDrawn);
+    // While a boundary is being placed the pipeline controls would compete with
+    // the mode's own bar for the same decision, so they follow it.
+    connect(m_viewport, &ImageViewport::roiDrawingChanged, this,
+            [this](bool) { updateActionStates(); });
+
     createActions();
     createMenus();
     createToolBar();
@@ -65,18 +73,23 @@ MainWindow::MainWindow(QWidget *parent)
 
 void MainWindow::createActions()
 {
-    // Placeholder actions (project I/O, ROI, export) report that they are not
-    // yet wired rather than silently doing nothing — an honest scaffold.
+    // Placeholder actions (project I/O, export) report that they are not yet
+    // wired rather than silently doing nothing — an honest scaffold.
     m_actDefineRoi = new QAction(tr("Define ROI"), this);
-    m_actDefineRoi->setStatusTip(tr("Draw the region of interest to correlate"));
+    m_actDefineRoi->setStatusTip(
+        tr("Draw the region of interest by clicking corners on the image"));
     connect(m_actDefineRoi, &QAction::triggered, this,
-            [this] { notImplemented(tr("Manual ROI drawing")); });
+            [this] { m_viewport->beginRoiDrawing(); });
 
     m_actAutoRoi = new QAction(tr("Auto-detect ROI"), this);
     m_actAutoRoi->setStatusTip(
-        tr("Segment the speckle region automatically (AutoROI)"));
-    connect(m_actAutoRoi, &QAction::triggered, this,
-            [this] { notImplemented(tr("Automatic ROI detection")); });
+        tr("Propose a region by segmenting the speckled area of the image"));
+    connect(m_actAutoRoi, &QAction::triggered, this, &MainWindow::detectRoi);
+
+    m_actClearRoi = new QAction(tr("Clear ROI"), this);
+    m_actClearRoi->setStatusTip(
+        tr("Discard the region, so the next run measures the whole image"));
+    connect(m_actClearRoi, &QAction::triggered, this, &MainWindow::clearRoi);
 
     m_actRun = new QAction(
         style()->standardIcon(QStyle::SP_MediaPlay), tr("Run Correlation"), this);
@@ -135,6 +148,7 @@ void MainWindow::createMenus()
     QMenu *analysisMenu = menuBar()->addMenu(tr("&Analysis"));
     analysisMenu->addAction(m_actDefineRoi);
     analysisMenu->addAction(m_actAutoRoi);
+    analysisMenu->addAction(m_actClearRoi);
     analysisMenu->addSeparator();
     QAction *settings = analysisMenu->addAction(tr("Correlation Settings…"));
     connect(settings, &QAction::triggered, this,
@@ -169,6 +183,7 @@ void MainWindow::createToolBar()
     toolbar->addSeparator();
     toolbar->addAction(m_actDefineRoi);
     toolbar->addAction(m_actAutoRoi);
+    toolbar->addAction(m_actClearRoi);
     toolbar->addSeparator();
     toolbar->addAction(m_actRun);
     toolbar->addAction(m_actStop);
@@ -223,8 +238,8 @@ QWidget *MainWindow::createProjectPanel()
     m_targetsItem = new QTreeWidgetItem(tree);
     m_targetsItem->setText(0, tr("Target images — none"));
 
-    auto *rois = new QTreeWidgetItem(tree);
-    rois->setText(0, tr("Regions of interest — none"));
+    m_roiItem = new QTreeWidgetItem(tree);
+    m_roiItem->setText(0, tr("Region of interest — none (whole image)"));
 
     m_resultsItem = new QTreeWidgetItem(tree);
     m_resultsItem->setText(0, tr("Results — none"));
@@ -562,6 +577,18 @@ void MainWindow::displayRecord(const ImageRecord &record)
         shown.displayMax = displayed.displayMax;
     }
 
+    // The boundary belongs to the reference image's pixel grid, so it is drawn
+    // over an image that shares that grid and withheld from one that does not:
+    // an outline over a differently sized picture would point at pixels it was
+    // never about.
+    const bool sameGrid = m_roi.isValid() && record.isValid()
+                          && record.width == m_referenceRecord.width
+                          && record.height == m_referenceRecord.height;
+    if (sameGrid)
+        m_viewport->showRoi(m_roi);
+    else
+        m_viewport->clearRoi();
+
     m_record->setRecord(shown);
 }
 
@@ -570,6 +597,11 @@ void MainWindow::showSelectedImage()
     const QList<QTreeWidgetItem *> selected = m_projectTree->selectedItems();
     if (selected.isEmpty())
         return;
+
+    // Corners are placed against the pixels on screen. Changing which image is
+    // on screen mid-boundary would leave the ones already placed referring to a
+    // picture the user is no longer looking at, so the mode ends here.
+    m_viewport->cancelRoiDrawing();
 
     const QTreeWidgetItem *item = selected.first();
     const int kind = item->data(0, kRecordKindRole).toInt();
@@ -583,6 +615,152 @@ void MainWindow::showSelectedImage()
     }
     // Anything else (ROIs, results) has no record to show; leave the panel on
     // whatever it was showing rather than blanking it for a non-image node.
+}
+
+// ---------------------------------------------------------------------------
+// Region of interest
+// ---------------------------------------------------------------------------
+
+// A field belongs to the region it was measured over. Once that region is
+// replaced, leaving the field on screen underneath a different boundary invites
+// reading the two together, which is a claim about points that were never
+// measured inside it. It is dropped rather than annotated: there is no export
+// yet, so nothing is lost that a re-run does not reproduce.
+void MainWindow::discardStaleResult()
+{
+    if (!m_hasResult)
+        return;
+
+    m_hasResult = false;
+    m_result = CorrelationResult();
+    m_viewport->clearField();
+    m_resultsItem->setText(0, tr("Results — none"));
+    m_resultsItem->setToolTip(0, QString());
+    log(tr("Previous displacement field discarded — it was measured over a "
+           "different region, and showing it beside this one would invite "
+           "reading them as the same measurement."));
+}
+
+void MainWindow::showRoiInProject()
+{
+    if (!m_roi.isValid()) {
+        m_roiItem->setText(0, tr("Region of interest — none (whole image)"));
+        m_roiItem->setToolTip(0, QString());
+        m_viewport->clearRoi();
+        return;
+    }
+
+    const QRect box = m_roi.bounds();
+    const QString summary = tr("Region of interest — %1, %2 corners, %3×%4 px box")
+                                .arg(m_roi.originText())
+                                .arg(m_roi.vertices.size())
+                                .arg(box.width())
+                                .arg(box.height());
+    m_roiItem->setText(0, summary);
+
+    // What the region does NOT do sits beside it rather than in a manual. Both
+    // sentences are easy to assume wrongly, and assuming either one wrongly
+    // changes how the resulting field should be read.
+    QStringList notes;
+    notes << summary;
+    notes << tr("Selects the point centres that get measured. Each subset still "
+                "reaches up to its radius beyond the boundary, so pixels just "
+                "outside it contribute to the points near its edge.");
+    if (!m_roi.limitation.isEmpty())
+        notes << m_roi.limitation;
+    m_roiItem->setToolTip(0, notes.join(QStringLiteral("\n\n")));
+
+    m_viewport->showRoi(m_roi);
+}
+
+void MainWindow::onRoiDrawn(const RegionOfInterest &roi)
+{
+    discardStaleResult();
+    m_roi = roi;
+    showRoiInProject();
+
+    const QRect box = m_roi.bounds();
+    log(tr("Region of interest defined by hand — %1 corners, bounding box "
+           "%2×%3 px at (%4, %5). Point centres are taken inside it; each "
+           "subset still reaches up to its radius beyond it.")
+            .arg(roi.vertices.size())
+            .arg(box.width())
+            .arg(box.height())
+            .arg(box.left())
+            .arg(box.top()));
+    statusBar()->showMessage(tr("Region of interest defined"), 4000);
+    updateActionStates();
+}
+
+void MainWindow::detectRoi()
+{
+    if (!m_referenceRecord.isValid())
+        return;
+
+    // The proposal is made from the REFERENCE image whatever is on screen: the
+    // region applies to the reference's pixel grid, and detecting from a
+    // deformed target would propose a boundary around a shape that has already
+    // moved.
+    // The detector runs on this thread, so the window is unresponsive while it
+    // works — half a second on a small image, longer on a large one. The
+    // message and the cursor are therefore flushed to screen BEFORE the work
+    // starts; set and then blocked on, they would only appear once it finished,
+    // which is the one moment they are no longer wanted. The action is disabled
+    // across that flush so the pending events cannot start a second pass.
+    m_actAutoRoi->setEnabled(false);
+    QGuiApplication::setOverrideCursor(Qt::WaitCursor);
+    statusBar()->showMessage(tr("Looking for the speckled region…"));
+    QCoreApplication::processEvents(QEventLoop::ExcludeUserInputEvents);
+
+    const RoiDetection detection =
+        detectSpeckleRegion(m_referenceRecord.filePath);
+
+    QGuiApplication::restoreOverrideCursor();
+    updateActionStates();
+
+    if (!detection.found) {
+        log(tr("Auto-detect found no region: %1").arg(detection.reason));
+        statusBar()->showMessage(tr("No region detected"), 6000);
+        QMessageBox::information(this, tr("No region detected"),
+                                 detection.reason);
+        return;
+    }
+
+    discardStaleResult();
+    m_roi = detection.roi;
+    showRoiInProject();
+
+    const QRect box = m_roi.bounds();
+    log(tr("Region of interest detected in %1 s — %2 corners, bounding box "
+           "%3×%4 px at (%5, %6), from %7.")
+            .arg(detection.secondsElapsed, 0, 'f', 1)
+            .arg(m_roi.vertices.size())
+            .arg(box.width())
+            .arg(box.height())
+            .arg(box.left())
+            .arg(box.top())
+            .arg(m_referenceRecord.fileName));
+    // The detector's own limitation travels with the proposal into the log,
+    // where the run that used it is also recorded — not only into a tooltip
+    // that the record of this session will not keep.
+    log(tr("  %1").arg(m_roi.limitation));
+    statusBar()->showMessage(
+        tr("Region detected — check it, and redraw it by hand if it is wrong"),
+        8000);
+    updateActionStates();
+}
+
+void MainWindow::clearRoi()
+{
+    if (!m_roi.isValid())
+        return;
+
+    discardStaleResult();
+    m_roi = RegionOfInterest();
+    showRoiInProject();
+    log(tr("Region of interest cleared — the next run measures the whole image."));
+    statusBar()->showMessage(tr("Region of interest cleared"), 4000);
+    updateActionStates();
 }
 
 void MainWindow::runCorrelation()
@@ -610,17 +788,22 @@ void MainWindow::runCorrelation()
 
     // Which target was used is part of the result. With several imported, a run
     // that silently picked one would leave the field unattributable.
-    log(tr("Correlating %1 against %2 — %3, %4, subset radius %5 px, grid step %6 px")
+    log(tr("Correlating %1 against %2 — %3, %4, subset radius %5 px, grid step %6 px, %7")
             .arg(m_referenceRecord.fileName, target.fileName,
                  m_solver->currentText(), m_shape->currentText())
             .arg(settings.subsetRadius)
-            .arg(settings.gridStep));
+            .arg(settings.gridStep)
+            .arg(m_roi.isValid()
+                     ? tr("inside the region of interest (%1)")
+                           .arg(m_roi.originText())
+                     : tr("whole image")));
 
     m_hasResult = false;
     m_viewport->clearField();
 
     m_workerThread = new QThread(this);
-    m_runner = new CorrelationRunner(settings, m_referenceRecord.filePath,
+    m_runner = new CorrelationRunner(settings, m_roi,
+                                     m_referenceRecord.filePath,
                                      target.filePath);
     m_runner->moveToThread(m_workerThread);
 
@@ -688,6 +871,15 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
                   .arg(result.total())
                   .arg(share, 0, 'f', 1));
 
+    // What the totals above are counted over. "8261 of 8700 solved" says
+    // something different when those 8700 were a chosen region than when they
+    // were the whole image, and the number alone does not carry that.
+    if (result.restrictedToRoi) {
+        log(tr("  those %1 points are the ones inside the region of interest, "
+               "not the whole image")
+                .arg(result.total()));
+    }
+
     // Every failure reason the engine gave, each with its own count. A single
     // "N failed" would hide that "subset out of bounds" and "did not converge"
     // call for different responses.
@@ -703,9 +895,11 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
     double highest = 0.0;
     if (m_hasResult && result.magnitudeRange(lowest, highest)) {
         const QString summary =
-            tr("Displacement field — %1 of %2 points, %3 to %4 px")
+            tr("Displacement field — %1 of %2 points%3, %4 to %5 px")
                 .arg(result.converged)
                 .arg(result.total())
+                .arg(result.restrictedToRoi ? tr(" in the region of interest")
+                                            : QString())
                 .arg(lowest, 0, 'f', 2)
                 .arg(highest, 0, 'f', 2);
         m_resultsItem->setText(0, summary);
@@ -786,17 +980,37 @@ void MainWindow::updateActionStates()
 {
     const bool hasImage = m_viewport->hasImage();
     const bool running = m_workerThread != nullptr;
+    const bool drawing = m_viewport->isDrawingRoi();
     const bool hasReference = m_referenceRecord.isValid();
     const bool hasPair = hasReference && firstUsableTarget() >= 0;
 
-    m_actDefineRoi->setEnabled(hasImage && !running);
-    m_actAutoRoi->setEnabled(hasImage && !running);
+    // While a boundary is being placed, the viewport's own bar is the control
+    // surface. Leaving these live would offer two ways to decide the same
+    // thing, one of which the user cannot see they are already inside.
+    m_actDefineRoi->setEnabled(hasImage && !running && !drawing);
+    m_actDefineRoi->setToolTip(
+        drawing ? tr("A region is being defined — use the bar on the image")
+                : (hasImage ? tr("Click corners on the image to enclose a region")
+                            : tr("Import an image first")));
+
+    m_actAutoRoi->setEnabled(hasImage && !running && !drawing);
+    m_actAutoRoi->setToolTip(
+        hasImage ? tr("Propose a region by segmenting the speckled area")
+                 : tr("Import an image first"));
+
+    m_actClearRoi->setEnabled(m_roi.isValid() && !running && !drawing);
+    m_actClearRoi->setToolTip(m_roi.isValid()
+                                  ? tr("Discard the region and measure the "
+                                       "whole image")
+                                  : tr("No region is defined"));
 
     // Run needs a reference AND a target that matches it. The tooltip says
     // which of the two is missing, so the disabled button explains itself
     // instead of merely refusing.
-    m_actRun->setEnabled(hasPair && !running);
-    if (running)
+    m_actRun->setEnabled(hasPair && !running && !drawing);
+    if (drawing)
+        m_actRun->setToolTip(tr("Close or cancel the region being defined first"));
+    else if (running)
         m_actRun->setToolTip(tr("A correlation is already running"));
     else if (!hasReference)
         m_actRun->setToolTip(tr("Import a reference image first"));

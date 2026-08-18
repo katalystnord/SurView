@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=71671c60c5f5895bc8da3e1f8e7e32466d35aae6
+SURVIEW_OPENCORR_PIN=985b2de33400d05af14f0b151f52ad135232a274
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=first-upstream-merge-plus-partial-oob-regression-test
+SURVIEW_OPENCORR_PIN_NOTE=polygon-boundary-read-back-plus-ctest-registration
