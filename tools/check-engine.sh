@@ -100,7 +100,18 @@ probe() {
 }
 
 probe "#24 <random> include"        '#include <random>'                    'src/oc_feature_affine.cpp'
-probe "#25 partial-OOB subset guard" 'eg_mat.array() < 0.f'                'src/oc_icgn.cpp'
+# ⚑ The pattern is the guard's PURPOSE, not its original text. #25 shipped as
+# `eg_mat.array() < 0.f`, which was wrong: an interpolated value can be
+# legitimately negative through spline undershoot, so it discarded valid points.
+# The fork now compares for equality against the interpolator's sentinel. Probing
+# for the old text would report the guard as missing when it is present and
+# better, and probing for neither would let it vanish unnoticed -- so this
+# matches the part that is common to both forms, the .any() reduction over the
+# target subset, which no other line in the file performs.
+#
+# Upstream still carries the original, buggy form. That fix is worth sending
+# upstream on its own; until it is, this probe is deliberately shape-agnostic.
+probe "#25 partial-OOB subset guard" 'eg_mat.array()'                      'src/oc_icgn.cpp'
 probe "#25 partial-OOB guard (3D)"   'tar_subset_out_of_range'             'src/oc_icgn.cpp'
 probe "#26 num_threads pinning"      'num_threads(thread_number)'          'src/*.cpp'
 probe "#27 FeatureAffine3D wz"       'deformation.wz = affine_matrix(2, 2)' 'src/oc_feature_affine.cpp'

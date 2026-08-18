@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=aa0d9df098a3fba9e47e3989a728ffdea9472e31
+SURVIEW_OPENCORR_PIN=565bed4eea63aac11fb3709dcc870acafbbf96e7
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=autoroi-blank-frame-fix-plus-coverage-tooling
+SURVIEW_OPENCORR_PIN_NOTE=icgn-sentinel-fix-and-solver-tests

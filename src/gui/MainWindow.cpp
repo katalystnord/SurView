@@ -262,10 +262,16 @@ QWidget *MainWindow::createAnalysisPanel()
     auto *panel = new QWidget;
     auto *form = new QFormLayout(panel);
 
+    // Built from offeredSolverChoices() rather than listed here, so the panel
+    // cannot offer a solver that nothing measures: the tests walk the same list.
     m_solver = new QComboBox;
-    m_solver->addItem(tr("ICGN"), CorrelationSettings::ICGN);
-    m_solver->addItem(tr("Newton–Raphson"), CorrelationSettings::NewtonRaphson);
-    m_solver->addItem(tr("IC-LM"), CorrelationSettings::ICLM);
+    QVector<CorrelationSettings::Solver> seen;
+    for (const SolverChoice &choice : offeredSolverChoices()) {
+        if (seen.contains(choice.solver))
+            continue;
+        seen.append(choice.solver);
+        m_solver->addItem(solverDisplayName(choice.solver), choice.solver);
+    }
     connect(m_solver, &QComboBox::currentIndexChanged, this,
             &MainWindow::updateSolverConstraints);
     form->addRow(tr("Solver"), m_solver);

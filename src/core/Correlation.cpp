@@ -85,10 +85,42 @@ bool CorrelationSettings::isAvailable() const
 QString CorrelationSettings::unavailableReason() const
 {
     if (solver == NewtonRaphson && shapeOrder != 1) {
-        return QObject::tr("The engine implements Newton–Raphson for the "
+        return QObject::tr("The engine implements Newton-Raphson for the "
                            "first-order shape function only.");
     }
     return QString();
+}
+
+QString solverDisplayName(CorrelationSettings::Solver solver)
+{
+    switch (solver) {
+    case CorrelationSettings::ICGN:
+        return QObject::tr("ICGN");
+    case CorrelationSettings::NewtonRaphson:
+        return QObject::tr("Newton-Raphson");
+    case CorrelationSettings::ICLM:
+        return QObject::tr("IC-LM");
+    }
+    return QString();
+}
+
+QVector<SolverChoice> offeredSolverChoices()
+{
+    QVector<SolverChoice> choices;
+    for (auto solver : {CorrelationSettings::ICGN,
+                        CorrelationSettings::NewtonRaphson,
+                        CorrelationSettings::ICLM}) {
+        for (int order : {1, 2}) {
+            CorrelationSettings probe;
+            probe.solver = solver;
+            probe.shapeOrder = order;
+            // Asked of the settings rather than listed here, so this cannot
+            // drift from what a run will actually accept.
+            if (probe.isAvailable())
+                choices.append(SolverChoice{solver, order});
+        }
+    }
+    return choices;
 }
 
 CorrelationRunner::CorrelationRunner(CorrelationSettings settings,

@@ -1,5 +1,5 @@
 #!/bin/sh
-# check-no-em-dashes.sh -- refuse em-dashes anywhere in the tree.
+# check-no-em-dashes.sh -- refuse non-ASCII dashes anywhere in the tree.
 #
 # David, 2026-08-18: no em-dashes in this code base, ever.
 #
@@ -23,9 +23,16 @@ set -eu
 
 here=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 
-# U+2014, written as an escape so this script contains none of what it forbids
-# and cannot fail against itself.
-em=$(printf '\342\200\224')
+# The whole family of non-ASCII dashes, not only the em-dash. Written as escapes
+# so this script contains none of what it forbids and cannot fail against itself.
+#
+#   U+2013 en-dash      U+2014 em-dash      U+2212 minus sign
+#   U+2010 hyphen       U+2011 non-breaking hyphen
+#
+# Widened after the em-dash sweep, because "Newton<en-dash>Raphson" survived it
+# untouched in a user-facing string: forbidding one character of a family that
+# all look identical in a code font leaves the rest to arrive in its place.
+dashes=$(printf '\342\200\220\|\342\200\221\|\342\200\223\|\342\200\224\|\342\210\222')
 
 if [ "$#" -gt 0 ]; then
     files=$*
@@ -44,15 +51,15 @@ for f in $files; do
         text/*|application/json|application/javascript) ;;
         *) continue ;;
     esac
-    if grep -n "$em" "$path" >/dev/null 2>&1; then
-        grep -n "$em" "$path" | sed "s|^|$f:|"
+    if grep -n "$dashes" "$path" >/dev/null 2>&1; then
+        grep -n "$dashes" "$path" | sed "s|^|$f:|"
         found=$((found + 1))
     fi
 done
 
 if [ "$found" -ne 0 ]; then
     echo ""
-    echo "Em-dashes found in $found file(s). Replace them:"
+    echo "Non-ASCII dashes found in $found file(s). Replace them:"
     echo "  C++ comment          ->  --"
     echo "  user-facing string   ->  -"
     echo "  Markdown             ->  -"

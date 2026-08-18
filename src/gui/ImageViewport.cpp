@@ -648,7 +648,7 @@ void ImageViewport::showMessage(const QString &text)
 void ImageViewport::applyDisplayMapping(ImageRecord &record)
 {
     // Single-channel scientific images routinely occupy a small part of their
-    // type's range (a 16-bit speckle image sitting in 0–5000 would render very
+    // type's range (a 16-bit speckle image sitting in 0-5000 would render very
     // nearly black), so the full data range is mapped to black..white. Colour
     // images already sit in their type range, so they are left alone rather
     // than having their appearance stretched.

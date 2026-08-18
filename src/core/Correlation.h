@@ -31,11 +31,31 @@ struct CorrelationSettings
     int    maxIterations = 10;
     double convergence   = 0.001;   // ‖Δp‖ threshold
 
-    // True where the engine offers the combination at all. Newton–Raphson is
+    // True where the engine offers the combination at all. Newton-Raphson is
     // implemented for the first-order shape function only.
     bool isAvailable() const;
     QString unavailableReason() const;
 };
+
+// One solver and shape order the application offers.
+//
+// ⚑ Single source of truth. The Analysis panel builds its controls from this
+// list, and tests measure every entry in it, so a combination cannot be offered
+// to a user without something checking that it works. Before this existed the
+// panel offered five combinations and exactly one of them -- ICGN, first order
+// - was covered by any test anywhere, in this repository or the engine's.
+struct SolverChoice
+{
+    CorrelationSettings::Solver solver;
+    int shapeOrder;
+};
+
+// Display name for a solver, as the panel shows it.
+QString solverDisplayName(CorrelationSettings::Solver solver);
+
+// Every solver and shape order combination the application offers, which is
+// every pair the engine actually implements.
+QVector<SolverChoice> offeredSolverChoices();
 
 // One measured point. Positions are in reference-image pixels.
 struct CorrelationPoint

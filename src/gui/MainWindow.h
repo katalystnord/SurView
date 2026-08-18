@@ -61,7 +61,7 @@ private slots:
     void onCorrelationFailed(const QString &reason);
 
     // Keeps the panel honest about what the engine actually offers: the
-    // second-order shape function is disabled while Newton–Raphson is chosen,
+    // second-order shape function is disabled while Newton-Raphson is chosen,
     // because the engine implements that solver for first order only.
     void updateSolverConstraints();
 
