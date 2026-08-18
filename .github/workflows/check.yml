@@ -1,0 +1,108 @@
+name: check
+
+# The half that survives a fresh clone and `git commit --no-verify`.
+#
+# tools/git-hooks/pre-commit is the fast local gate, but a hook lives in one
+# person's working copy, is opt-in per clone, and can be skipped with a flag.
+# This job cannot be skipped, and it is the only instrument here that sees the
+# project the way a new contributor's machine does -- from nothing, with no
+# build directory and no state.
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+concurrency:
+  # A newer push makes an older run irrelevant; nobody reads two answers.
+  group: check-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  surview:
+    name: SurView build + tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out SurView
+        uses: actions/checkout@v4
+        with:
+          path: SurView
+
+      - name: Read the engine pin
+        id: pin
+        # The pin is the single source of truth for which engine commit this
+        # build is verified against. CI resolves it the same way CMake does,
+        # rather than tracking a branch -- a CI that silently followed
+        # surview-dev would stop testing what the repository actually claims.
+        run: |
+          . SurView/cmake/opencorr.pin
+          echo "sha=$SURVIEW_OPENCORR_PIN" >> "$GITHUB_OUTPUT"
+          echo "remote=$SURVIEW_OPENCORR_REMOTE" >> "$GITHUB_OUTPUT"
+          echo "Engine pin: $SURVIEW_OPENCORR_PIN ($SURVIEW_OPENCORR_PIN_NOTE)"
+
+      - name: Check out the pinned engine
+        run: |
+          git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
+          git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
+          echo "Engine at $(git -C OpenCorr rev-parse --short HEAD)"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake g++ \
+            qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev \
+            libvtk9-qt-dev \
+            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev \
+            libomp-dev xvfb
+
+      - name: Configure
+        run: cmake -S SurView -B SurView/build-ninja -G Ninja
+
+      - name: Build
+        run: cmake --build SurView/build-ninja
+
+      - name: Test
+        # The walkthrough tests bring their own X server (xvfb-run, wired in
+        # tests/CMakeLists.txt), so nothing extra is needed here -- and a runner
+        # with no display is exactly the environment that proves it.
+        run: ctest --test-dir SurView/build-ninja --output-on-failure
+
+  engine:
+    name: Engine (pinned fork) smoke tests
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check out SurView
+        uses: actions/checkout@v4
+        with:
+          path: SurView
+
+      - name: Read the engine pin
+        id: pin
+        run: |
+          . SurView/cmake/opencorr.pin
+          echo "sha=$SURVIEW_OPENCORR_PIN" >> "$GITHUB_OUTPUT"
+          echo "remote=$SURVIEW_OPENCORR_REMOTE" >> "$GITHUB_OUTPUT"
+
+      - name: Check out the pinned engine
+        run: |
+          git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
+          git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            ninja-build cmake g++ \
+            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev libomp-dev
+
+      - name: Build the engine's smoke tests
+        run: |
+          cmake -S OpenCorr -B OpenCorr/build -G Ninja -DOPENCORR_BUILD_SMOKE_TEST=ON
+          cmake --build OpenCorr/build
+
+      - name: Run the engine's smoke tests
+        # A green SurView suite against a broken engine is a green suite that
+        # tells you nothing: the engine is where the measurement happens.
+        run: ctest --test-dir OpenCorr/build --output-on-failure
