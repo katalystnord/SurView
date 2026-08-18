@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=565bed4eea63aac11fb3709dcc870acafbbf96e7
+SURVIEW_OPENCORR_PIN=e3df2edf2423ed1841b8619634b89968eb9c8478
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=icgn-sentinel-fix-and-solver-tests
+SURVIEW_OPENCORR_PIN_NOTE=hessian-observability-and-seedable-ransac
