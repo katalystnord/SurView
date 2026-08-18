@@ -16,6 +16,7 @@ set(SURVIEW_UNIT_TESTS
     test_image_decode
     test_field_layout
     test_roi_engine_boundary
+    test_roi_detect
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

@@ -59,14 +59,22 @@ jobs:
         timeout-minutes: 15
         run: |
           sudo apt-get update
-          # Named explicitly rather than guessed: VTK's Qt binding package name
-          # carries the ABI version, and it changes between runner images.
-          echo "VTK Qt dev packages available on this image:"
-          apt-cache search --names-only '^libvtk.*qt-dev$' || true
+          # VTK's Qt binding package carries its ABI version in the name, and
+          # that version moves with the runner image. Discovered rather than
+          # written down: a hard-coded name is a build that breaks on somebody
+          # else's schedule, and the first two attempts here were both guesses.
+          vtk_qt=$(apt-cache search --names-only '^libvtk[0-9.]+-qt-dev$' \
+                   | awk '{print $1}' | sort -V | tail -1)
+          if [ -z "$vtk_qt" ]; then
+            echo "No libvtkN-qt-dev package on this image. Candidates were:"
+            apt-cache search --names-only '^libvtk' || true
+            exit 1
+          fi
+          echo "Using VTK Qt package: $vtk_qt"
           sudo apt-get install -y --no-install-recommends \
             ninja-build cmake g++ \
             qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev \
-            libvtk9.3-qt-dev \
+            "$vtk_qt" \
             libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev \
             libomp-dev xvfb
 

@@ -29,3 +29,10 @@ qrc_*.cpp
 # OS
 .DS_Store
 Thumbs.db
+
+# Python bytecode from tools/mutants.py
+tools/__pycache__/
+
+# Instrumented and mutation build trees (see tools/coverage.sh, tools/mutants.py)
+build-coverage/
+build-mutants/

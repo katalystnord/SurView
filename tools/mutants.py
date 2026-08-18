@@ -197,7 +197,12 @@ def main():
         ctest_cwd = root
     else:
         root = REPO
-        build = REPO / "build-ninja"
+        # ⚑ Its own build directory. Sharing build-ninja means a mutant is being
+        # compiled into the tree that the pre-commit hook, an editor build and
+        # anything else are also using -- and during the first real run a commit
+        # happened mid-mutation, with a deliberately broken source file sitting
+        # in the working tree.
+        build = REPO / "build-mutants"
         configure = ["cmake", "-S", str(REPO), "-B", str(build), "-G", "Ninja"]
         default_files = sorted((REPO / "src" / "core").glob("*.cpp"))
         # The walkthrough is ~3 s against ~0.03 s for the rest; excluded by
@@ -212,6 +217,20 @@ def main():
     files = [f for f in files if f.exists()]
     if not files:
         print("mutants.py: no source files to mutate", file=sys.stderr)
+        return 2
+
+    # ⚑ A dirty tree is refused. This harness restores each file from a backup
+    # it took itself, so an edit made while it runs is silently reverted -- and
+    # if it dies between writing a mutant and restoring, an uncommitted change
+    # would be indistinguishable from the damage.
+    dirty = subprocess.run(["git", "status", "--porcelain", "--", "src", "tests"],
+                           cwd=REPO, capture_output=True, text=True).stdout.strip()
+    if dirty and not os.environ.get("MUTANTS_ALLOW_DIRTY"):
+        print("mutants.py: the working tree has uncommitted changes under src/ "
+              "or tests/. Commit or stash them first -- this harness edits those "
+              "files and restores them, and cannot tell your changes from its "
+              "own.\n", file=sys.stderr)
+        print(dirty, file=sys.stderr)
         return 2
 
     print("=== Baseline: the suite must be green before anything is broken ===")
@@ -307,4 +326,7 @@ def main():
 
 
 if __name__ == "__main__":
+    # Line-buffered, so a run redirected to a file shows progress as it goes.
+    # The first full run printed nothing for twenty minutes and looked hung.
+    sys.stdout.reconfigure(line_buffering=True)
     sys.exit(main())

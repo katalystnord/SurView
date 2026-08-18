@@ -8,6 +8,7 @@
 
 #include "core/PoiGrid.h"
 
+#include <QSet>
 #include <QTest>
 
 namespace {
@@ -48,6 +49,10 @@ private slots:
     void a_region_entirely_in_the_border_margin_is_refused_in_words();
     void a_region_that_falls_between_grid_lines_is_refused_in_words();
     void a_refusal_never_pretends_to_be_an_empty_measurement();
+    void a_subset_radius_of_zero_is_refused();
+    void an_image_degenerate_on_only_one_axis_is_still_refused();
+    void an_image_exactly_large_enough_yields_exactly_one_point();
+    void each_refusal_says_which_thing_was_wrong();
 };
 
 void TestPoiGrid::the_whole_image_grid_starts_one_subset_radius_in()
@@ -230,6 +235,93 @@ void TestPoiGrid::a_refusal_never_pretends_to_be_an_empty_measurement()
     QVERIFY(built.isValid());
     QVERIFY(built.refusal.isEmpty());
     QVERIFY(!built.cells.isEmpty());
+}
+
+void TestPoiGrid::a_subset_radius_of_zero_is_refused()
+{
+    // Found by mutation testing: `subsetRadius <= 0` could be weakened to
+    // `< 0` and every test still passed, because nothing tried exactly 0.
+    // A radius of 0 is a subset of one pixel, which correlates against
+    // nothing.
+    const PoiGrid zero = buildPoiGrid(100, 100, 0, 1, RegionOfInterest(), {});
+    QVERIFY(!zero.isValid());
+    QVERIFY(zero.refusal.contains(QStringLiteral("radius")));
+
+    const PoiGrid negative = buildPoiGrid(100, 100, -4, 1, RegionOfInterest(), {});
+    QVERIFY(!negative.isValid());
+
+    // And a step of zero, for the same reason: it would not advance.
+    const PoiGrid noStep = buildPoiGrid(100, 100, 5, 0, RegionOfInterest(), {});
+    QVERIFY(!noStep.isValid());
+    QVERIFY(noStep.refusal.contains(QStringLiteral("step")));
+}
+
+void TestPoiGrid::an_image_degenerate_on_only_one_axis_is_still_refused()
+{
+    // Found by mutation testing: the `||` in the guards could become `&&` and
+    // nothing failed, because every degenerate case tested was degenerate in
+    // BOTH axes at once. A 200x0 image is a real thing a broken decode
+    // produces.
+    QVERIFY(!buildPoiGrid(200, 0, 8, 1, RegionOfInterest(), {}).isValid());
+    QVERIFY(!buildPoiGrid(0, 200, 8, 1, RegionOfInterest(), {}).isValid());
+
+    // Likewise a picture wide enough but not tall enough for one subset.
+    const PoiGrid thin = buildPoiGrid(400, 10, 16, 1, RegionOfInterest(), {});
+    QVERIFY(!thin.isValid());
+    QVERIFY(thin.refusal.contains(QStringLiteral("16")));
+
+    const PoiGrid narrow = buildPoiGrid(10, 400, 16, 1, RegionOfInterest(), {});
+    QVERIFY(!narrow.isValid());
+
+    // And a region degenerate on one axis only.
+    RegionOfInterest sliver;
+    sliver.vertices = {QPoint(2, 20), QPoint(3, 20), QPoint(3, 300), QPoint(2, 300)};
+    const PoiGrid clipped =
+        buildPoiGrid(400, 400, 20, 1, sliver, insideRect(2, 20, 3, 300));
+    QVERIFY(!clipped.isValid());
+}
+
+void TestPoiGrid::an_image_exactly_large_enough_yields_exactly_one_point()
+{
+    // Found by mutation testing: `safeLastX < safeFirstX` could become `<=`
+    // undetected, because nothing sat exactly on the boundary. An image of
+    // 2*radius+1 has room for precisely one subset, centred.
+    const int radius = 16;
+    const int exact = 2 * radius + 1;   // 33
+
+    const PoiGrid fits = buildPoiGrid(exact, exact, radius, 1,
+                                      RegionOfInterest(), {});
+    QVERIFY2(fits.isValid(), qPrintable(fits.refusal));
+    QCOMPARE(fits.columns, 1);
+    QCOMPARE(fits.rows, 1);
+    QCOMPARE(fits.cells.size(), 1);
+    QCOMPARE(fits.cells.first().x, radius);
+    QCOMPARE(fits.cells.first().y, radius);
+
+    // One pixel smaller and there is no room at all.
+    const PoiGrid tooSmall = buildPoiGrid(exact - 1, exact, radius, 1,
+                                          RegionOfInterest(), {});
+    QVERIFY(!tooSmall.isValid());
+}
+
+void TestPoiGrid::each_refusal_says_which_thing_was_wrong()
+{
+    // The refusals must be distinguishable from one another, not merely
+    // non-empty. A caller shows these to a user, and "something was wrong"
+    // three different ways is one message, not three.
+    const QString noPixels =
+        buildPoiGrid(0, 0, 16, 1, RegionOfInterest(), {}).refusal;
+    const QString tooBig =
+        buildPoiGrid(20, 20, 30, 1, RegionOfInterest(), {}).refusal;
+    const QString badRadius =
+        buildPoiGrid(100, 100, 0, 1, RegionOfInterest(), {}).refusal;
+    const QString badStep =
+        buildPoiGrid(100, 100, 5, 0, RegionOfInterest(), {}).refusal;
+
+    const QStringList all{noPixels, tooBig, badRadius, badStep};
+    for (const QString &message : all)
+        QVERIFY(!message.isEmpty());
+    QCOMPARE(QSet<QString>(all.begin(), all.end()).size(), all.size());
 }
 
 QTEST_MAIN(TestPoiGrid)
