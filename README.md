@@ -11,14 +11,14 @@ See [CLAUDE.md](CLAUDE.md) for design rationale and roadmap.
 ## Engine
 
 SurView builds against [katalystnord/OpenCorr](https://github.com/katalystnord/OpenCorr)
-(branch `surview-dev`), our working fork of OpenCorr — a staging area for
+(branch `surview-dev`), our working fork of OpenCorr - a staging area for
 SurView-driven capability work and for contributions back upstream, not a
 competing version. Small, generically-useful fixes go upstream directly.
 
 The exact engine commit is recorded in [`cmake/opencorr.pin`](cmake/opencorr.pin)
 and bumped as its own visible commit, so a build is always traceable to one
 engine revision. CMake checks the pin at configure time and **warns without
-failing** if your checkout differs — it expects the fork beside this repo, or
+failing** if your checkout differs - it expects the fork beside this repo, or
 pass `-DSURVIEW_OPENCORR_DIR=<path>`.
 
 To verify the whole chain (upstream → fork → pin), including whether fixes we

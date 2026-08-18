@@ -31,7 +31,7 @@ class QPushButton;
 // next step is discoverable rather than a blank canvas.
 //
 // Coordinate frame: the renderer's world coordinates are image pixel
-// coordinates — x right, y DOWN, origin at the top-left pixel — set up in the
+// coordinates -- x right, y DOWN, origin at the top-left pixel -- set up in the
 // constructor. Every position this class accepts or reports is in that frame.
 class ImageViewport : public QVTKOpenGLNativeWidget
 {
@@ -64,14 +64,14 @@ public:
     void cancelRoiDrawing();
     bool isDrawingRoi() const { return m_roiDrawing; }
 
-    // Display a region that already exists — the one just drawn, or one the
+    // Display a region that already exists -- the one just drawn, or one the
     // detector proposed. Passing an invalid region clears the display.
     void showRoi(const RegionOfInterest &roi);
     void clearRoi();
 
     // Where an image pixel currently sits in this widget's own coordinates.
     // The inverse of the mapping a click takes, exposed because anything that
-    // has to point AT the picture from outside the renderer needs it — and
+    // has to point AT the picture from outside the renderer needs it -- and
     // because a walkthrough test aiming at a feature has to aim through the
     // real projection, not through a second copy of the arithmetic.
     // False when there is no image to point at.
@@ -112,7 +112,7 @@ private:
     void undoLastRoiVertex();
     void updateRoiBar();
 
-    // Rebuilds the drawn geometry from whichever boundary is current — the one
+    // Rebuilds the drawn geometry from whichever boundary is current -- the one
     // being placed, or the committed one.
     void refreshRoiGeometry();
 

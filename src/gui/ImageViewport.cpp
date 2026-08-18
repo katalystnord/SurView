@@ -151,8 +151,8 @@ void ImageViewport::buildRoiBar()
 // overlay must not resize what it is overlaying.
 //
 // It sits along the BOTTOM edge, and as wide and short as it can be. Anything
-// it covers is image the user cannot click on, and at the top — over a centred
-// specimen, in a tall narrow viewport — it covered exactly the corners being
+// it covers is image the user cannot click on, and at the top -- over a centred
+// specimen, in a tall narrow viewport -- it covered exactly the corners being
 // placed. Low and wide keeps it clear of the subject and clear of the pointer.
 void ImageViewport::positionRoiBar()
 {
@@ -263,10 +263,10 @@ void ImageViewport::updateRoiBar()
                     .arg(m_roiCursor.y());
     }
 
-    // Says what to do, how far along it is, and what is still missing — the
+    // Says what to do, how far along it is, and what is still missing -- the
     // count alone would not explain why "Close region" is refusing.
     m_roiBarText->setText(
-        tr("<b>Defining a region of interest</b> — click the image to place "
+        tr("<b>Defining a region of interest</b> - click the image to place "
            "corners.<br><span style='color:#a9b0bb;'>%1 placed%2 · %3 · "
            "double-click, right-click or Enter closes it · Esc cancels</span>")
             .arg(placed == 1 ? tr("1 corner") : tr("%1 corners").arg(placed),
@@ -530,7 +530,7 @@ void ImageViewport::applyImageInteractorStyle()
 bool ImageViewport::loadImage(const QString &path)
 {
     // Record what arrived, before anything is done with it. The pixels are
-    // handed to the actor exactly as decoded — the only thing that varies is
+    // handed to the actor exactly as decoded -- the only thing that varies is
     // how they are mapped to screen intensities, and that mapping is recorded
     // too rather than left implicit.
     ImageRecord record;
@@ -561,7 +561,7 @@ void ImageViewport::showField(const CorrelationResult &result)
     }
 
     // The points of interest are a regular grid, so the field is an image in
-    // its own right — one sample per point, positioned by the grid's own origin
+    // its own right -- one sample per point, positioned by the grid's own origin
     // and spacing. That puts every value exactly over the pixels it was
     // measured from, with no resampling of either the field or the photograph.
     vtkNew<vtkImageData> field;

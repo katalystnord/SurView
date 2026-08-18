@@ -74,7 +74,7 @@ MainWindow::MainWindow(QWidget *parent)
 void MainWindow::createActions()
 {
     // Placeholder actions (project I/O, export) report that they are not yet
-    // wired rather than silently doing nothing — an honest scaffold.
+    // wired rather than silently doing nothing -- an honest scaffold.
     m_actDefineRoi = new QAction(tr("Define ROI"), this);
     m_actDefineRoi->setStatusTip(
         tr("Draw the region of interest by clicking corners on the image"));
@@ -144,7 +144,7 @@ void MainWindow::createMenus()
     // View menu (dock toggles are appended in createDockPanels()).
     menuBar()->addMenu(tr("&View"));
 
-    // Analysis — the DIC core pipeline.
+    // Analysis -- the DIC core pipeline.
     QMenu *analysisMenu = menuBar()->addMenu(tr("&Analysis"));
     analysisMenu->addAction(m_actDefineRoi);
     analysisMenu->addAction(m_actAutoRoi);
@@ -190,7 +190,7 @@ void MainWindow::createToolBar()
 }
 
 // ---------------------------------------------------------------------------
-// Dock panels — laid out along the DIC pipeline (project ▸ parameters ▸ log)
+// Dock panels -- laid out along the DIC pipeline (project ▸ parameters ▸ log)
 // ---------------------------------------------------------------------------
 
 void MainWindow::createDockPanels()
@@ -233,16 +233,16 @@ QWidget *MainWindow::createProjectPanel()
             &MainWindow::showSelectedImage);
 
     m_referenceItem = new QTreeWidgetItem(tree);
-    m_referenceItem->setText(0, tr("Reference image — none"));
+    m_referenceItem->setText(0, tr("Reference image - none"));
 
     m_targetsItem = new QTreeWidgetItem(tree);
-    m_targetsItem->setText(0, tr("Target images — none"));
+    m_targetsItem->setText(0, tr("Target images - none"));
 
     m_roiItem = new QTreeWidgetItem(tree);
-    m_roiItem->setText(0, tr("Region of interest — none (whole image)"));
+    m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
 
     m_resultsItem = new QTreeWidgetItem(tree);
-    m_resultsItem->setText(0, tr("Results — none"));
+    m_resultsItem->setText(0, tr("Results - none"));
 
     tree->expandAll();
     return tree;
@@ -414,14 +414,14 @@ void MainWindow::openReferenceImage(const QString &path)
     const ImageRecord &record = m_referenceRecord;
     m_record->setRecord(record);
 
-    m_referenceItem->setText(0, tr("Reference image — %1 (%2×%3)")
+    m_referenceItem->setText(0, tr("Reference image - %1 (%2×%3)")
                                     .arg(name)
                                     .arg(record.width)
                                     .arg(record.height));
     m_referenceItem->setData(0, kRecordKindRole, RecordKind::Reference);
     m_stageLabel->setText(tr("Reference loaded"));
     statusBar()->showMessage(tr("Loaded %1").arg(name), 4000);
-    log(tr("Loaded reference image: %1 — %2×%3 px, %4, %5, no conversion")
+    log(tr("Loaded reference image: %1 - %2×%3 px, %4, %5, no conversion")
             .arg(name)
             .arg(record.width)
             .arg(record.height)
@@ -468,7 +468,7 @@ void MainWindow::addTargetImages(const QStringList &paths)
             // and silently omitting it would leave the count disagreeing with
             // what was selected.
             ++unreadable;
-            item->setText(0, tr("%1 — could not be read").arg(name));
+            item->setText(0, tr("%1 - could not be read").arg(name));
             item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxCritical));
             log(tr("Target image could not be read: %1").arg(name));
             continue;
@@ -483,7 +483,7 @@ void MainWindow::addTargetImages(const QStringList &paths)
                                  .arg(name)
                                  .arg(record.width)
                                  .arg(record.height));
-            log(tr("Recorded target image: %1 — %2×%3 px, %4, %5, no conversion")
+            log(tr("Recorded target image: %1 - %2×%3 px, %4, %5, no conversion")
                     .arg(name)
                     .arg(record.width)
                     .arg(record.height)
@@ -491,15 +491,15 @@ void MainWindow::addTargetImages(const QStringList &paths)
         } else {
             ++mismatched;
             // The reason is stated in the log and the tooltip, but this panel
-            // is narrow enough to truncate the text — so the item also carries
+            // is narrow enough to truncate the text -- so the item also carries
             // an icon, which survives any width.
-            item->setText(0, tr("%1 (%2×%3) — does not match the reference")
+            item->setText(0, tr("%1 (%2×%3) - does not match the reference")
                                  .arg(name)
                                  .arg(record.width)
                                  .arg(record.height));
             item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
             item->setToolTip(0, pairing.mismatches.join(QStringLiteral("\n")));
-            log(tr("Recorded target image: %1 — does not match the reference: %2")
+            log(tr("Recorded target image: %1 - does not match the reference: %2")
                     .arg(name, pairing.mismatches.join(QStringLiteral("; "))));
         }
     }
@@ -519,13 +519,13 @@ void MainWindow::addTargetImages(const QStringList &paths)
             ++readable;
     }
     m_targetsItem->setText(0, readable == listed
-                                  ? tr("Target images — %1 recorded").arg(listed)
-                                  : tr("Target images — %1 of %2 recorded")
+                                  ? tr("Target images - %1 recorded").arg(listed)
+                                  : tr("Target images - %1 of %2 recorded")
                                         .arg(readable)
                                         .arg(listed));
     m_targetsItem->setExpanded(true);
 
-    // Say what happened in one line, including the parts that went wrong —
+    // Say what happened in one line, including the parts that went wrong --
     // a count of successes alone would read as a clean import. Written with
     // explicit singular/plural rather than tr()'s %n, which only selects a
     // plural form when a translation catalogue supplies one; untranslated, the
@@ -563,7 +563,7 @@ void MainWindow::displayRecord(const ImageRecord &record)
     // which would read as this selection's pixels.
     if (!record.isValid()) {
         m_viewport->showMessage(
-            tr("%1\n\ncould not be read — recorded, but no pixels to show")
+            tr("%1\n\ncould not be read - recorded, but no pixels to show")
                 .arg(record.fileName));
         m_record->setRecord(record);
         return;
@@ -634,9 +634,9 @@ void MainWindow::discardStaleResult()
     m_hasResult = false;
     m_result = CorrelationResult();
     m_viewport->clearField();
-    m_resultsItem->setText(0, tr("Results — none"));
+    m_resultsItem->setText(0, tr("Results - none"));
     m_resultsItem->setToolTip(0, QString());
-    log(tr("Previous displacement field discarded — it was measured over a "
+    log(tr("Previous displacement field discarded - it was measured over a "
            "different region, and showing it beside this one would invite "
            "reading them as the same measurement."));
 }
@@ -644,14 +644,14 @@ void MainWindow::discardStaleResult()
 void MainWindow::showRoiInProject()
 {
     if (!m_roi.isValid()) {
-        m_roiItem->setText(0, tr("Region of interest — none (whole image)"));
+        m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
         m_roiItem->setToolTip(0, QString());
         m_viewport->clearRoi();
         return;
     }
 
     const QRect box = m_roi.bounds();
-    const QString summary = tr("Region of interest — %1, %2 corners, %3×%4 px box")
+    const QString summary = tr("Region of interest - %1, %2 corners, %3×%4 px box")
                                 .arg(m_roi.originText())
                                 .arg(m_roi.vertices.size())
                                 .arg(box.width())
@@ -680,7 +680,7 @@ void MainWindow::onRoiDrawn(const RegionOfInterest &roi)
     showRoiInProject();
 
     const QRect box = m_roi.bounds();
-    log(tr("Region of interest defined by hand — %1 corners, bounding box "
+    log(tr("Region of interest defined by hand - %1 corners, bounding box "
            "%2×%3 px at (%4, %5). Point centres are taken inside it; each "
            "subset still reaches up to its radius beyond it.")
             .arg(roi.vertices.size())
@@ -702,7 +702,7 @@ void MainWindow::detectRoi()
     // deformed target would propose a boundary around a shape that has already
     // moved.
     // The detector runs on this thread, so the window is unresponsive while it
-    // works — half a second on a small image, longer on a large one. The
+    // works -- half a second on a small image, longer on a large one. The
     // message and the cursor are therefore flushed to screen BEFORE the work
     // starts; set and then blocked on, they would only appear once it finished,
     // which is the one moment they are no longer wanted. The action is disabled
@@ -731,7 +731,7 @@ void MainWindow::detectRoi()
     showRoiInProject();
 
     const QRect box = m_roi.bounds();
-    log(tr("Region of interest detected in %1 s — %2 corners, bounding box "
+    log(tr("Region of interest detected in %1 s - %2 corners, bounding box "
            "%3×%4 px at (%5, %6), from %7.")
             .arg(detection.secondsElapsed, 0, 'f', 1)
             .arg(m_roi.vertices.size())
@@ -741,11 +741,11 @@ void MainWindow::detectRoi()
             .arg(box.top())
             .arg(m_referenceRecord.fileName));
     // The detector's own limitation travels with the proposal into the log,
-    // where the run that used it is also recorded — not only into a tooltip
+    // where the run that used it is also recorded -- not only into a tooltip
     // that the record of this session will not keep.
     log(tr("  %1").arg(m_roi.limitation));
     statusBar()->showMessage(
-        tr("Region detected — check it, and redraw it by hand if it is wrong"),
+        tr("Region detected - check it, and redraw it by hand if it is wrong"),
         8000);
     updateActionStates();
 }
@@ -758,7 +758,7 @@ void MainWindow::clearRoi()
     discardStaleResult();
     m_roi = RegionOfInterest();
     showRoiInProject();
-    log(tr("Region of interest cleared — the next run measures the whole image."));
+    log(tr("Region of interest cleared - the next run measures the whole image."));
     statusBar()->showMessage(tr("Region of interest cleared"), 4000);
     updateActionStates();
 }
@@ -788,7 +788,7 @@ void MainWindow::runCorrelation()
 
     // Which target was used is part of the result. With several imported, a run
     // that silently picked one would leave the field unattributable.
-    log(tr("Correlating %1 against %2 — %3, %4, subset radius %5 px, grid step %6 px, %7")
+    log(tr("Correlating %1 against %2 - %3, %4, subset radius %5 px, grid step %6 px, %7")
             .arg(m_referenceRecord.fileName, target.fileName,
                  m_solver->currentText(), m_shape->currentText())
             .arg(settings.subsetRadius)
@@ -831,7 +831,7 @@ void MainWindow::stopCorrelation()
     // The engine cannot be interrupted mid-call, so this takes effect at the
     // next chunk boundary rather than instantly. Whatever was measured before
     // that point is kept and reported as partial.
-    log(tr("Stop requested — finishing the current block."));
+    log(tr("Stop requested - finishing the current block."));
     m_runner->cancel();
     m_actStop->setEnabled(false);
 }
@@ -841,7 +841,7 @@ void MainWindow::onCorrelationProgress(int done, int total, const QString &stage
     if (total <= 0)
         return;
     m_progress->setValue(int(100.0 * done / total));
-    statusBar()->showMessage(tr("%1 — %2 of %3 points")
+    statusBar()->showMessage(tr("%1 - %2 of %3 points")
                                  .arg(stage)
                                  .arg(done)
                                  .arg(total));
@@ -859,13 +859,13 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
         result.total() > 0 ? 100.0 * result.converged / result.total() : 0.0;
 
     log(result.cancelled
-            ? tr("Correlation stopped after %1 s — %2 of %3 points solved "
+            ? tr("Correlation stopped after %1 s - %2 of %3 points solved "
                  "(%4%) before stopping")
                   .arg(result.secondsElapsed, 0, 'f', 1)
                   .arg(result.converged)
                   .arg(result.total())
                   .arg(share, 0, 'f', 1)
-            : tr("Correlation finished in %1 s — %2 of %3 points solved (%4%)")
+            : tr("Correlation finished in %1 s - %2 of %3 points solved (%4%)")
                   .arg(result.secondsElapsed, 0, 'f', 1)
                   .arg(result.converged)
                   .arg(result.total())
@@ -888,14 +888,14 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
         log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
     }
 
-    // The tree said "Results — none" through the first working run. A field
+    // The tree said "Results -- none" through the first working run. A field
     // that exists but is not named in the project is the same defect as a
     // target image we claimed to have added and never read.
     double lowest = 0.0;
     double highest = 0.0;
     if (m_hasResult && result.magnitudeRange(lowest, highest)) {
         const QString summary =
-            tr("Displacement field — %1 of %2 points%3, %4 to %5 px")
+            tr("Displacement field - %1 of %2 points%3, %4 to %5 px")
                 .arg(result.converged)
                 .arg(result.total())
                 .arg(result.restrictedToRoi ? tr(" in the region of interest")
@@ -906,7 +906,7 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
         // The panel is narrow enough to clip the range off the end.
         m_resultsItem->setToolTip(0, summary);
     } else {
-        m_resultsItem->setText(0, tr("Results — none"));
+        m_resultsItem->setText(0, tr("Results - none"));
         m_resultsItem->setToolTip(0, QString());
     }
 
@@ -973,7 +973,7 @@ void MainWindow::log(const QString &message)
 
 void MainWindow::notImplemented(const QString &feature)
 {
-    statusBar()->showMessage(tr("%1 — not yet implemented").arg(feature), 4000);
+    statusBar()->showMessage(tr("%1 - not yet implemented").arg(feature), 4000);
 }
 
 void MainWindow::updateActionStates()
@@ -989,7 +989,7 @@ void MainWindow::updateActionStates()
     // thing, one of which the user cannot see they are already inside.
     m_actDefineRoi->setEnabled(hasImage && !running && !drawing);
     m_actDefineRoi->setToolTip(
-        drawing ? tr("A region is being defined — use the bar on the image")
+        drawing ? tr("A region is being defined - use the bar on the image")
                 : (hasImage ? tr("Click corners on the image to enclose a region")
                             : tr("Import an image first")));
 

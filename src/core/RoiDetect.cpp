@@ -38,8 +38,8 @@ RoiDetection detectSpeckleRegion(const QString &imagePath)
             detection.reason = QObject::tr(
                 "The detector found no region it would stand behind. It "
                 "declines when the image has no genuine speckled-versus-"
-                "background split — including a frame that is speckled all "
-                "over, where there is no background to separate — and when the "
+                "background split - including a frame that is speckled all "
+                "over, where there is no background to separate - and when the "
                 "region it does find is too small to be a meaningful part of "
                 "the image. Drawing the region by hand states directly what it "
                 "could not infer.");
@@ -49,7 +49,7 @@ RoiDetection detectSpeckleRegion(const QString &imagePath)
         // detect() is declared to return the Shape2D base so a future
         // hole-aware detection can return a different concrete type. Today it
         // always builds a polygon, and reading the boundary back needs the
-        // concrete one — so the cast is checked rather than assumed.
+        // concrete one -- so the cast is checked rather than assumed.
         const auto *polygon = dynamic_cast<const Polygon2D *>(shape.get());
         if (!polygon) {
             detection.reason = QObject::tr(

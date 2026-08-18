@@ -60,7 +60,7 @@ using PoiInsideTest = std::function<bool(int x, int y)>;
 // Build the grid for one run. An invalid region means the whole image.
 //
 // A subset must lie wholly inside the image, so no point is placed within
-// `subsetRadius` of any edge — including when a region reaches further out
+// `subsetRadius` of any edge -- including when a region reaches further out
 // than that.
 PoiGrid buildPoiGrid(int imageWidth, int imageHeight, int subsetRadius,
                      int gridStep, const RegionOfInterest &roi,

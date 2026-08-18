@@ -8,7 +8,7 @@ struct ImageRecord;
 //
 // Correlation compares the same pixel grid before and after deformation, so a
 // target that disagrees with the reference on its dimensions, channel count or
-// scalar type is not a harder correlation — it is a different image of a
+// scalar type is not a harder correlation -- it is a different image of a
 // different thing. That is knowable the moment the file is read, which is when
 // it should be said, rather than surfacing later as a confusing failure inside
 // the solver.

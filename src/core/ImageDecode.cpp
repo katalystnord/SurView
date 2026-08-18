@@ -17,7 +17,7 @@ namespace {
 // A pixel counts if ANY of its components is at the extreme: on a colour image
 // a single blown channel is already a value the file could not represent, and
 // requiring all three to agree would hide it. On single-channel speckle images
-// — the DIC case — the distinction does not arise.
+// -- the DIC case -- the distinction does not arise.
 //
 // Compared with <= and >= rather than == so that the comparison still holds
 // when a double-valued range is narrowed to the sample type; the bounds come
@@ -85,7 +85,7 @@ vtkSmartPointer<vtkImageData> decodeImage(const QString &path,
     if (dims[0] <= 0 || dims[1] <= 0)
         return nullptr;  // reader produced nothing usable
 
-    // Put every image into one row order — the file's own, row 0 at the top —
+    // Put every image into one row order -- the file's own, row 0 at the top --
     // so that a pixel's position means the same thing whatever decoded it.
     // Without this the viewport shows TIFFs mirrored top-to-bottom while PNGs
     // come out upright, and a measured field drawn in engine coordinates lines

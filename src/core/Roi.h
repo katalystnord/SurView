@@ -9,7 +9,7 @@
 // A region of interest, expressed in reference-image pixel coordinates.
 //
 // That is the same frame the file's own rows use, the same frame the viewport
-// renders in, and the same frame the engine's points are given in — so a
+// renders in, and the same frame the engine's points are given in -- so a
 // boundary drawn on screen reaches the correlation without being converted
 // between conventions on the way. Nothing here is in screen or widget units.
 //
@@ -28,7 +28,7 @@ struct RegionOfInterest
     // as whoever reads the result.
     enum Origin { Drawn, Detected };
 
-    // The boundary, as an open ring — the last vertex joins back to the first.
+    // The boundary, as an open ring -- the last vertex joins back to the first.
     QVector<QPoint> vertices;
 
     Origin origin = Drawn;

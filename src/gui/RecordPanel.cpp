@@ -20,12 +20,12 @@ namespace {
 // a plausible-looking default.
 QString unknownText()
 {
-    return QStringLiteral("—");
+    return QStringLiteral("-");
 }
 
 // Field names and notes sit behind the values they describe, but must stay
 // comfortably readable. Blending the theme's own text colour toward its
-// background keeps that true in a light or a dark theme alike — unlike a
+// background keeps that true in a light or a dark theme alike -- unlike a
 // fixed grey, which goes invisible against one of them.
 void deemphasise(QWidget *widget, qreal weight)
 {
@@ -146,14 +146,14 @@ QLabel *RecordPanel::addRow(QFormLayout *form, const QString &label, bool wide)
     deemphasise(name, 0.62);
 
     auto *value = new QLabel(unknownText());
-    // Provenance is only useful if it can be carried elsewhere — paths and
+    // Provenance is only useful if it can be carried elsewhere -- paths and
     // hashes are meant to be copied out whole.
     value->setTextInteractionFlags(Qt::TextSelectableByMouse);
 
     if (wide) {
         // A path or a hash is longer than any sensible label column, so it gets
         // the panel's full width beneath its name rather than being clipped or
-        // elided — a truncated hash identifies nothing.
+        // elided -- a truncated hash identifies nothing.
         value->setWordWrap(true);
         value->setContentsMargins(12, 0, 0, 4);
 
@@ -200,7 +200,7 @@ QTextEdit *RecordPanel::addHashRow(QFormLayout *form, const QString &label)
     value->setPalette(transparent);
 
     // Grow to exactly the number of lines the digits wrap onto at the panel's
-    // current width — no scrollbar, no truncation.
+    // current width -- no scrollbar, no truncation.
     connect(value->document()->documentLayout(),
             &QAbstractTextDocumentLayout::documentSizeChanged, value,
             [value](const QSizeF &size) {
@@ -221,14 +221,14 @@ void RecordPanel::clear()
 // One "at the extreme" row: how many pixels hold that value, what share of the
 // image that is, and the value itself. Whether the value is also the type's own
 // limit is stated because it is a fact about the file, not an inference about
-// the sensor — a reader can see that the two coincide without this claiming
+// the sensor -- a reader can see that the two coincide without this claiming
 // anything about what was or was not clipped.
 void RecordPanel::setExtremeRow(QLabel *row, const ImageRecord &record,
                                 qint64 pixels, double fraction, double value,
                                 bool isTypeLimit)
 {
     if (!record.extremesCounted) {
-        row->setText(tr("not counted — sample type not recognised"));
+        row->setText(tr("not counted - sample type not recognised"));
         return;
     }
 
@@ -243,7 +243,7 @@ void RecordPanel::setExtremeRow(QLabel *row, const ImageRecord &record,
                               ? tr("<0.01%")
                               : tr("%1%").arg(percent, 0, 'f', 2);
 
-    QString text = tr("%1 px%2 — %3 of the image, at %4")
+    QString text = tr("%1 px%2 - %3 of the image, at %4")
                        .arg(locale.toString(pixels), channels, share,
                             locale.toString(value, 'g', 6));
     if (isTypeLimit)
@@ -254,7 +254,7 @@ void RecordPanel::setExtremeRow(QLabel *row, const ImageRecord &record,
 
 void RecordPanel::setRecord(const ImageRecord &record)
 {
-    // Nothing selected at all — as opposed to a file we could not decode,
+    // Nothing selected at all -- as opposed to a file we could not decode,
     // which is a different situation and reported below.
     if (record.filePath.isEmpty()) {
         clear();
@@ -271,12 +271,12 @@ void RecordPanel::setRecord(const ImageRecord &record)
             ? locale.toString(record.fileModified, QLocale::ShortFormat)
             : unknownText());
     m_hash->setPlainText(record.sha256.isEmpty()
-                             ? tr("not computed — file unreadable")
+                             ? tr("not computed - file unreadable")
                              : record.sha256);
     m_decoder->setText(record.decoderClass.isEmpty() ? unknownText()
                                                      : record.decoderClass);
 
-    // A file we could not decode still has provenance worth stating — it was
+    // A file we could not decode still has provenance worth stating -- it was
     // named, found, measured and hashed. Reporting that half and saying plainly
     // that the pixels were never read beats falling back to "no image
     // imported", which denies a record we are holding.
@@ -294,9 +294,9 @@ void RecordPanel::setRecord(const ImageRecord &record)
         m_atDataMax->setText(unread);
         m_rowOrder->setText(tr("not read"));
         m_conversions->setText(
-            tr("none — the file could not be decoded, so no pixels were read "
+            tr("none - the file could not be decoded, so no pixels were read "
                "and nothing was converted"));
-        m_displayMapping->setText(tr("not displayed — no pixels to map"));
+        m_displayMapping->setText(tr("not displayed - no pixels to map"));
 
         m_placeholder->hide();
         m_scroll->show();
@@ -333,27 +333,27 @@ void RecordPanel::setRecord(const ImageRecord &record)
 
     // Reported rather than assumed: VTK's readers disagree about which way up
     // they hand the rows over, and an image held the other way round is one
-    // whose every later coordinate — a region's corners, a measured point —
+    // whose every later coordinate -- a region's corners, a measured point --
     // would refer to the wrong row.
     m_rowOrder->setText(
         record.rowsReversedByDecoder
             ? tr("the decoder returned the rows bottom-up; held in the file's "
-                 "own order, row 0 at the top. A reordering only — no pixel "
+                 "own order, row 0 at the top. A reordering only - no pixel "
                  "value is changed by it")
             : tr("the file's own order, row 0 at the top, exactly as the "
                  "decoder returned it"));
 
-    m_conversions->setText(tr("none — pixels held exactly as decoded"));
+    m_conversions->setText(tr("none - pixels held exactly as decoded"));
     if (record.displayed) {
         m_displayMapping->setText(
-            tr("%1 to %2 shown as black to white — view only, the pixels are "
+            tr("%1 to %2 shown as black to white - view only, the pixels are "
                "unchanged")
                 .arg(locale.toString(record.displayMin, 'g', 6),
                      locale.toString(record.displayMax, 'g', 6)));
     } else {
         // Recorded but never rendered, so there is no mapping to report. Saying
         // so beats printing a window that was never applied to anything.
-        m_displayMapping->setText(tr("not displayed yet — no mapping applied"));
+        m_displayMapping->setText(tr("not displayed yet - no mapping applied"));
     }
 
     m_placeholder->hide();

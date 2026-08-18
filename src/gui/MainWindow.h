@@ -27,7 +27,7 @@ class MainWindow : public QMainWindow
 public:
     explicit MainWindow(QWidget *parent = nullptr);
 
-    // Import images by path — the same route the File menu takes, exposed so
+    // Import images by path -- the same route the File menu takes, exposed so
     // they can also be named on the command line.
     void openReferenceImage(const QString &path);
     void addTargetImages(const QStringList &paths);
@@ -121,7 +121,7 @@ private:
     // viewport: it is part of the project, and the viewport only draws it.
     RegionOfInterest m_roi;
 
-    // Analysis panel — held so the run can read them. Controls nothing reads
+    // Analysis panel -- held so the run can read them. Controls nothing reads
     // are controls that do nothing.
     QComboBox *m_solver = nullptr;
     QComboBox *m_shape = nullptr;

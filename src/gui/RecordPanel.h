@@ -11,7 +11,7 @@ class QVBoxLayout;
 // The record side of the workspace: what SurView has actually recorded about
 // the imported image, stated without interpretation. It reports provenance
 // (which file, verified by hash), the pixel facts as decoded, and the fact
-// that nothing was converted on the way in — including an explicit statement
+// that nothing was converted on the way in -- including an explicit statement
 // of where its own knowledge stops.
 class RecordPanel : public QWidget
 {

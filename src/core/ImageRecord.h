@@ -6,7 +6,7 @@
 // Everything SurView can truthfully state about one imported image: where the
 // pixels came from (provenance) and what they actually are (pristineness).
 //
-// Every field is read from the file itself or from the decoded pixel data —
+// Every field is read from the file itself or from the decoded pixel data --
 // nothing here is inferred or interpreted. Code that displays an ImageRecord
 // only formats these values; it never adds meaning to them.
 struct ImageRecord
@@ -31,7 +31,7 @@ struct ImageRecord
     // VTK's readers disagree about this, so it cannot be left implicit:
     // vtkTIFFReader emits the file's rows in file order, while the PNG, JPEG
     // and BMP readers emit them bottom-up. SurView holds every image in the
-    // file's own row order — row 0 at the top — so an image that arrived
+    // file's own row order -- row 0 at the top -- so an image that arrived
     // reversed had its rows put back. That reordering touches no pixel value
     // and loses nothing, but it is a change to what the decoder produced, so
     // it is stated rather than left for the reader to assume.
@@ -40,7 +40,7 @@ struct ImageRecord
     // --- How much of the evidence sits against the extremes -----------------
     // Pixels holding the lowest and the highest value present. A handful is
     // ordinary; a large share means the sensor ran out of range there and the
-    // true values were never captured — the speckle in those pixels is gone,
+    // true values were never captured -- the speckle in those pixels is gone,
     // not merely dark or bright.
     //
     // Counted against the extremes actually present rather than against the
@@ -63,7 +63,7 @@ struct ImageRecord
     // the data itself; recorded here so the mapping is visible, not implicit.
     //
     // Only set once the image has actually been displayed. An image that has
-    // been recorded but not shown — every target image on import — has no
+    // been recorded but not shown -- every target image on import -- has no
     // mapping to report, and reporting 0..0 as if it were one would be a
     // claim about a rendering that never happened.
     bool   displayed  = false;

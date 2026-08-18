@@ -24,6 +24,14 @@ set -uo pipefail
 repo=$(git rev-parse --show-toplevel)
 cd "$repo" || exit 1
 
+# Em-dashes first: it costs milliseconds, applies to every file type, and is
+# the one rule here that a reviewer cannot see being broken -- an em-dash and a
+# hyphen are near-identical in a diff and in a code font.
+if ! "$repo/tools/check-no-em-dashes.sh" $(git diff --cached --name-only --diff-filter=ACMR); then
+    echo "pre-commit: em-dashes are not allowed in this code base. Commit refused." >&2
+    exit 1
+fi
+
 # A docs- or notes-only commit cannot break the build, so it pays nothing.
 # Uses the STAGED list, which is what is about to be committed.
 if ! git diff --cached --name-only --diff-filter=ACMR \

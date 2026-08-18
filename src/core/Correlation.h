@@ -11,8 +11,8 @@
 #include <atomic>
 
 // SurView's point of contact with the OpenCorr engine, together with
-// RoiDetect.cpp — the only two files that include an OpenCorr header or name an
-// OpenCorr type. That is not an abstraction layer — it is deliberately thin,
+// RoiDetect.cpp -- the only two files that include an OpenCorr header or name an
+// OpenCorr type. That is not an abstraction layer -- it is deliberately thin,
 // and the shape of a real interface should be decided once there is more than
 // one caller to design it against. It is a containment boundary: upstream is
 // rewriting the engine, and when that lands the damage should be confined to
@@ -98,7 +98,7 @@ Q_DECLARE_METATYPE(CorrelationResult)
 // Runs one correlation on a worker thread.
 //
 // The engine's own compute() is a single blocking call with no progress and no
-// cancellation — feedback we have already sent upstream. Until that changes,
+// cancellation -- feedback we have already sent upstream. Until that changes,
 // the queue is split into chunks here and handed over a chunk at a time, which
 // is what makes both progress reporting and a working Stop possible without
 // touching the engine.

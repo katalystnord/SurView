@@ -18,7 +18,7 @@ int main(int argc, char *argv[])
 
     QCommandLineParser parser;
     parser.setApplicationDescription(
-        QStringLiteral("SurView DIC — Digital Image Correlation workspace."));
+        QStringLiteral("SurView DIC - Digital Image Correlation workspace."));
     parser.addHelpOption();
     parser.addVersionOption();
     parser.addPositionalArgument(
@@ -37,7 +37,7 @@ int main(int argc, char *argv[])
     if (!positional.isEmpty()) {
         window.openReferenceImage(positional.first());
         // Targets after the reference, so a pair or a sequence can be opened in
-        // one go — and so the import path is drivable without the file dialog.
+        // one go -- and so the import path is drivable without the file dialog.
         window.addTargetImages(positional.mid(1));
     }
 

@@ -43,6 +43,12 @@ jobs:
         with:
           path: SurView
 
+      - name: No em-dashes
+        # The half that survives a fresh clone and --no-verify. Cheap enough to
+        # run before anything is installed, so a style-only mistake fails in
+        # seconds rather than after a full build.
+        run: SurView/tools/check-no-em-dashes.sh
+
       - name: Read the engine pin
         id: pin
         # The pin is the single source of truth for which engine commit this

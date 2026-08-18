@@ -136,7 +136,7 @@ void CorrelationRunner::run()
 
         // Where the points go is worked out by buildPoiGrid() (core/PoiGrid.h),
         // which is engine-free and therefore testable on its own. Membership in
-        // the region is still the engine's own judgement — it is handed in as
+        // the region is still the engine's own judgement -- it is handed in as
         // the predicate, so the boundary means the same thing here as it does
         // wherever else the shape is used.
         const int radius = m_settings.subsetRadius;
@@ -202,7 +202,7 @@ void CorrelationRunner::run()
 
         // How far the SOLVER got. Points beyond this still hold the integer-
         // pixel FFTCC estimate, which is a starting guess and not a
-        // measurement — on a stopped run they must not be reported as results.
+        // measurement -- on a stopped run they must not be reported as results.
         int solvedUpTo = 0;
 
         for (int stage = 0; stage < 2 && !m_cancelled; stage++) {
