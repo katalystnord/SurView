@@ -35,6 +35,19 @@ find_package(VTK REQUIRED COMPONENTS
     GUISupportQt          # QVTKOpenGLNativeWidget (VTK inside a Qt widget)
 )
 
+# Coverage instrumentation. Off by default and built into a separate directory
+# by tools/coverage.sh, because --coverage changes the object code: measuring
+# coverage and producing the binaries anyone runs are different jobs, and doing
+# both from one build directory means never being sure which you have.
+option(SURVIEW_COVERAGE "Build with gcov instrumentation (see tools/coverage.sh)" OFF)
+if(SURVIEW_COVERAGE)
+    # -O0 so line and branch counts correspond to the source as written; an
+    # optimised build merges and elides lines, and the report then describes
+    # something the reader cannot point at.
+    add_compile_options(--coverage -O0 -g)
+    add_link_options(--coverage)
+endif()
+
 # Which OpenCorr engine commit this build is verified against. Advisory: it
 # reports drift and continues. Full three-way check: tools/check-engine.sh
 include(cmake/OpenCorrPin.cmake)

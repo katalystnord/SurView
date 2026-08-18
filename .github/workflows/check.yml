@@ -19,6 +19,14 @@ concurrency:
   group: check-${{ github.ref }}
   cancel-in-progress: true
 
+env:
+  # ⚑ Without these, `apt-get install -y` still stops for a debconf question or
+  # a needrestart service prompt and waits forever. The first run of this
+  # workflow sat on "Install dependencies" for 28 minutes and had to be killed:
+  # a wrong package name fails in seconds, so a hang is always a prompt.
+  DEBIAN_FRONTEND: noninteractive
+  NEEDRESTART_MODE: a
+
 jobs:
   surview:
     name: SurView build + tests
@@ -48,12 +56,17 @@ jobs:
           echo "Engine at $(git -C OpenCorr rev-parse --short HEAD)"
 
       - name: Install dependencies
+        timeout-minutes: 15
         run: |
           sudo apt-get update
+          # Named explicitly rather than guessed: VTK's Qt binding package name
+          # carries the ABI version, and it changes between runner images.
+          echo "VTK Qt dev packages available on this image:"
+          apt-cache search --names-only '^libvtk.*qt-dev$' || true
           sudo apt-get install -y --no-install-recommends \
             ninja-build cmake g++ \
             qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev \
-            libvtk9-qt-dev \
+            libvtk9.3-qt-dev \
             libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev \
             libomp-dev xvfb
 
@@ -91,6 +104,7 @@ jobs:
           git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
 
       - name: Install dependencies
+        timeout-minutes: 15
         run: |
           sudo apt-get update
           sudo apt-get install -y --no-install-recommends \
