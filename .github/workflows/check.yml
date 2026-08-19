@@ -77,11 +77,22 @@ jobs:
       # So it is cached instead of shrunk. The key covers this file, because
       # this file is where the package list lives: change the list and the cache
       # is correctly missed.
-      - name: Cache the dependency downloads
-        uses: actions/cache@v4
+      # ⚑ RESTORE AND SAVE ARE SEPARATE STEPS, and the save runs even when the
+      # install fails. That is the whole point rather than a refinement: with a
+      # single cache step, a run that times out mid-download saves nothing, so
+      # the next run starts from zero and times out in exactly the same place,
+      # forever. Banking the partial download instead lets successive runs
+      # converge -- apt keeps every completed .deb and resumes the rest.
+      #
+      # Keys carry the run id because a cache key is immutable: reusing one is
+      # a warning and a discarded save. The prefix in restore-keys is what makes
+      # the most recent snapshot findable.
+      - name: Restore the dependency downloads
+        uses: actions/cache/restore@v4
         with:
           path: ~/apt-archives
-          key: apt-surview-ubuntu-26.04-${{ hashFiles('.github/workflows/check.yml') }}
+          key: apt-surview-26.04-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
+          restore-keys: apt-surview-26.04-${{ hashFiles('.github/workflows/check.yml') }}-
 
       - name: Install dependencies
         timeout-minutes: 25
@@ -132,8 +143,18 @@ jobs:
             "$vtk_qt" \
             libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev \
             libomp-dev xvfb
-          # apt writes as root; the cache is saved as the runner user.
-          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+
+      # apt writes as root and the cache is saved as the runner user, so the
+      # chown is part of saving rather than of installing -- it has to happen on
+      # the path where the install did NOT finish.
+      - name: Save the dependency downloads
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/apt-archives
+          key: apt-surview-26.04-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
 
       - name: Configure
         run: cmake -S SurView -B SurView/build-ninja -G Ninja
@@ -168,11 +189,12 @@ jobs:
           git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
           git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
 
-      - name: Cache the dependency downloads
-        uses: actions/cache@v4
+      - name: Restore the dependency downloads
+        uses: actions/cache/restore@v4
         with:
           path: ~/apt-archives
-          key: apt-engine-ubuntu-latest-${{ hashFiles('.github/workflows/check.yml') }}
+          key: apt-engine-latest-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
+          restore-keys: apt-engine-latest-${{ hashFiles('.github/workflows/check.yml') }}-
 
       # ⚑ Identical treatment to the SurView job above, and identical timeout.
       # These two drifted once already: the hardening added on 2026-08-18 went
@@ -190,7 +212,15 @@ jobs:
           sudo apt-get "${apt_cached[@]}" install -y --no-install-recommends \
             ninja-build cmake g++ \
             libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev libomp-dev
-          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
+
+      - name: Save the dependency downloads
+        if: always()
+        run: sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
+      - uses: actions/cache/save@v4
+        if: always()
+        with:
+          path: ~/apt-archives
+          key: apt-engine-latest-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
 
       - name: Build the engine's smoke tests
         run: |
