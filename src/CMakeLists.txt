@@ -21,6 +21,10 @@ add_library(surview_core STATIC
     core/ImageRecord.h
     core/PoiGrid.cpp
     core/PoiGrid.h
+    core/SequenceRunner.cpp
+    core/SequenceRunner.h
+    core/Sequence.cpp
+    core/Sequence.h
     core/Roi.cpp
     core/Roi.h
     core/RoiDetect.cpp

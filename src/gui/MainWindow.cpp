@@ -8,6 +8,7 @@
 #include "core/ImageDecode.h"
 #include "core/ImagePairing.h"
 #include "core/RoiDetect.h"
+#include "core/Sequence.h"
 #include "core/StrainFit.h"
 
 #include <QApplication>
@@ -44,7 +45,7 @@ namespace {
 constexpr int kRecordKindRole  = Qt::UserRole;
 constexpr int kRecordIndexRole = Qt::UserRole + 1;
 
-enum RecordKind { None = 0, Reference = 1, Target = 2 };
+enum RecordKind { None = 0, Reference = 1, Target = 2, Frame = 3 };
 
 }  // namespace
 
@@ -76,6 +77,21 @@ MainWindow::MainWindow(QWidget *parent)
 // ---------------------------------------------------------------------------
 // Actions
 // ---------------------------------------------------------------------------
+
+MainWindow::~MainWindow()
+{
+    // ⚑ A run outlives the window otherwise. Qt destroys the QThread with its
+    // parent while the worker is still inside a solve, which aborts the process
+    // with "QThread: Destroyed while thread is still running" -- so closing the
+    // application mid-correlation crashed it. Found by a walkthrough test that
+    // failed early and left a sequence running.
+    if (m_runner)
+        m_runner->cancel();
+    if (m_workerThread) {
+        m_workerThread->quit();
+        m_workerThread->wait();
+    }
+}
 
 void MainWindow::createActions()
 {
@@ -468,18 +484,6 @@ CorrelationSettings MainWindow::currentSettings() const
     return settings;
 }
 
-int MainWindow::firstUsableTarget() const
-{
-    for (int i = 0; i < m_targetRecords.size(); i++) {
-        const ImageRecord &target = m_targetRecords.at(i);
-        if (target.isValid()
-            && compareToReference(m_referenceRecord, target).matches()) {
-            return i;
-        }
-    }
-    return -1;
-}
-
 QWidget *MainWindow::createLogPanel()
 {
     m_log = new QPlainTextEdit;
@@ -569,22 +573,26 @@ void MainWindow::addTargetImages(const QStringList &paths)
     int unreadable = 0;
     int mismatched = 0;
 
+    // Built detached and parented once the whole list has been put in frame
+    // order, so the tree never shows an order the run would not follow.
+    QVector<QTreeWidgetItem *> pending;
+
     for (const QString &path : paths) {
         const QString name = QFileInfo(path).fileName();
 
         ImageRecord record;
         const bool decoded = decodeImage(path, record) != nullptr;
 
-        auto *item = new QTreeWidgetItem(m_targetsItem);
-        item->setData(0, kRecordKindRole, RecordKind::Target);
-        item->setData(0, kRecordIndexRole, int(m_targetRecords.size()));
         m_targetRecords.append(record);
+        auto *item = new QTreeWidgetItem;
+        item->setData(0, kRecordKindRole, RecordKind::Target);
 
         if (!decoded) {
             // Kept in the list rather than dropped: it was named as a target,
             // and silently omitting it would leave the count disagreeing with
             // what was selected.
             ++unreadable;
+            pending.append(item);
             item->setText(0, tr("%1 - could not be read").arg(name));
             item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxCritical));
             log(tr("Target image could not be read: %1").arg(name));
@@ -619,7 +627,15 @@ void MainWindow::addTargetImages(const QStringList &paths)
             log(tr("Recorded target image: %1 - does not match the reference: %2")
                     .arg(name, pairing.mismatches.join(QStringLiteral("; "))));
         }
+        pending.append(item);
     }
+
+    // ⚑ Sorted into FRAME order, not kept in the order the files were chosen.
+    // A sequence is a time axis: measured 1, 10, 11, 2 because that is how
+    // strings sort, every field is correct and the series they form is
+    // nonsense, and nothing on screen could reveal it. The list the project
+    // shows is the order the run will use, which is what makes it checkable.
+    rebuildTargetList(pending);
 
     QGuiApplication::restoreOverrideCursor();
 
@@ -709,6 +725,62 @@ void MainWindow::displayRecord(const ImageRecord &record)
     m_record->setRecord(shown);
 }
 
+void MainWindow::rebuildTargetList(QVector<QTreeWidgetItem *> pending)
+{
+    // Everything already listed, plus what just arrived, in one list parallel
+    // to m_targetRecords.
+    QVector<QTreeWidgetItem *> items;
+    while (m_targetsItem->childCount() > 0)
+        items.append(m_targetsItem->takeChild(0));
+    items += pending;
+
+    QVector<int> order(items.size());
+    for (int i = 0; i < order.size(); i++)
+        order[i] = i;
+
+    // By the name each record carries, using the same comparison the run
+    // itself will use, so the list and the measurement cannot disagree.
+    std::stable_sort(order.begin(), order.end(), [this](int a, int b) {
+        return precedesInSequence(m_targetRecords.at(a).filePath,
+                                  m_targetRecords.at(b).filePath);
+    });
+
+    QVector<ImageRecord> ordered;
+    ordered.reserve(m_targetRecords.size());
+    for (int i : order) {
+        ordered.append(m_targetRecords.at(i));
+        QTreeWidgetItem *item = items.at(i);
+        item->setData(0, kRecordIndexRole, int(ordered.size()) - 1);
+        m_targetsItem->addChild(item);
+    }
+    m_targetRecords = ordered;
+}
+
+const CorrelationResult &MainWindow::frameResult(int frame) const
+{
+    static const CorrelationResult nothing;
+    if (frame < 0 || frame >= m_frames.size())
+        return nothing;
+    return m_frames.at(frame).result;
+}
+
+void MainWindow::displayFrame(int frame)
+{
+    if (frame < 0 || frame >= m_frames.size())
+        return;
+
+    m_displayedFrame = frame;
+    m_result = m_frames.at(frame).result;
+    m_hasResult = m_result.converged > 0;
+
+    if (m_hasResult)
+        m_viewport->showField(m_result);
+    else
+        m_viewport->clearField();
+
+    updateActionStates();
+}
+
 void MainWindow::showSelectedImage()
 {
     const QList<QTreeWidgetItem *> selected = m_projectTree->selectedItems();
@@ -729,6 +801,11 @@ void MainWindow::showSelectedImage()
         const int index = item->data(0, kRecordIndexRole).toInt();
         if (index >= 0 && index < m_targetRecords.size())
             displayRecord(m_targetRecords.at(index));
+    } else if (kind == RecordKind::Frame) {
+        // A measured frame of the sequence. Picking it puts that frame's field
+        // on screen: a sequence nobody can step through measured itself for
+        // nothing.
+        displayFrame(item->data(0, kRecordIndexRole).toInt());
     }
     // Anything else (ROIs, results) has no record to show; leave the panel on
     // whatever it was showing rather than blanking it for a non-image node.
@@ -885,12 +962,24 @@ void MainWindow::runCorrelation()
     if (m_workerThread)
         return;  // already running
 
-    const int targetIndex = firstUsableTarget();
-    if (targetIndex < 0) {
+    // Which targets can be measured, in which order, and why the rest cannot.
+    // Worked out by core/Sequence.h rather than here, so the same judgement is
+    // testable without a window.
+    const SequencePlan plan = planSequence(m_referenceRecord, m_targetRecords);
+
+    if (plan.isEmpty()) {
         QMessageBox::warning(
             this, tr("Nothing to correlate"),
-            tr("No imported target image matches the reference. Correlation "
-               "compares the same pixel grid before and after deformation."));
+            m_targetRecords.isEmpty()
+                ? tr("No target image has been imported. Correlation compares "
+                     "the same pixel grid before and after deformation.")
+                : tr("None of the %1 imported target images can be correlated "
+                     "against the reference. The log lists the reason for each.")
+                      .arg(m_targetRecords.size()));
+        for (auto it = plan.skipped.constBegin(); it != plan.skipped.constEnd(); ++it) {
+            log(tr("  %1 cannot be measured: %2")
+                    .arg(m_targetRecords.at(it.key()).fileName, it.value()));
+        }
         return;
     }
 
@@ -901,19 +990,54 @@ void MainWindow::runCorrelation()
         return;
     }
 
-    const ImageRecord &target = m_targetRecords.at(targetIndex);
+    // Which targets were used is part of the result. Named in full, in frame
+    // order, because a sequence that quietly measured a different set than the
+    // one on screen would be unattributable.
+    QStringList targetPaths;
+    QStringList frameNames;
+    for (int index : plan.order) {
+        targetPaths << m_targetRecords.at(index).filePath;
+        frameNames << m_targetRecords.at(index).fileName;
+    }
 
-    // Which target was used is part of the result. With several imported, a run
-    // that silently picked one would leave the field unattributable.
-    log(tr("Correlating %1 against %2 - %3, %4, subset radius %5 px, grid step %6 px, %7")
-            .arg(m_referenceRecord.fileName, target.fileName,
-                 m_solver->currentText(), m_shape->currentText())
-            .arg(settings.subsetRadius)
-            .arg(settings.gridStep)
-            .arg(m_roi.isValid()
-                     ? tr("inside the region of interest (%1)")
-                           .arg(m_roi.originText())
-                     : tr("whole image")));
+    log(targetPaths.size() == 1
+            ? tr("Correlating %1 against %2 - %3, %4, subset radius %5 px, "
+                 "grid step %6 px, %7")
+                  .arg(m_referenceRecord.fileName, frameNames.first(),
+                       m_solver->currentText(), m_shape->currentText())
+                  .arg(settings.subsetRadius)
+                  .arg(settings.gridStep)
+                  .arg(m_roi.isValid() ? tr("inside the region of interest (%1)")
+                                             .arg(m_roi.originText())
+                                       : tr("whole image"))
+            : tr("Correlating a %1 frame sequence against %2 - %3, %4, subset "
+                 "radius %5 px, grid step %6 px, %7")
+                  .arg(targetPaths.size())
+                  .arg(m_referenceRecord.fileName, m_solver->currentText(),
+                       m_shape->currentText())
+                  .arg(settings.subsetRadius)
+                  .arg(settings.gridStep)
+                  .arg(m_roi.isValid() ? tr("inside the region of interest (%1)")
+                                             .arg(m_roi.originText())
+                                       : tr("whole image")));
+
+    if (targetPaths.size() > 1) {
+        // ⚑ Said out loud, because a sequence that stops correlating halfway
+        // through looks exactly like a specimen that stopped deforming.
+        log(tr("  Frame order: %1").arg(frameNames.join(QStringLiteral(", "))));
+        log(tr("  Every frame is measured against %1, never against the frame "
+               "before it, so the displacements are directly comparable - and "
+               "correlation degrades as the specimen moves away from where it "
+               "started.")
+                .arg(m_referenceRecord.fileName));
+    }
+
+    // Named rather than passed over: a run that measured 9 of 12 imported
+    // frames has to say which three it left out and why.
+    for (auto it = plan.skipped.constBegin(); it != plan.skipped.constEnd(); ++it) {
+        log(tr("  Skipping %1: %2")
+                .arg(m_targetRecords.at(it.key()).fileName, it.value()));
+    }
 
     if (settings.strainEnabled) {
         log(tr("  Strain: %1, fitted over a %2 px subregion, at least %3 points, "
@@ -930,35 +1054,46 @@ void MainWindow::runCorrelation()
     }
 
     m_hasResult = false;
+    m_displayedFrame = -1;
+    m_frames.clear();
     m_viewport->clearField();
+    m_resultsItem->takeChildren();
 
-    // Captured here, from the very values handed to the runner, so what the
-    // export states is what ran. See m_resultProvenance.
-    m_resultProvenance = FieldProvenance();
-    m_resultProvenance.reference = m_referenceRecord;
-    m_resultProvenance.target = target;
-    m_resultProvenance.settings = settings;
-    m_resultProvenance.applicationVersion = QStringLiteral(SURVIEW_VERSION);
-    m_resultProvenance.enginePin = QStringLiteral(SURVIEW_OPENCORR_PIN);
+    // Provenance captured here, per frame, from the very values handed to the
+    // runner. Read back from the panel at export time it would state, with a
+    // SHA-256 beside it, a configuration that never measured anything.
+    m_plannedFrames.clear();
+    for (int index : plan.order) {
+        FieldProvenance provenance;
+        provenance.reference = m_referenceRecord;
+        provenance.target = m_targetRecords.at(index);
+        provenance.settings = settings;
+        provenance.applicationVersion = QStringLiteral(SURVIEW_VERSION);
+        provenance.enginePin = QStringLiteral(SURVIEW_OPENCORR_PIN);
+        m_plannedFrames.append(provenance);
+    }
 
     m_workerThread = new QThread(this);
-    m_runner = new CorrelationRunner(settings, m_roi,
-                                     m_referenceRecord.filePath,
-                                     target.filePath);
+    m_runner = new SequenceRunner(settings, m_roi, m_referenceRecord.filePath,
+                                  targetPaths);
     m_runner->moveToThread(m_workerThread);
 
-    connect(m_workerThread, &QThread::started, m_runner, &CorrelationRunner::run);
-    connect(m_runner, &CorrelationRunner::progress, this,
-            &MainWindow::onCorrelationProgress);
-    connect(m_runner, &CorrelationRunner::finished, this,
-            &MainWindow::onCorrelationFinished);
-    connect(m_runner, &CorrelationRunner::failed, this,
+    connect(m_workerThread, &QThread::started, m_runner, &SequenceRunner::run);
+    connect(m_runner, &SequenceRunner::frameProgress, this,
+            &MainWindow::onFrameProgress);
+    connect(m_runner, &SequenceRunner::frameFinished, this,
+            &MainWindow::onFrameFinished);
+    connect(m_runner, &SequenceRunner::finished, this,
+            &MainWindow::onSequenceFinished);
+    connect(m_runner, &SequenceRunner::failed, this,
             &MainWindow::onCorrelationFailed);
 
     m_progress->setRange(0, 100);
     m_progress->setValue(0);
     m_progress->show();
-    m_stageLabel->setText(tr("Correlating"));
+    m_stageLabel->setText(targetPaths.size() == 1
+                              ? tr("Correlating")
+                              : tr("Correlating %1 frames").arg(targetPaths.size()));
 
     m_workerThread->start();
     updateActionStates();
@@ -970,50 +1105,59 @@ void MainWindow::stopCorrelation()
         return;
     // The engine cannot be interrupted mid-call, so this takes effect at the
     // next chunk boundary rather than instantly. Whatever was measured before
-    // that point is kept and reported as partial.
+    // that point is kept and reported as partial, and on a sequence the frames
+    // already finished are kept in full.
     log(tr("Stop requested - finishing the current block."));
     m_runner->cancel();
     m_actStop->setEnabled(false);
 }
 
-void MainWindow::onCorrelationProgress(int done, int total, const QString &stage)
+void MainWindow::onFrameProgress(int frame, int frameCount, int done, int total,
+                                 const QString &stage)
 {
-    if (total <= 0)
+    if (total <= 0 || frameCount <= 0)
         return;
-    m_progress->setValue(int(100.0 * done / total));
-    statusBar()->showMessage(tr("%1 - %2 of %3 points")
-                                 .arg(stage)
-                                 .arg(done)
-                                 .arg(total));
+
+    // Across the whole sequence, not restarted per frame: a bar that runs to
+    // the end twelve times says nothing about how long is left.
+    const double withinFrame = double(done) / double(total);
+    m_progress->setValue(int(100.0 * (frame + withinFrame) / frameCount));
+
+    statusBar()->showMessage(
+        frameCount == 1
+            ? tr("%1 - %2 of %3 points").arg(stage).arg(done).arg(total)
+            : tr("Frame %1 of %2, %3 - %4 of %5 points")
+                  .arg(frame + 1)
+                  .arg(frameCount)
+                  .arg(stage)
+                  .arg(done)
+                  .arg(total));
 }
 
-void MainWindow::onCorrelationFinished(const CorrelationResult &result)
+void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
 {
-    m_result = result;
-    m_hasResult = result.converged > 0;
-
-    if (m_hasResult)
-        m_viewport->showField(result);
-
     const double share =
         result.total() > 0 ? 100.0 * result.converged / result.total() : 0.0;
+    const QString name = frame < m_plannedFrames.size()
+                             ? m_plannedFrames.at(frame).target.fileName
+                             : QString();
 
     log(result.cancelled
-            ? tr("Correlation stopped after %1 s - %2 of %3 points solved "
-                 "(%4%) before stopping")
+            ? tr("Frame %1 (%2) stopped after %3 s - %4 of %5 points solved (%6%)")
+                  .arg(frame + 1)
+                  .arg(name)
                   .arg(result.secondsElapsed, 0, 'f', 1)
                   .arg(result.converged)
                   .arg(result.total())
                   .arg(share, 0, 'f', 1)
-            : tr("Correlation finished in %1 s - %2 of %3 points solved (%4%)")
+            : tr("Frame %1 (%2) finished in %3 s - %4 of %5 points solved (%6%)")
+                  .arg(frame + 1)
+                  .arg(name)
                   .arg(result.secondsElapsed, 0, 'f', 1)
                   .arg(result.converged)
                   .arg(result.total())
                   .arg(share, 0, 'f', 1));
 
-    // What the totals above are counted over. "8261 of 8700 solved" says
-    // something different when those 8700 were a chosen region than when they
-    // were the whole image, and the number alone does not carry that.
     if (result.restrictedToRoi) {
         log(tr("  those %1 points are the ones inside the region of interest, "
                "not the whole image")
@@ -1028,14 +1172,9 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
         log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
     }
 
-    // How far the strain fit reached, separately from the solve. The two
-    // counts differ for reasons that are not faults -- a point can solve
-    // perfectly and still have too few well-correlated neighbours to fit a
-    // gradient through -- and reporting only one of them makes the gap in the
-    // strain map look like a defect.
-    // How far the field can be trusted, as its own line rather than folded
-    // into the solved count: "1025 of 1092 solved" says how much was measured,
-    // not how well.
+    // How far the field can be trusted, as its own line rather than folded into
+    // the solved count: "1025 of 1092 solved" says how much was measured, not
+    // how well.
     if (result.noiseFloorMeasured > 0) {
         double lowest = 0.0;
         double highest = 0.0;
@@ -1076,69 +1215,107 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
                    "improve the correlation."));
         }
     }
+}
 
-    // The tree said "Results -- none" through the first working run. A field
-    // that exists but is not named in the project is the same defect as a
-    // target image we claimed to have added and never read.
+void MainWindow::onFrameFinished(int frame, const CorrelationResult &result)
+{
+    if (frame < 0 || frame >= m_plannedFrames.size())
+        return;
+
+    MeasuredFrame arrived;
+    arrived.result = result;
+    arrived.provenance = m_plannedFrames.at(frame);
+    m_frames.append(arrived);
+    logFrameResult(frame, result);
+
+    // Listed as it arrives, so a long sequence fills in rather than staying
+    // empty until the end. Each entry carries the frame it measured and enough
+    // of the answer to choose between them without opening each one.
     double lowest = 0.0;
     double highest = 0.0;
-    if (m_hasResult
-        && fieldValueRange(result, FieldChannel::DisplacementMagnitude,
-                           lowest, highest)) {
-        QString summary =
-            tr("Displacement field - %1 of %2 points%3, %4 to %5 px")
-                .arg(result.converged)
-                .arg(result.total())
-                .arg(result.restrictedToRoi ? tr(" in the region of interest")
-                                            : QString())
-                .arg(lowest, 0, 'f', 2)
-                .arg(highest, 0, 'f', 2);
+    const bool measured =
+        fieldValueRange(result, FieldChannel::DisplacementMagnitude, lowest, highest);
 
-        // Named in the project when it exists, and named as absent when it was
-        // asked for and did not: a strain field nothing mentions is a strain
-        // field nobody knows they have.
-        double strainLow = 0.0;
-        double strainHigh = 0.0;
-        if (result.hasStrain()
-            && fieldValueRange(result, FieldChannel::StrainXX, strainLow,
-                               strainHigh)) {
-            summary += tr("; strain at %1 points, exx %2 to %3")
-                           .arg(result.strainFitted)
-                           .arg(strainLow, 0, 'e', 2)
-                           .arg(strainHigh, 0, 'e', 2);
-        } else if (result.strainRequested) {
-            summary += tr("; no strain could be fitted");
-        }
+    auto *item = new QTreeWidgetItem(m_resultsItem);
+    item->setData(0, kRecordKindRole, RecordKind::Frame);
+    item->setData(0, kRecordIndexRole, frame);
+    const QString summary =
+        measured ? tr("Frame %1: %2 - %3 of %4 points, %5 to %6 px")
+                       .arg(frame + 1)
+                       .arg(m_plannedFrames.at(frame).target.fileName)
+                       .arg(result.converged)
+                       .arg(result.total())
+                       .arg(lowest, 0, 'f', 2)
+                       .arg(highest, 0, 'f', 2)
+                 : tr("Frame %1: %2 - nothing could be solved")
+                       .arg(frame + 1)
+                       .arg(m_plannedFrames.at(frame).target.fileName);
+    item->setText(0, summary);
+    item->setToolTip(0, summary);
+    m_resultsItem->setExpanded(true);
 
-        m_resultsItem->setText(0, summary);
-        // The panel is narrow enough to clip the range off the end.
-        m_resultsItem->setToolTip(0, summary);
-    } else {
-        m_resultsItem->setText(0, tr("Results - none"));
-        m_resultsItem->setToolTip(0, QString());
+    // The newest frame goes on screen as it lands, so a sequence can be watched
+    // rather than waited for.
+    displayFrame(frame);
+}
+
+void MainWindow::onSequenceFinished(int framesMeasured, bool cancelled)
+{
+    const int planned = int(m_plannedFrames.size());
+
+    m_resultsItem->setText(0,
+        framesMeasured == 0
+            ? tr("Results - none")
+            : (cancelled
+                   ? tr("Results - %1 of %2 frames measured before stopping")
+                         .arg(framesMeasured)
+                         .arg(planned)
+                   : (framesMeasured == 1
+                          ? tr("Results - 1 frame measured")
+                          : tr("Results - %1 frames measured").arg(framesMeasured))));
+    m_resultsItem->setToolTip(0, m_resultsItem->text(0));
+
+    if (planned > 1) {
+        log(cancelled ? tr("Sequence stopped after %1 of %2 frames.")
+                            .arg(framesMeasured)
+                            .arg(planned)
+                      : tr("Sequence finished - %1 frames measured.")
+                            .arg(framesMeasured));
     }
 
-    m_stageLabel->setText(m_hasResult ? tr("Field measured") : tr("No result"));
+    m_stageLabel->setText(framesMeasured > 0 ? tr("Field measured")
+                                             : tr("No result"));
     statusBar()->showMessage(
-        m_hasResult ? tr("%1 points solved").arg(result.converged)
-                    : tr("No point could be solved"),
+        framesMeasured > 0
+            ? (planned == 1 ? tr("%1 points solved").arg(m_result.converged)
+                            : tr("%1 frames measured").arg(framesMeasured))
+            : tr("No point could be solved"),
         6000);
 
-    if (!m_hasResult && !result.cancelled) {
+    if (framesMeasured > 0 && !m_hasResult && !cancelled) {
         QMessageBox::warning(
             this, tr("No result"),
             tr("The engine solved none of the %1 points. The log lists the "
                "reason it gave for each.")
-                .arg(result.total()));
+                .arg(m_result.total()));
     }
 
+    tearDownWorker();
+}
+
+void MainWindow::tearDownWorker()
+{
     m_progress->hide();
-    m_workerThread->quit();
-    m_workerThread->wait();
-    m_runner->deleteLater();
-    m_runner = nullptr;
-    m_workerThread->deleteLater();
-    m_workerThread = nullptr;
+    if (m_workerThread) {
+        m_workerThread->quit();
+        m_workerThread->wait();
+        m_workerThread->deleteLater();
+        m_workerThread = nullptr;
+    }
+    if (m_runner) {
+        m_runner->deleteLater();
+        m_runner = nullptr;
+    }
     updateActionStates();
 }
 
@@ -1146,16 +1323,8 @@ void MainWindow::onCorrelationFailed(const QString &reason)
 {
     log(tr("Correlation failed: %1").arg(reason));
     QMessageBox::warning(this, tr("Correlation failed"), reason);
-
-    m_progress->hide();
     m_stageLabel->setText(tr("Correlation failed"));
-    m_workerThread->quit();
-    m_workerThread->wait();
-    m_runner->deleteLater();
-    m_runner = nullptr;
-    m_workerThread->deleteLater();
-    m_workerThread = nullptr;
-    updateActionStates();
+    tearDownWorker();
 }
 
 void MainWindow::exportField()
@@ -1178,31 +1347,74 @@ void MainWindow::exportField()
 
 bool MainWindow::exportFieldTo(const QString &path)
 {
-    if (!m_hasResult) {
+    if (m_frames.isEmpty()) {
         QMessageBox::warning(this, tr("Nothing to export"),
                              tr("Run a correlation first: there is no measured "
                                 "field to write."));
         return false;
     }
 
-    const QString refusal = writeFieldVtu(path, m_result, m_resultProvenance);
-    if (!refusal.isEmpty()) {
-        log(tr("Export failed: %1").arg(refusal));
-        QMessageBox::warning(this, tr("Export failed"), refusal);
-        return false;
+    const QFileInfo chosen(path);
+    const QString folder = chosen.absolutePath();
+    const QString stem = chosen.completeBaseName();
+
+    QStringList written;
+    for (int frame = 0; frame < m_frames.size(); frame++) {
+        // ⚑ One file per frame, NUMBERED AND PADDED. A single file holding the
+        // last frame would silently discard everything the sequence was run
+        // for, and ParaView groups a numbered series into a time series by the
+        // names alone -- unpadded, frame 10 would sort before frame 2 and the
+        // animation would play out of order, which is the same trap the frame
+        // ordering itself had to solve.
+        const QString framePath =
+            m_frames.size() == 1
+                ? folder + QLatin1Char('/') + stem + QStringLiteral(".vtu")
+                : folder + QLatin1Char('/') + stem
+                      + QStringLiteral("_%1.vtu")
+                            .arg(frame, 4, 10, QLatin1Char('0'));
+
+        const QString refusal = writeFieldVtu(framePath, m_frames.at(frame).result,
+                                              m_frames.at(frame).provenance);
+        if (!refusal.isEmpty()) {
+            // Stopped at the first failure rather than pressing on: whatever
+            // stopped this frame stops the rest, and the files already written
+            // are named so the user knows exactly how far it got.
+            log(tr("Export failed on frame %1 of %2: %3")
+                    .arg(frame + 1)
+                    .arg(m_frames.size())
+                    .arg(refusal));
+            if (!written.isEmpty()) {
+                log(tr("  %1 file(s) were written before that: %2")
+                        .arg(written.size())
+                        .arg(written.join(QStringLiteral(", "))));
+            }
+            QMessageBox::warning(this, tr("Export failed"), refusal);
+            return false;
+        }
+        written << QFileInfo(framePath).fileName();
     }
 
     // Named in full, and in the log rather than only in a status message that
-    // disappears: a file written to a path chosen in a dialog that has since
-    // closed is a file the user cannot find again.
-    log(tr("Exported the measured field to %1 - %2 points, %3 of them solved%4")
-            .arg(path)
-            .arg(m_result.total())
-            .arg(m_result.converged)
-            .arg(m_result.hasStrain()
-                     ? tr(", with strain at %1").arg(m_result.strainFitted)
-                     : QString()));
-    statusBar()->showMessage(tr("Field exported to %1").arg(QFileInfo(path).fileName()),
+    // disappears: files written to a path chosen in a dialog that has since
+    // closed are files the user cannot find again.
+    if (written.size() == 1) {
+        log(tr("Exported the measured field to %1 - %2 points, %3 of them "
+               "solved%4")
+                .arg(folder + QLatin1Char('/') + written.first())
+                .arg(m_result.total())
+                .arg(m_result.converged)
+                .arg(m_result.hasStrain()
+                         ? tr(", with strain at %1").arg(m_result.strainFitted)
+                         : QString()));
+    } else {
+        log(tr("Exported %1 frames to %2, as %3 through %4")
+                .arg(written.size())
+                .arg(folder, written.first(), written.last()));
+    }
+
+    statusBar()->showMessage(written.size() == 1
+                                 ? tr("Field exported to %1").arg(written.first())
+                                 : tr("%1 frames exported").arg(written.size()),
                              6000);
     return true;
 }
@@ -1239,7 +1451,11 @@ void MainWindow::updateActionStates()
     const bool running = m_workerThread != nullptr;
     const bool drawing = m_viewport->isDrawingRoi();
     const bool hasReference = m_referenceRecord.isValid();
-    const bool hasPair = hasReference && firstUsableTarget() >= 0;
+    // Asked of the same planner the run itself uses, so Run cannot be enabled
+    // for a project the run would then refuse, nor disabled for one it would
+    // accept. Before this there were two answers to the same question.
+    const bool hasPair =
+        hasReference && !planSequence(m_referenceRecord, m_targetRecords).isEmpty();
 
     // While a boundary is being placed, the viewport's own bar is the control
     // surface. Leaving these live would offer two ways to decide the same

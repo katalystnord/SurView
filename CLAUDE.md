@@ -184,6 +184,58 @@ that cannot occur), and scale labels are sized in SIGNIFICANT digits rather than
 decimal places, since the two quantities sit at opposite ends of the number line
 and any fixed decimal count fails at one end or the other.
 
+### Sequences: one reference, many frames (2026-08-19)
+
+A DIC test is a loading series, not a pair of photographs. The interface had
+accepted several targets since the first window and measured exactly one, which
+is the one place it over-promised outright.
+
+⚑ **Frame order is a correctness problem, not a presentation one.** Sorted the
+way a computer sorts strings, `frame_10.tif` comes before `frame_2.tif`, so a
+twelve-frame test is measured 1, 10, 11, 12, 2, 3 ... and every individual field
+is perfect while the series they form is nonsense. Nothing downstream can detect
+it: each frame solves, the displacements are real, and the specimen simply
+appears to jump about. `core/Sequence.h` compares digit runs as numbers, and the
+project tree is sorted into that order ON IMPORT, so what is listed is what will
+be measured and the two cannot disagree unnoticed.
+
+**Every frame is measured against the original reference**, never against the
+frame before it. That is the ordinary meaning of a DIC sequence and it keeps the
+displacements directly comparable, but correlation degrades as the specimen
+moves away from where it started, and past some deformation the engine's
+reference-update tracking is what a run needs instead. Not built. Said in the
+run log rather than left implicit, because a sequence that stops correlating
+halfway through looks exactly like a specimen that stopped deforming.
+
+`SequenceRunner` owns only the loop; `CorrelationRunner` stays the single-pair
+engine it already was, with its tests intact. The cost of that separation is
+re-reading the reference and rebuilding the solver's preparation per frame,
+which is a fraction of a frame's solve and buys leaving the engine containment
+boundary alone.
+
+Two defects found while building it, both by tests that were sharpened after
+first passing for the wrong reason:
+
+- ⚑ **`CorrelationResult::cancelled` was never set when the cancel arrived
+  during the last chunk of a stage** -- the outer loop's own `!m_cancelled`
+  condition ended the run without passing through the break that recorded it.
+  On any grid small enough to be a single chunk that was EVERY cancel, so a
+  stopped run reported a clean finish over a solve it had abandoned. Now asked
+  of the flag once, after the loops.
+- **Closing the window mid-run aborted the process** with "QThread: Destroyed
+  while thread is still running". MainWindow had no destructor stopping its
+  worker.
+
+Both were found because a test that passed was not believed: the Stop case
+passed with the reach-into-the-frame removed, so it was rewritten to ask the
+interrupted frame whether it knew it had been interrupted, and that is what
+exposed the sentinel bug underneath.
+
+Export writes one file per frame, numbered and zero-padded, which is how
+ParaView groups a series into a time series -- unpadded, `frame_10` sorts before
+`frame_2` and the animation plays out of order, which is the same trap as the
+frame ordering itself, one layer out.
+
 ### Reliability: two questions, never one score (2026-08-19)
 
 Every run now reports how far each point can be trusted, always, with no

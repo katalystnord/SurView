@@ -233,10 +233,8 @@ void CorrelationRunner::run()
                                           ? tr("estimating displacement")
                                           : tr("refining to sub-pixel");
             for (int start = 0; start < total; start += kChunkPoints) {
-                if (m_cancelled) {
-                    result.cancelled = true;
+                if (m_cancelled)
                     break;
-                }
 
                 const int count = std::min(kChunkPoints, total - start);
                 std::vector<POI2D> chunk(queue.begin() + start,
@@ -253,6 +251,22 @@ void CorrelationRunner::run()
                 emit progress(start + count, total, stageName);
             }
         }
+
+        // ⚑ Asked of the flag once, here, rather than set at the point the loop
+        // breaks. Set inside the chunk loop it was missed entirely whenever the
+        // cancel arrived during the LAST chunk of a stage: the outer loop's own
+        // `!m_cancelled` condition then ended the run without passing through
+        // the break that recorded it. On a grid small enough to be a single
+        // chunk that was every cancel, and the run reported a clean finish over
+        // a solve it had abandoned -- a result claiming to be complete when it
+        // is not, which is the worst thing this class can produce.
+        //
+        // Found by the sequence suite, which cancels mid-frame and asks the
+        // interrupted frame whether it knows: that case,
+        // stopping_reaches_into_the_frame_that_is_running, is the regression
+        // guard for this line.
+        if (m_cancelled)
+            result.cancelled = true;
 
         // --- how far each point can be trusted --------------------------------
         // Always run, with no setting to turn it off: under tenet 9 the account
@@ -272,10 +286,8 @@ void CorrelationRunner::run()
             // the engine's whole-queue call blocks with no progress and no way
             // to stop.
             for (int start = 0; start < total; start += kChunkPoints) {
-                if (m_cancelled) {
-                    result.cancelled = true;
+                if (m_cancelled)
                     break;
-                }
                 const int count = std::min(kChunkPoints, total - start);
 #pragma omp parallel for num_threads(threads)
                 for (int i = start; i < start + count; i++)
@@ -322,10 +334,8 @@ void CorrelationRunner::run()
             // Each point still fits against the WHOLE queue -- only the loop is
             // divided, never the neighbourhood.
             for (int start = 0; start < total; start += kChunkPoints) {
-                if (m_cancelled) {
-                    result.cancelled = true;
+                if (m_cancelled)
                     break;
-                }
                 const int count = std::min(kChunkPoints, total - start);
 #pragma omp parallel for num_threads(threads)
                 for (int i = start; i < start + count; i++)

@@ -14,6 +14,7 @@
 
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
+#include "core/Sequence.h"
 #include "core/Roi.h"
 #include "gui/ImageViewport.h"
 #include "gui/MainWindow.h"
@@ -28,6 +29,7 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QToolBar>
+#include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
 #include <QFileInfo>
@@ -135,6 +137,22 @@ QString provenanceIn(const QString &path)
     return all;
 }
 
+// Mean measured displacement along x over the solved points of one frame.
+// Lives here rather than on CorrelationResult: it is how these cases tell one
+// frame from another, not something the application itself needs.
+double meanU(const CorrelationResult &result)
+{
+    double sum = 0.0;
+    int counted = 0;
+    for (const CorrelationPoint &point : result.points) {
+        if (!point.converged)
+            continue;
+        sum += point.u;
+        counted++;
+    }
+    return counted > 0 ? sum / counted : 0.0;
+}
+
 // Where a given image pixel currently sits inside the viewport widget.
 //
 // This asks the viewport through its real projection rather than recomputing
@@ -180,6 +198,11 @@ private slots:
     void a_measured_field_leaves_the_application_and_says_where_it_went();
     void an_export_records_the_settings_that_produced_it_not_the_ones_on_screen();
     void the_reliability_of_a_field_is_reachable_and_qualified_on_screen();
+
+    void targets_are_listed_in_frame_order_not_the_order_they_were_chosen();
+    void every_frame_of_a_sequence_is_measured_and_listed();
+    void a_frame_can_be_picked_from_the_project_and_shows_its_own_field();
+    void exporting_a_sequence_writes_one_numbered_file_for_each_frame();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -791,6 +814,159 @@ void TestWorkspaceWalkthrough::the_reliability_of_a_field_is_reachable_and_quali
              "nothing says which direction of this scale is the bad one");
     QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("one part in")),
              "the noise floor is not put against the movement it qualifies");
+}
+
+
+// The two fixture images, imported in the WRONG order on purpose: as targets
+// they are a two-frame sequence whose frame order is alphabetical, and
+// shift_reference sorts before shift_target.
+static QStringList outOfOrderFrames()
+{
+    return {fixture(QStringLiteral("shift_target.tif")),
+            fixture(QStringLiteral("shift_reference.tif"))};
+}
+
+void TestWorkspaceWalkthrough::targets_are_listed_in_frame_order_not_the_order_they_were_chosen()
+{
+    // A sequence is a time axis, and the project has to show the order it will
+    // actually be measured in. If the list on screen and the order of
+    // measurement disagree, every frame is right and the series is nonsense --
+    // and there is nothing on screen that could reveal it.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages(outOfOrderFrames());
+
+    QStringList listed;
+    for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
+        for (int i = 0; i < tree->topLevelItemCount(); i++) {
+            QTreeWidgetItem *top = tree->topLevelItem(i);
+            if (!top->text(0).startsWith(QStringLiteral("Target")))
+                continue;
+            for (int c = 0; c < top->childCount(); c++)
+                listed << top->child(c)->text(0);
+        }
+    }
+
+    QCOMPARE(listed.size(), 2);
+    QVERIFY2(listed.at(0).startsWith(QStringLiteral("shift_reference")),
+             qPrintable(QStringLiteral("the project lists %1 first, but frame "
+                                       "order puts shift_reference there")
+                            .arg(listed.at(0))));
+    QVERIFY2(listed.at(1).startsWith(QStringLiteral("shift_target")),
+             qPrintable(listed.at(1)));
+}
+
+void TestWorkspaceWalkthrough::every_frame_of_a_sequence_is_measured_and_listed()
+{
+    // The interface has accepted several targets since the first window and
+    // measured exactly one of them. That is the gap this closes.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages(outOfOrderFrames());
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([&window] { return window.measuredFrames() == 2; }, 180000),
+             "the run did not measure both frames within three minutes");
+    QVERIFY(viewport->hasField());
+
+    // Frame order, verified by the measurement rather than by the label: frame
+    // 0 is the reference against itself and cannot have moved, frame 1 is the
+    // +3 px target. Measured in the other order, both numbers land on the
+    // wrong frame and nothing else would show it.
+    QVERIFY2(qAbs(meanU(window.frameResult(0))) < 0.05,
+             "frame 0 should be the reference against itself, which does not move");
+    QVERIFY2(qAbs(meanU(window.frameResult(1)) - 3.0) < 0.1,
+             "frame 1 should be the +3 px target");
+
+    // And the project says so, with both frames on it rather than one result.
+    QVERIFY2(projectLine(&window, QStringLiteral("Results"))
+                     .contains(QStringLiteral("2"))
+                 || projectLine(&window, QStringLiteral("Displacement"))
+                        .contains(QStringLiteral("2")),
+             qPrintable(QStringLiteral("the project does not report two frames: %1")
+                            .arg(projectLine(&window, QStringLiteral("Results")))));
+}
+
+void TestWorkspaceWalkthrough::a_frame_can_be_picked_from_the_project_and_shows_its_own_field()
+{
+    // A sequence nobody can step through is a sequence that measured itself for
+    // nothing. Each frame has to be reachable, and reachable by pointing at it.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages(outOfOrderFrames());
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() == 2; }, 180000));
+
+    // Find the frame entries under Results and click the first one, the way a
+    // user picks a frame.
+    QTreeWidgetItem *firstFrame = nullptr;
+    for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
+        for (int i = 0; i < tree->topLevelItemCount(); i++) {
+            QTreeWidgetItem *top = tree->topLevelItem(i);
+            if (top->childCount() > 0 && top->text(0).contains(QStringLiteral("frame"),
+                                                               Qt::CaseInsensitive)) {
+                firstFrame = top->child(0);
+            }
+        }
+    }
+    QVERIFY2(firstFrame, "no frame of the sequence can be picked from the project");
+
+    firstFrame->treeWidget()->setCurrentItem(firstFrame);
+
+    QVERIFY(viewport->hasField());
+    QVERIFY2(qAbs(meanU(window.displayedResult())) < 0.05,
+             "picking frame 0 did not put frame 0 on screen");
+}
+
+void TestWorkspaceWalkthrough::exporting_a_sequence_writes_one_numbered_file_for_each_frame()
+{
+    // One file per frame, numbered, because that is what ParaView opens as a
+    // time series. A single file holding the last frame would silently discard
+    // everything the sequence was run for.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages(outOfOrderFrames());
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() == 2; }, 180000));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QVERIFY(window.exportFieldTo(dir.filePath(QStringLiteral("run.vtu"))));
+
+    const QStringList written =
+        QDir(dir.path()).entryList({QStringLiteral("*.vtu")}, QDir::Files, QDir::Name);
+    QCOMPARE(written.size(), 2);
+    QVERIFY2(written.at(0).contains(QStringLiteral("0000")),
+             qPrintable(QStringLiteral("frames are not numbered for a time "
+                                       "series: %1").arg(written.join(QLatin1Char(' ')))));
+
+    // Numbered so that they sort into frame order as filenames, which is how
+    // ParaView groups them: unpadded, frame 10 would open before frame 2.
+    QVERIFY(precedesInSequence(written.at(0), written.at(1)));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

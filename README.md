@@ -30,10 +30,11 @@ tools/check-engine.sh [path-to-OpenCorr-checkout]
 
 ## Status
 
-Working, and narrow. Import a reference and target image, draw or auto-detect a
-region of interest, run a correlation, read the displacement and strain fields
-on screen, and export them as `.vtu` for ParaView or FreeCAD. Linux, Qt6,
-VTK 9.5, CMake >= 3.21.
+Working, and narrow. Import a reference image and a sequence of targets, draw or
+auto-detect a region of interest, run the correlation, step through the measured
+frames reading displacement, strain and per-point reliability, and export the
+series as numbered `.vtu` files for ParaView or FreeCAD. Linux, Qt6, VTK 9.5,
+CMake >= 3.21.
 
 Run the tests - both SurView's and the pinned engine's - with:
 

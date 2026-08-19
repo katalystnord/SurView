@@ -2,6 +2,7 @@
 
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
+#include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
 #include "core/Roi.h"
 
@@ -29,6 +30,7 @@ class MainWindow : public QMainWindow
 
 public:
     explicit MainWindow(QWidget *parent = nullptr);
+    ~MainWindow() override;
 
     // Import images by path -- the same route the File menu takes, exposed so
     // they can also be named on the command line.
@@ -39,7 +41,15 @@ public:
     // walkthrough tests can assert on what a run actually produced rather than
     // on what the screen appears to show; nothing in the application reads
     // these.
+    // The frame currently on screen, and the sequence behind it. Exposed so the
+    // walkthrough tests can assert on what a run actually produced rather than
+    // on what the screen appears to show; nothing in the application reads
+    // these.
+    const CorrelationResult &displayedResult() const { return m_result; }
     const CorrelationResult &lastResult() const { return m_result; }
+    int measuredFrames() const { return int(m_frames.size()); }
+    const CorrelationResult &frameResult(int frame) const;
+
     const RegionOfInterest &roi() const { return m_roi; }
 
     // Write the measured field to `path`. The same route the File menu takes,
@@ -67,8 +77,10 @@ private slots:
     void clearRoi();
 
     void stopCorrelation();
-    void onCorrelationProgress(int done, int total, const QString &stage);
-    void onCorrelationFinished(const CorrelationResult &result);
+    void onFrameProgress(int frame, int frameCount, int done, int total,
+                         const QString &stage);
+    void onFrameFinished(int frame, const CorrelationResult &result);
+    void onSequenceFinished(int framesMeasured, bool cancelled);
     void onCorrelationFailed(const QString &reason);
 
     // Keeps the panel honest about what the engine actually offers: the
@@ -105,10 +117,6 @@ private:
     // drift apart.
     CorrelationSettings currentSettings() const;
 
-    // First target that can actually be correlated against the reference, or
-    // -1 if there is none.
-    int firstUsableTarget() const;
-
     // Restate the region in the project tree and the log. One place, so a
     // region set by hand and one proposed by the detector are reported in the
     // same words.
@@ -117,6 +125,20 @@ private:
     // Drop a measured field once the region it was measured over stops being
     // the region in force.
     void discardStaleResult();
+
+    // Everything one measured frame has to say about itself, in the log.
+    void logFrameResult(int frame, const CorrelationResult &result);
+
+    // Shut the worker thread down. One place, because it happens on three
+    // different endings and a missed teardown leaks a thread per run.
+    void tearDownWorker();
+
+    // Put one measured frame on screen, and say in the project which one.
+    void displayFrame(int frame);
+
+    // Restate the target list in frame order and rebuild its tree entries. A
+    // sequence is a time axis, so the order shown has to be the order measured.
+    void rebuildTargetList(QVector<QTreeWidgetItem *> pending);
 
     ImageViewport *m_viewport = nullptr;
     RecordPanel *m_record = nullptr;
@@ -157,8 +179,30 @@ private:
     QProgressBar *m_progress = nullptr;
 
     QThread *m_workerThread = nullptr;
-    CorrelationRunner *m_runner = nullptr;
+    SequenceRunner *m_runner = nullptr;
 
+    // One measured frame, with the account of how it was produced captured at
+    // the moment the run started. Kept together so an export cannot pair a
+    // frame with another frame's provenance.
+    struct MeasuredFrame
+    {
+        CorrelationResult result;
+        FieldProvenance provenance;
+    };
+    // Frames that have actually been MEASURED. Not pre-sized to the planned
+    // count: a size that means "planned" reads identically to one that means
+    // "done", and anything asking how far a run has got would be told the
+    // answer before it started.
+    QVector<MeasuredFrame> m_frames;
+
+    // How each planned frame will be attributed, captured when the run starts
+    // and paired with its result as that arrives.
+    QVector<FieldProvenance> m_plannedFrames;
+
+    int m_displayedFrame = -1;
+
+    // The frame on screen, held separately so everything that already reads it
+    // keeps working whether the run measured one target or twelve.
     CorrelationResult m_result;
     bool m_hasResult = false;
 
@@ -166,7 +210,7 @@ private:
     // back from the panel at export time. The panel keeps taking input after a
     // run finishes, so reading it later would write a file stating, with a
     // SHA-256 beside it, a configuration that never measured anything.
-    FieldProvenance m_resultProvenance;
+
 
     // Actions whose enabled state depends on project progress.
     QAction *m_actRun = nullptr;
