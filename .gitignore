@@ -36,3 +36,7 @@ tools/__pycache__/
 # Instrumented and mutation build trees (see tools/coverage.sh, tools/mutants.py)
 build-coverage/
 build-mutants/
+
+# Downloaded example datasets, fetched rather than vendored (see the examples
+# note in CLAUDE.md): their licences permit use, not necessarily redistribution.
+examples/downloaded/

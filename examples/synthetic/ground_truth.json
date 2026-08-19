@@ -1,0 +1,377 @@
+{
+  "produced_by": "tools/make-synthetic-examples.py",
+  "seed": 20260819,
+  "image": {
+    "width": 640,
+    "height": 480,
+    "bit_depth": 8,
+    "supersample": 4,
+    "noise_grey_levels": 1.2
+  },
+  "how_the_answer_is_exact": "The pattern is a list of Gaussian blobs, not an image. A uniform deformation gradient maps a Gaussian to another Gaussian exactly, so every frame is rendered from the pattern at its own deformation rather than warped from a previous frame. No pixel is ever resampled, so the displacement below is exact by construction rather than accurate to within the generator's interpolation. Pixel integration is by supersampling, which is what a sensor does. Sensor noise is added after rendering.",
+  "coordinate_frame": "Image pixels: x right, y down, origin at the top-left pixel centre, matching SurView's own frame. The reference frame of each set is its 00 image.",
+  "sets": {
+    "translation": {
+      "what_it_shows": "Rigid sub-pixel translation along x. There is no strain anywhere, so a strain map of these is a map of the method's own noise.",
+      "frames": [
+        {
+          "file": "translation_00.tif",
+          "amount": 0.0,
+          "deformation_gradient": [
+            [
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              0.0,
+              0.0
+            ],
+            "bottom_right": [
+              0.0,
+              0.0
+            ]
+          }
+        },
+        {
+          "file": "translation_01.tif",
+          "amount": 0.25,
+          "deformation_gradient": [
+            [
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "rigid_shift_px": [
+            0.25,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.25,
+              0.0
+            ],
+            "centre": [
+              0.25,
+              0.0
+            ],
+            "bottom_right": [
+              0.25,
+              0.0
+            ]
+          }
+        },
+        {
+          "file": "translation_02.tif",
+          "amount": 0.5,
+          "deformation_gradient": [
+            [
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "rigid_shift_px": [
+            0.5,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.5,
+              0.0
+            ],
+            "centre": [
+              0.5,
+              0.0
+            ],
+            "bottom_right": [
+              0.5,
+              0.0
+            ]
+          }
+        },
+        {
+          "file": "translation_03.tif",
+          "amount": 1.0,
+          "deformation_gradient": [
+            [
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "rigid_shift_px": [
+            1.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              1.0,
+              0.0
+            ],
+            "centre": [
+              1.0,
+              0.0
+            ],
+            "bottom_right": [
+              1.0,
+              0.0
+            ]
+          }
+        },
+        {
+          "file": "translation_04.tif",
+          "amount": 2.5,
+          "deformation_gradient": [
+            [
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "rigid_shift_px": [
+            2.5,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              2.5,
+              0.0
+            ],
+            "centre": [
+              2.5,
+              0.0
+            ],
+            "bottom_right": [
+              2.5,
+              0.0
+            ]
+          }
+        }
+      ]
+    },
+    "tension": {
+      "what_it_shows": "Uniaxial tension along x with a Poisson contraction of 0.33 in y, in rising load steps. Displacement grows from the origin, so exx is uniform while displacement is not.",
+      "frames": [
+        {
+          "file": "tension_00.tif",
+          "amount": 0.0,
+          "deformation_gradient": [
+            [
+              1.0,
+              0.0
+            ],
+            [
+              0.0,
+              1.0
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              0.0,
+              0.0
+            ],
+            "bottom_right": [
+              0.0,
+              0.0
+            ]
+          }
+        },
+        {
+          "file": "tension_01.tif",
+          "amount": 0.005,
+          "deformation_gradient": [
+            [
+              1.005,
+              0.0
+            ],
+            [
+              0.0,
+              0.99835
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              1.599999999999966,
+              -0.396000000000015
+            ],
+            "bottom_right": [
+              3.199999999999932,
+              -0.79200000000003
+            ]
+          }
+        },
+        {
+          "file": "tension_02.tif",
+          "amount": 0.01,
+          "deformation_gradient": [
+            [
+              1.01,
+              0.0
+            ],
+            [
+              0.0,
+              0.9967
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              3.1999999999999886,
+              -0.7920000000000016
+            ],
+            "bottom_right": [
+              6.399999999999977,
+              -1.5840000000000032
+            ]
+          }
+        },
+        {
+          "file": "tension_03.tif",
+          "amount": 0.02,
+          "deformation_gradient": [
+            [
+              1.02,
+              0.0
+            ],
+            [
+              0.0,
+              0.9934
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              6.399999999999977,
+              -1.5840000000000032
+            ],
+            "bottom_right": [
+              12.799999999999955,
+              -3.1680000000000064
+            ]
+          }
+        },
+        {
+          "file": "tension_04.tif",
+          "amount": 0.035,
+          "deformation_gradient": [
+            [
+              1.035,
+              0.0
+            ],
+            [
+              0.0,
+              0.98845
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              11.199999999999989,
+              -2.7719999999999914
+            ],
+            "bottom_right": [
+              22.399999999999977,
+              -5.543999999999983
+            ]
+          }
+        },
+        {
+          "file": "tension_05.tif",
+          "amount": 0.055,
+          "deformation_gradient": [
+            [
+              1.055,
+              0.0
+            ],
+            [
+              0.0,
+              0.98185
+            ]
+          ],
+          "rigid_shift_px": [
+            0.0,
+            0.0
+          ],
+          "displacement_at": {
+            "top_left": [
+              0.0,
+              0.0
+            ],
+            "centre": [
+              17.599999999999966,
+              -4.3559999999999945
+            ],
+            "bottom_right": [
+              35.19999999999993,
+              -8.711999999999989
+            ]
+          }
+        }
+      ]
+    }
+  }
+}
