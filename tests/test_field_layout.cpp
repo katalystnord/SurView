@@ -71,6 +71,9 @@ private slots:
     void a_strain_channel_gets_a_colour_range_centred_on_zero();
     void a_displacement_channel_gets_the_range_it_actually_measured();
     void a_scale_shows_enough_figures_to_tell_its_own_ticks_apart();
+    void every_channel_carries_the_sentence_that_stops_it_being_misread();
+    void a_reliability_channel_reads_the_opposite_way_from_the_rest();
+    void the_noise_floor_is_put_against_the_movement_it_qualifies();
 };
 
 void TestFieldLayout::a_value_lands_in_the_cell_its_point_recorded()
@@ -348,6 +351,99 @@ void TestFieldLayout::a_scale_shows_enough_figures_to_tell_its_own_ticks_apart()
     QCOMPARE(fieldScaleSignificantDigits(4.0, 4.0), 3);
     QCOMPARE(fieldScaleSignificantDigits(4.0, 3.0), 3);   // reversed, not a crash
     QCOMPARE(fieldScaleSignificantDigits(0.0, 0.0), 3);
+}
+
+
+void TestFieldLayout::every_channel_carries_the_sentence_that_stops_it_being_misread()
+{
+    // A field channel is a number on a colour scale, and a number on a colour
+    // scale is trusted. The note is where each one says what it is NOT, so it
+    // travels with the channel rather than living in documentation nobody has
+    // open. Required for all of them, so a channel cannot be added without one.
+    for (const FieldChannelInfo &channel : offeredFieldChannels()) {
+        const QString note = fieldChannelNote(channel.channel);
+        QVERIFY2(!note.isEmpty(),
+                 qPrintable(QStringLiteral("channel %1 says nothing about itself")
+                                .arg(channel.name)));
+        QCOMPARE(channel.note, note);
+    }
+
+    // The two that matter most, because both are read as more than they are.
+    const QString floor = fieldChannelNote(FieldChannel::NoiseFloor);
+    QVERIFY2(floor.contains(QStringLiteral("lower bound"), Qt::CaseInsensitive),
+             "the noise floor does not say it is a bound rather than an error bar");
+    QVERIFY2(floor.contains(QStringLiteral("target"), Qt::CaseInsensitive),
+             "the noise floor does not say it never examines the target image");
+
+    const QString conditioning = fieldChannelNote(FieldChannel::MatchConditioning);
+    QVERIFY2(conditioning.contains(QStringLiteral("no absolute"), Qt::CaseInsensitive),
+             "match conditioning does not say its scale is relative");
+}
+
+void TestFieldLayout::a_reliability_channel_reads_the_opposite_way_from_the_rest()
+{
+    // Every other channel is a measurement, where a large value is simply a
+    // large value. In these two a large value is a WARNING, and a reader who
+    // carries the usual habit across will read a bad region as an interesting
+    // one. The distinction is carried in the data, so the screen can say it.
+    QVERIFY(fieldChannelIsReliability(FieldChannel::NoiseFloor));
+    QVERIFY(fieldChannelIsReliability(FieldChannel::MatchConditioning));
+    QVERIFY(!fieldChannelIsReliability(FieldChannel::DisplacementMagnitude));
+    QVERIFY(!fieldChannelIsReliability(FieldChannel::StrainXX));
+
+    // Neither is centred on zero: zero is unreachable for both, not a
+    // meaningful midpoint, so a diverging scale would spend half its colours on
+    // values that cannot occur.
+    QVERIFY(!fieldChannelIsCentredOnZero(FieldChannel::NoiseFloor));
+    QVERIFY(!fieldChannelIsCentredOnZero(FieldChannel::MatchConditioning));
+
+    // The noise floor is a displacement and carries the same unit as one; the
+    // conditioning is a reciprocal slope with arbitrary factors and carries none.
+    QCOMPARE(fieldChannelUnit(FieldChannel::NoiseFloor), QStringLiteral("px"));
+    QCOMPARE(fieldChannelUnit(FieldChannel::MatchConditioning),
+             QStringLiteral("dimensionless"));
+}
+
+
+void TestFieldLayout::the_noise_floor_is_put_against_the_movement_it_qualifies()
+{
+    // "0.004 px" is unreadable on its own: whether that is excellent or useless
+    // depends entirely on how much movement there was. The ratio is the sentence
+    // a scientist actually needs, and it comes from this run's own numbers, so
+    // it invents no threshold for what counts as good.
+    CorrelationResult result;
+    result.gridColumns = 2;
+    result.gridRows = 1;
+
+    CorrelationPoint a = measured(0, 3.f, 0.f);      // 3 px of movement
+    a.noiseFloor = 0.004f;
+    a.noiseFloorMeasured = true;
+    CorrelationPoint b = measured(1, 4.f, 0.f);      // 4 px, the largest
+    b.noiseFloor = 0.002f;
+    b.noiseFloorMeasured = true;
+    result.points << a << b;
+
+    // Worst floor 0.004 against the largest displacement 4: one part in 1000.
+    const QString stated = noiseFloorAgainstMovement(result);
+    QVERIFY2(!stated.isEmpty(), "the noise floor was left without context");
+    QVERIFY2(stated.contains(QStringLiteral("1000")),
+             qPrintable(QStringLiteral("expected a ratio of 1000, got: %1").arg(stated)));
+
+    // Nothing to compare against, and nothing claimed. A specimen that did not
+    // move has no ratio, and inventing one would divide by its own noise.
+    CorrelationResult still;
+    still.gridColumns = 1;
+    still.gridRows = 1;
+    CorrelationPoint c = measured(0, 0.f, 0.f);
+    c.noiseFloor = 0.004f;
+    c.noiseFloorMeasured = true;
+    still.points << c;
+    QVERIFY2(noiseFloorAgainstMovement(still).isEmpty(),
+             "a ratio was claimed against no movement at all");
+
+    // And a run with no reliability at all says nothing rather than dividing by
+    // a floor it never measured.
+    QVERIFY(noiseFloorAgainstMovement(CorrelationResult()).isEmpty());
 }
 
 QTEST_MAIN(TestFieldLayout)

@@ -36,6 +36,17 @@ float valueAt(const CorrelationPoint &point, FieldChannel channel)
         return nothing;
 
     switch (channel) {
+    case FieldChannel::NoiseFloor:
+        // Zero would claim a perfect measurement, so an unmeasured one is
+        // not-a-number exactly as an unsolved displacement is.
+        return point.noiseFloorMeasured ? point.noiseFloor : nothing;
+    case FieldChannel::MatchConditioning:
+        return point.conditioningMeasured ? point.conditioning : nothing;
+    default:
+        break;
+    }
+
+    switch (channel) {
     case FieldChannel::DisplacementMagnitude:
         return float(std::hypot(point.u, point.v));
     case FieldChannel::DisplacementX:
@@ -57,13 +68,16 @@ QVector<FieldChannelInfo> offeredFieldChannels()
                                  FieldChannel::DisplacementY,
                                  FieldChannel::StrainXX,
                                  FieldChannel::StrainYY,
-                                 FieldChannel::StrainXY}) {
+                                 FieldChannel::StrainXY,
+                                 FieldChannel::NoiseFloor,
+                                 FieldChannel::MatchConditioning}) {
         // Asked of the same functions everything else asks, so this list
         // cannot drift from how a channel actually behaves.
         channels.append(FieldChannelInfo{
             channel,
             fieldChannelName(channel),
             fieldChannelUnit(channel),
+            fieldChannelNote(channel),
             fieldChannelIsStrain(channel),
             fieldChannelIsCentredOnZero(channel),
         });
@@ -86,16 +100,79 @@ QString fieldChannelName(FieldChannel channel)
         return QObject::tr("Strain eyy");
     case FieldChannel::StrainXY:
         return QObject::tr("Shear strain exy");
+    // Named for what it is first and for what the literature calls it second,
+    // so both audiences find it: a reader who has never met the symbol learns
+    // that this is a floor rather than an error bar, and a reader who knows
+    // DIC recognises sigma and beta on sight.
+    case FieldChannel::NoiseFloor:
+        return QObject::tr("Noise floor, sigma");
+    case FieldChannel::MatchConditioning:
+        return QObject::tr("Match conditioning, beta");
     }
     return QString();
 }
 
 QString fieldChannelUnit(FieldChannel channel)
 {
-    // Strain is a ratio and has no unit. Saying so beats leaving it blank,
-    // which reads as an oversight, and beats inventing one.
-    return fieldChannelIsStrain(channel) ? QObject::tr("dimensionless")
-                                         : QObject::tr("px");
+    // Strain is a ratio and conditioning is a reciprocal slope carrying
+    // arbitrary per-axis factors; neither has a unit. Saying so beats leaving
+    // it blank, which reads as an oversight, and beats inventing one. The noise
+    // floor is a displacement and is in pixels like the rest.
+    return fieldChannelIsDimensionless(channel) ? QObject::tr("dimensionless")
+                                                : QObject::tr("px");
+}
+
+bool fieldChannelIsDimensionless(FieldChannel channel)
+{
+    // Strain is a ratio; conditioning is a reciprocal slope carrying arbitrary
+    // per-axis factors. The noise floor is a displacement and is in pixels like
+    // the rest.
+    return fieldChannelIsStrain(channel)
+           || channel == FieldChannel::MatchConditioning;
+}
+
+bool fieldChannelIsReliability(FieldChannel channel)
+{
+    return channel == FieldChannel::NoiseFloor
+           || channel == FieldChannel::MatchConditioning;
+}
+
+QString fieldChannelNote(FieldChannel channel)
+{
+    switch (channel) {
+    case FieldChannel::DisplacementMagnitude:
+        return QObject::tr("How far each point moved, regardless of direction. "
+                           "Measured against the reference frame, so a specimen "
+                           "that simply shifted reads the same as one that "
+                           "deformed.");
+    case FieldChannel::DisplacementX:
+        return QObject::tr("Movement along x, positive to the right.");
+    case FieldChannel::DisplacementY:
+        return QObject::tr("Movement along y, positive DOWN the image, matching "
+                           "the image's own row order.");
+    case FieldChannel::StrainXX:
+    case FieldChannel::StrainYY:
+    case FieldChannel::StrainXY:
+        return QObject::tr("Fitted from the displacements of neighbouring "
+                           "points, not measured at this one, so it describes a "
+                           "subregion rather than a pixel.");
+    case FieldChannel::NoiseFloor:
+        // The sentence this whole channel exists to be read alongside.
+        return QObject::tr(
+            "DIC's sigma: the finest displacement this subset's speckle can "
+            "resolve against the image noise. A lower bound on error, not a "
+            "total error bar - it excludes interpolation bias, out-of-plane "
+            "motion and systematic error, and never examines the target image. "
+            "Larger is worse.");
+    case FieldChannel::MatchConditioning:
+        return QObject::tr(
+            "DIC's beta: how sharply the correlation cost rises around the "
+            "solution that was found. Unlike the noise floor it does judge this "
+            "particular match, but it is a relative score with no absolute "
+            "meaning - compare points within one run, never across runs. "
+            "Larger is worse.");
+    }
+    return QString();
 }
 
 bool fieldChannelIsStrain(FieldChannel channel)
@@ -108,6 +185,8 @@ bool fieldChannelIsStrain(FieldChannel channel)
     case FieldChannel::DisplacementMagnitude:
     case FieldChannel::DisplacementX:
     case FieldChannel::DisplacementY:
+    case FieldChannel::NoiseFloor:
+    case FieldChannel::MatchConditioning:
         return false;
     }
     return false;
@@ -188,6 +267,34 @@ int fieldScaleSignificantDigits(double lowest, double highest)
     const double tickStep = span / 4.0;
     const int needed = int(std::ceil(std::log10(reach / tickStep))) + 1;
     return std::clamp(needed, kFewest, kMost);
+}
+
+QString noiseFloorAgainstMovement(const CorrelationResult &result)
+{
+    double worstFloor = 0.0;
+    double bestFloor = 0.0;
+    if (!fieldValueRange(result, FieldChannel::NoiseFloor, bestFloor, worstFloor))
+        return QString();
+    if (!(worstFloor > 0.0))
+        return QString();
+
+    double smallest = 0.0;
+    double largest = 0.0;
+    if (!fieldValueRange(result, FieldChannel::DisplacementMagnitude, smallest,
+                         largest)) {
+        return QString();
+    }
+
+    // A movement no larger than the floor that qualifies it is not a movement
+    // this can put in proportion; saying "one part in 1" would be worse than
+    // saying nothing.
+    if (largest <= worstFloor)
+        return QString();
+
+    const double ratio = largest / worstFloor;
+    return QObject::tr("At worst one part in %1 of the largest displacement "
+                       "measured.")
+        .arg(qRound(ratio));
 }
 
 bool fieldColourRange(const CorrelationResult &result, FieldChannel channel,

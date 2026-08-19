@@ -27,6 +27,11 @@ enum class FieldChannel
     StrainXX,
     StrainYY,
     StrainXY,
+
+    // How far a point can be trusted, as two different questions rather than
+    // one score. See CorrelationPoint for what each of them can and cannot see.
+    NoiseFloor,
+    MatchConditioning,
 };
 
 // One channel the viewport offers, as its selector shows it.
@@ -39,6 +44,12 @@ struct FieldChannelInfo
     FieldChannel channel;
     QString name;
     QString unit;
+
+    // What this channel is NOT, in one sentence, shown beside it. A number on a
+    // colour scale is trusted; this is where each channel says what it cannot
+    // tell you, next to the number rather than in documentation nobody has
+    // open.
+    QString note;
 
     // True where the values come from the strain fit rather than the
     // correlation, which is what decides whether a channel can be shown at all
@@ -55,7 +66,19 @@ struct FieldChannelInfo
 QVector<FieldChannelInfo> offeredFieldChannels();
 QString fieldChannelName(FieldChannel channel);
 QString fieldChannelUnit(FieldChannel channel);
+QString fieldChannelNote(FieldChannel channel);
+
+// True where the quantity is a pure ratio and has no unit. The scale bar still
+// prints "dimensionless" for these, because a blank there reads as an
+// oversight; running prose says nothing, because "runs from 0.004 to 0.006
+// dimensionless" is not a sentence anyone writes.
+bool fieldChannelIsDimensionless(FieldChannel channel);
 bool fieldChannelIsStrain(FieldChannel channel);
+
+// True where the channel says how far a measurement can be trusted rather than
+// what it measured. Larger is worse in both, which is the opposite reading from
+// every other channel and has to be said on screen.
+bool fieldChannelIsReliability(FieldChannel channel);
 bool fieldChannelIsCentredOnZero(FieldChannel channel);
 
 // The channel's value in every cell of the grid, not-a-number where nothing
@@ -80,6 +103,18 @@ bool fieldValueRange(const CorrelationResult &result, FieldChannel channel,
 // same rule. Capped at both ends: too few is a rounded summary rather than a
 // measurement, too many is float noise dressed as precision.
 int fieldScaleSignificantDigits(double lowest, double highest);
+
+// The worst noise floor set against the largest displacement measured, as a
+// ratio, phrased for a reader. Empty when there is nothing to compare: no
+// reliability measured, or a specimen that did not move, where a ratio would be
+// noise divided by noise.
+//
+// Exists because "0.004 px" alone is unreadable -- whether it is excellent or
+// useless depends entirely on how much movement it is qualifying -- and because
+// the alternative, colouring the map against some absolute idea of a good noise
+// floor, would mean inventing a threshold that depends on the measurement being
+// attempted. This invents nothing: it is the run's own two numbers.
+QString noiseFloorAgainstMovement(const CorrelationResult &result);
 
 // The range a colour scale should span, which is not always the range the data
 // occupies: a signed channel is widened to sit symmetrically about zero, so the

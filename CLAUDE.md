@@ -184,6 +184,68 @@ that cannot occur), and scale labels are sized in SIGNIFICANT digits rather than
 decimal places, since the two quantities sit at opposite ends of the number line
 and any fixed decimal count fails at one end or the other.
 
+### Reliability: two questions, never one score (2026-08-19)
+
+Every run now reports how far each point can be trusted, always, with no
+setting to forget: tenet 9 makes this the measurement's own account of itself,
+and it costs about a second per 30,000 points against a solve costing far more.
+The engine's `Uncertainty2D` provides both metrics; what matters is that they
+answer DIFFERENT questions and must never be collapsed into one "quality" score.
+
+- **Noise floor (the engine's sigma, px)** = `sqrt(2*noise^2 / min(sum gx^2, sum
+  gy^2))`. Image noise, estimated once globally by Immerkaer, divided by this
+  subset's gradient energy. ⚑ **It never examines the target image**, so it says
+  how well the measurement could ever have gone here, not how well it did: it
+  cannot see decorrelation, out-of-plane motion, interpolation bias or a shape
+  function too poor for the deformation. A lower bound, never a total error bar.
+  In practice the map is a speckle-quality map in displacement units. Measured:
+  0.0031 to 0.0040 px on the shift fixture, 0.0095 px mean on OHT-CFRP.
+- **Match conditioning (the engine's beta)** probes the ZNSSD cost around the
+  solution actually found, so it does judge this particular match. Dimensionless,
+  with an arbitrary scale (it carries DICe's per-axis factors and depends on the
+  perturbation size): comparable between points in one run, meaningless across
+  runs. Measured 0.18 to 0.41 here.
+
+Both are larger-is-worse, which is the opposite reading from every other
+channel, so the screen says so.
+
+⚑ **Strictly positive, not merely non-negative.** The engine writes -1 when it
+cannot produce a value, but `POI2D::clear()` leaves both at 0, and zero is the
+FLATTERING reading for each: a zero noise floor claims a perfect measurement, a
+zero conditioning a perfectly sharp cost. Neither is reachable as a real result,
+so anything not above zero was never written. Found by negative check, where a
+`>= 0` test happily reported a noise floor of exactly zero at every point.
+
+⚑ **A `-1` conditioning at a converged point is a WARNING, not an absence.** The
+engine uses the same sentinel for "not computed" and "the cost was too flat to
+probe", which looks like a conflation, but "not computed" fires only for a
+failed or out-of-bounds point and neither is ever reported. So among converged
+points it can only mean the probe found the cost unusable. Counted and stated,
+not left blank. No engine change needed.
+
+Naming is deliberate, to reach all three audiences at once: **"Noise floor,
+sigma"** and **"Match conditioning, beta"**. The plain term says what it is, the
+symbol is what a DIC-fluent reader recognises, and the word "uncertainty"
+appears only in the caption beside it, where it can be qualified rather than
+asserted -- a bare "uncertainty" on a colour scale is read as a total error bar
+by everyone. Every channel now carries a one-sentence `fieldChannelNote()`
+saying what it is NOT, shown next to the number rather than in documentation
+nobody has open, and a walkthrough test fails if the noise floor reaches the
+screen without it.
+
+The noise floor is also put against the movement it qualifies
+(`noiseFloorAgainstMovement()`): "at worst one part in 756 of the largest
+displacement measured". A floor of 0.004 px is unreadable alone -- whether it is
+excellent or useless depends on how much movement it qualifies -- and the
+alternative, colouring the map against some absolute idea of a good noise floor,
+would mean inventing a threshold that depends on the measurement being
+attempted. This invents nothing: it is the run's own two numbers.
+
+Noise is reported with the RESULT rather than in the image Record panel, even
+though it is a property of the reference image, because estimating it needs the
+engine and `core/Correlation.cpp` is one of only two files allowed to know the
+engine exists.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,
@@ -634,10 +696,12 @@ decisions:
   review). Engine-side detection/quality-metric is now fully implemented
   (checkerboard and dot-target, both mono and stereo - see Engine capability
   roadmap above); the GUI/UX itself is still to be designed.
-- **Uncertainty quantification module**: engine-side implementation now
-  scoped (DICe's sigma/beta formulas - see Engine capability roadmap
-  above); how to surface it in the GUI (quality heatmap layer, per-POI
-  overlay) is still to be designed.
+- **Uncertainty quantification module**: **done 2026-08-19** (see *Reliability:
+  two questions, never one score* above). Both metrics run on every
+  correlation, are selectable as field channels, are qualified on screen, and
+  travel in the `.vtu`. Still to be designed: a per-POI readout on hover, and
+  whether to flag points whose displacement is smaller than their own noise
+  floor.
 - **ROI tooling**: auto-detect/threshold-based segmentation was unclaimed by
   every tool reviewed (open or commercial) - engine-side implementation done
   (`AutoROI`/`SpeckleQualityMap`, fork issues #11/#12 - an MIG quality

@@ -1033,6 +1033,30 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
     // perfectly and still have too few well-correlated neighbours to fit a
     // gradient through -- and reporting only one of them makes the gap in the
     // strain map look like a defect.
+    // How far the field can be trusted, as its own line rather than folded
+    // into the solved count: "1025 of 1092 solved" says how much was measured,
+    // not how well.
+    if (result.noiseFloorMeasured > 0) {
+        double lowest = 0.0;
+        double highest = 0.0;
+        fieldValueRange(result, FieldChannel::NoiseFloor, lowest, highest);
+        log(tr("  Noise floor %1 to %2 px across the field, against an estimated "
+               "%3 grey levels of noise in the reference image. A lower bound on "
+               "error, not a total error bar.")
+                .arg(lowest, 0, 'g', 3)
+                .arg(highest, 0, 'g', 3)
+                .arg(result.referenceNoise, 0, 'g', 3));
+        const QString context = noiseFloorAgainstMovement(result);
+        if (!context.isEmpty())
+            log(tr("  %1").arg(context));
+    }
+    if (result.conditioningUnusable > 0) {
+        log(tr("  %1 solved point(s) had a correlation cost too flat to probe, "
+               "so their match conditioning could not be established. Treat "
+               "those points with caution.")
+                .arg(result.conditioningUnusable));
+    }
+
     if (result.strainRequested) {
         log(tr("  Strain fitted at %1 of the %2 solved points (%3, %4 px "
                "subregion)")

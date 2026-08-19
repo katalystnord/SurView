@@ -254,6 +254,40 @@ void CorrelationRunner::run()
             }
         }
 
+        // --- how far each point can be trusted --------------------------------
+        // Always run, with no setting to turn it off: under tenet 9 the account
+        // of how far a measurement can be trusted is not an optional extra, and
+        // it costs about a second per 30,000 points against a solve that costs
+        // far more. Skipped only on a stopped run, where the points it would
+        // qualify are first guesses rather than measurements.
+        if (!m_cancelled) {
+            Uncertainty2D reliability(radius, radius, threads);
+            reliability.setImages(ref_img, tar_img);
+            reliability.prepare();
+
+            const QString stageName = tr("checking reliability");
+            emit progress(0, total, stageName);
+
+            // Chunked for the same reason the solve and the strain fit are:
+            // the engine's whole-queue call blocks with no progress and no way
+            // to stop.
+            for (int start = 0; start < total; start += kChunkPoints) {
+                if (m_cancelled) {
+                    result.cancelled = true;
+                    break;
+                }
+                const int count = std::min(kChunkPoints, total - start);
+#pragma omp parallel for num_threads(threads)
+                for (int i = start; i < start + count; i++)
+                    reliability.compute(&queue[size_t(i)]);
+                emit progress(start + count, total, stageName);
+            }
+
+            // The one number every noise floor in the field was scaled by. A
+            // map of noise floors cannot be read without it.
+            result.referenceNoise = Uncertainty2D::noiseStdDev(ref_img);
+        }
+
         // --- strain ---------------------------------------------------------
         // Fitted from the solved displacements, so it can only run once they
         // exist. Skipped outright on a stopped run: a gradient fitted through
@@ -351,6 +385,37 @@ void CorrelationRunner::run()
                     // nothing, indistinguishable downstream from a measured
                     // one, and it made a run report "strain fitted at 1092 of
                     // the 1025 solved points".
+                    // ⚑ STRICTLY positive, not merely non-negative. The engine
+                    // marks both of these -1 when it cannot produce a value,
+                    // which a >= 0 test would exclude -- but POI2D::clear()
+                    // leaves them at 0, and zero is the flattering reading for
+                    // both: a zero noise floor claims a perfect measurement and
+                    // a zero conditioning a perfectly sharp cost. Neither is
+                    // reachable as a real result (sigma is a square root of a
+                    // positive ratio, beta a sum of non-zero reciprocal slopes),
+                    // so anything not above zero was never written.
+                    //
+                    // Found by a negative check: with the reliability pass
+                    // removed, a >= 0 test happily reported a noise floor of
+                    // exactly zero at every solved point.
+                    if (poi.result.sigma > 0.f) {
+                        point.noiseFloor = poi.result.sigma;
+                        point.noiseFloorMeasured = true;
+                        result.noiseFloorMeasured++;
+                    }
+                    if (poi.result.beta > 0.f) {
+                        point.conditioning = poi.result.beta;
+                        point.conditioningMeasured = true;
+                    } else {
+                        // ⚑ Among converged points this cannot mean "not
+                        // computed": that fires only for a failed or
+                        // out-of-bounds point, neither of which reaches here.
+                        // It means the probe found the cost unusable, which is
+                        // the strongest caution the metric gives, so it is
+                        // counted rather than left blank.
+                        result.conditioningUnusable++;
+                    }
+
                     if (result.strainRequested && !std::isnan(poi.strain.exx)) {
                         point.strainFitted = true;
                         point.exx = poi.strain.exx;

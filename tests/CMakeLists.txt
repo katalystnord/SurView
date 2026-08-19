@@ -22,6 +22,7 @@ set(SURVIEW_UNIT_TESTS
     test_solver_choices
     test_strain_fit
     test_strain_measure
+    test_uncertainty_measure
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

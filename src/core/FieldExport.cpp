@@ -99,6 +99,9 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     solved->SetNumberOfComponents(1);
     solved->SetNumberOfTuples(count);
 
+    auto noiseFloor = namedArray("displacement_noise_floor", 1, count);
+    auto conditioning = namedArray("match_conditioning", 1, count);
+
     const bool withStrain = result.strainRequested;
     auto exx = namedArray("strain_exx", 1, count);
     auto eyy = namedArray("strain_eyy", 1, count);
@@ -119,6 +122,13 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
         zncc->SetTuple1(i, has ? point.zncc : nothing);
         solved->SetTuple1(i, has ? 1 : 0);
 
+        // Zero is the flattering reading for both of these -- a perfect
+        // measurement, a perfectly sharp cost -- so an unestablished one is
+        // not-a-number like every other value nobody measured.
+        noiseFloor->SetTuple1(i, point.noiseFloorMeasured ? point.noiseFloor : nothing);
+        conditioning->SetTuple1(i,
+                                point.conditioningMeasured ? point.conditioning : nothing);
+
         if (withStrain) {
             const bool fitted = point.strainFitted;
             exx->SetTuple1(i, fitted ? point.exx : nothing);
@@ -131,6 +141,8 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     grid->GetPointData()->AddArray(magnitude);
     grid->GetPointData()->AddArray(zncc);
     grid->GetPointData()->AddArray(solved);
+    grid->GetPointData()->AddArray(noiseFloor);
+    grid->GetPointData()->AddArray(conditioning);
     grid->GetPointData()->SetVectors(displacement);
     grid->GetPointData()->SetScalars(magnitude);
 
@@ -194,6 +206,26 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
                     .arg(result.strainFitted)
                     .arg(result.total())
               : QObject::tr("Not fitted."));
+
+    // Named in the terms the literature uses, so a stranger can look these up
+    // rather than infer them from an array name, and qualified in the same
+    // breath: an exported reliability figure read as a total error bar is worse
+    // than none at all.
+    state(grid, "reliability",
+          QObject::tr(
+              "displacement_noise_floor is DIC's sigma, in pixels: the finest "
+              "displacement each subset's speckle can resolve against an "
+              "estimated image noise of %1 grey levels. It is a lower bound on "
+              "error, not a total error bar, and is computed from the reference "
+              "image alone. match_conditioning is DIC's beta, dimensionless: "
+              "how sharply the correlation cost rises around the solution "
+              "found, relative within this run only. Larger is worse in both. "
+              "Established at %2 of %3 solved points; %4 solved point(s) had a "
+              "cost too flat to probe.")
+              .arg(result.referenceNoise, 0, 'g', 4)
+              .arg(result.noiseFloorMeasured)
+              .arg(result.converged)
+              .arg(result.conditioningUnusable));
 
     state(grid, "result",
           QObject::tr("%1 of %2 points solved in %3 s%4. Values that were not "

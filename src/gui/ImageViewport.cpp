@@ -774,36 +774,61 @@ void ImageViewport::updateFieldBar()
     double highest = 0.0;
     if (fieldValueRange(m_fieldResult, m_fieldChannel, lowest, highest)) {
         const int digits = fieldScaleSignificantDigits(lowest, highest);
+        // Bare in prose, and only when there is a unit to name: "runs from
+        // 0.004 to 0.006 dimensionless" is not a sentence anyone writes, and
+        // "is 3 (px)" reads as a footnote marker rather than a unit.
+        const QString unit =
+            fieldChannelIsDimensionless(m_fieldChannel)
+                ? QString()
+                : QLatin1Char(' ') + fieldChannelUnit(m_fieldChannel);
         range = lowest == highest
                     // Said as one value rather than as a range from a number
                     // to itself, which reads as a rounding artefact.
-                    ? tr("%1 is %2 (%3) at every measured point. ")
+                    ? tr("%1 is %2%3 at every measured point. ")
                           .arg(fieldChannelName(m_fieldChannel))
                           .arg(lowest, 0, 'g', digits)
-                          .arg(fieldChannelUnit(m_fieldChannel))
-                    : tr("%1 runs from %2 to %3 (%4). ")
+                          .arg(unit)
+                    : tr("%1 runs from %2 to %3%4. ")
                           .arg(fieldChannelName(m_fieldChannel))
                           .arg(lowest, 0, 'g', digits)
                           .arg(highest, 0, 'g', digits)
-                          .arg(fieldChannelUnit(m_fieldChannel));
+                          .arg(unit);
     }
 
-    if (strainAvailable) {
-        m_fieldNote->setText(range
-                             + tr("Strain fitted at %1 of %2 points, over a %3 px "
-                                  "subregion.")
-                                   .arg(m_fieldResult.strainFitted)
-                                   .arg(m_fieldResult.total())
-                                   .arg(m_fieldResult.strainRadius, 0, 'g', 4));
+    // What the channel on display is NOT, from core/FieldLayout.h, ahead of
+    // everything else: it is the sentence that stops the number beside it being
+    // read as more than it is, and it belongs where the number is.
+    QString note = fieldChannelNote(m_fieldChannel) + QLatin1Char(' ') + range;
+
+    if (fieldChannelIsReliability(m_fieldChannel)) {
+        if (m_fieldChannel == FieldChannel::NoiseFloor) {
+            // A noise floor read on its own is unreadable. This puts it against
+            // the movement it qualifies, from the run's own numbers.
+            const QString context = noiseFloorAgainstMovement(m_fieldResult);
+            if (!context.isEmpty())
+                note += context + QLatin1Char(' ');
+        }
+        if (m_fieldChannel == FieldChannel::MatchConditioning
+            && m_fieldResult.conditioningUnusable > 0) {
+            note += tr("The cost was too flat to probe at %1 solved point(s), "
+                       "which is a caution rather than a gap: those points are "
+                       "blank here.")
+                        .arg(m_fieldResult.conditioningUnusable);
+        }
+    } else if (strainAvailable) {
+        note += tr("Strain fitted at %1 of %2 points, over a %3 px subregion.")
+                    .arg(m_fieldResult.strainFitted)
+                    .arg(m_fieldResult.total())
+                    .arg(m_fieldResult.strainRadius, 0, 'g', 4);
     } else if (m_fieldResult.strainRequested) {
-        m_fieldNote->setText(range
-                             + tr("Strain was fitted at no point in this run, so "
-                                  "the strain channels are unavailable."));
+        note += tr("Strain was fitted at no point in this run, so the strain "
+                   "channels are unavailable.");
     } else {
-        m_fieldNote->setText(range
-                             + tr("Strain was not fitted for this run. Turn it on "
-                                  "in the Analysis panel and run again."));
+        note += tr("Strain was not fitted for this run. Turn it on in the "
+                   "Analysis panel and run again.");
     }
+
+    m_fieldNote->setText(note);
 
     m_fieldBar->show();
     m_fieldBar->raise();

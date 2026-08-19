@@ -77,6 +77,14 @@ CorrelationResult twoByTwo()
         point.strainFitted = true;
         result.points.append(point);
     }
+    for (int i = 0; i < 4; i++) {
+        result.points[i].noiseFloor = 0.004f + 0.001f * i;
+        result.points[i].noiseFloorMeasured = true;
+        result.points[i].conditioning = 0.15f + 0.01f * i;
+        result.points[i].conditioningMeasured = true;
+    }
+    result.noiseFloorMeasured = 4;
+    result.referenceNoise = 1.75;
     result.converged = 4;
     result.strainRequested = true;
     result.strainFitted = 4;
@@ -150,6 +158,7 @@ private slots:
     void a_run_without_strain_writes_no_strain_arrays_at_all();
     void the_file_says_which_images_and_which_settings_produced_it();
     void the_file_states_the_frame_its_coordinates_are_in();
+    void the_file_carries_how_far_each_point_can_be_trusted();
     void a_result_with_nothing_in_it_is_refused_with_a_reason();
     void a_path_that_cannot_be_written_is_reported_rather_than_swallowed();
 };
@@ -313,6 +322,46 @@ void TestFieldExport::the_file_states_the_frame_its_coordinates_are_in()
     QVERIFY(frame.contains(QStringLiteral("pixel"), Qt::CaseInsensitive));
     QVERIFY2(frame.contains(QStringLiteral("down"), Qt::CaseInsensitive),
              "the file does not say which way y runs");
+}
+
+
+void TestFieldExport::the_file_carries_how_far_each_point_can_be_trusted()
+{
+    // A field exported without its reliability is a field that will be trusted
+    // absolutely by whoever opens it, since nothing in the file argues
+    // otherwise. Tenet 9 does not stop at the application's own window.
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.vtu"));
+
+    CorrelationResult result = twoByTwo();
+    result.points[2].conditioningMeasured = false;   // the probe found it unusable
+
+    QCOMPARE(writeFieldVtu(path, result, provenanceFor()), QString());
+    auto grid = readBack(path);
+
+    auto *floor = grid->GetPointData()->GetArray("displacement_noise_floor");
+    QVERIFY2(floor, "the file carries no noise floor");
+    QCOMPARE(float(floor->GetComponent(0, 0)), result.points.at(0).noiseFloor);
+
+    auto *conditioning = grid->GetPointData()->GetArray("match_conditioning");
+    QVERIFY2(conditioning, "the file carries no conditioning");
+    QCOMPARE(float(conditioning->GetComponent(1, 0)), result.points.at(1).conditioning);
+
+    // Unestablished conditioning is not-a-number, for the same reason every
+    // other unmeasured value is: zero would read as a perfectly sharp cost,
+    // which is the best possible score rather than the warning it really is.
+    QVERIFY(std::isnan(conditioning->GetComponent(2, 0)));
+    QVERIFY(conditioning->GetComponent(2, 0) != 0.0);
+
+    // And the file names what these are, in the terms the literature uses, so
+    // a stranger can look them up rather than guess from an array name.
+    const QString stated = allFieldText(grid);
+    QVERIFY2(stated.contains(QStringLiteral("sigma")),
+             "the file does not connect the noise floor to DIC's sigma");
+    QVERIFY2(stated.contains(QStringLiteral("beta")),
+             "the file does not connect the conditioning to DIC's beta");
+    QVERIFY2(stated.contains(QStringLiteral("1.75")),
+             "the file omits the image noise that scaled every noise floor");
 }
 
 void TestFieldExport::a_result_with_nothing_in_it_is_refused_with_a_reason()

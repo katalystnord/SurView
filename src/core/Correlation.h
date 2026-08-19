@@ -97,6 +97,25 @@ struct CorrelationPoint
     float eyy = 0.f;
     float exy = 0.f;
     bool  strainFitted = false;
+
+    // --- how far this point can be trusted ----------------------------------
+    // Two different questions, deliberately not combined into one score.
+    //
+    // noiseFloor (the engine's sigma, px) is what this subset's speckle could
+    // resolve against the image noise. It is computed from the REFERENCE image
+    // alone, so it says how well the measurement could ever have gone here, not
+    // how well it did: it cannot see decorrelation, out-of-plane motion or a
+    // shape function too poor for the deformation. A lower bound, never a total
+    // error bar.
+    //
+    // conditioning (the engine's beta) probes the correlation cost around the
+    // solution that was actually found, so it is the other half: larger means a
+    // flatter cost and a less certain match. Dimensionless and relative, with
+    // no absolute scale.
+    float noiseFloor = 0.f;
+    bool  noiseFloorMeasured = false;
+    float conditioning = 0.f;
+    bool  conditioningMeasured = false;
 };
 
 struct CorrelationResult
@@ -122,6 +141,27 @@ struct CorrelationResult
     // number: "did not converge" and "subset out of bounds" call for different
     // responses, and reporting a bare failure count would hide that.
     QMap<QString, int> failuresByReason;
+
+    // What the reliability pass found. Always run: under tenet 9 the account of
+    // how far a measurement can be trusted is not an optional extra, and it
+    // costs about a second per 30,000 points against a solve that costs far
+    // more.
+    int noiseFloorMeasured = 0;
+
+    // Converged points where the conditioning probe could not establish a
+    // value. ⚑ Counted as a WARNING, not as missing data. The engine returns
+    // the same -1 for "not computed" and "the cost was too flat to probe", but
+    // "not computed" only fires for a failed or out-of-bounds point, and
+    // neither reaches this count -- so among converged points it can only mean
+    // the probe found the cost unusable, which is the strongest caution the
+    // metric can give.
+    int conditioningUnusable = 0;
+
+    // The reference image's estimated noise, in grey levels, which scaled every
+    // noise floor above. Reported with the result rather than with the image
+    // record: estimating it needs the engine, and core/Correlation.cpp is one of
+    // only two files allowed to know the engine exists.
+    double referenceNoise = 0.0;
 
     // What the strain fit did, reported rather than inferred from the points:
     // a strain field with holes in it needs to say whether the fit was asked

@@ -179,6 +179,7 @@ private slots:
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
     void a_measured_field_leaves_the_application_and_says_where_it_went();
     void an_export_records_the_settings_that_produced_it_not_the_ones_on_screen();
+    void the_reliability_of_a_field_is_reachable_and_qualified_on_screen();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -749,6 +750,47 @@ void TestWorkspaceWalkthrough::an_export_records_the_settings_that_produced_it_n
              "the file does not state the subset radius the field was measured with");
     QVERIFY2(!stated.contains(QStringLiteral("subset radius 31 px")),
              "the file states a subset radius that never measured anything");
+}
+
+
+void TestWorkspaceWalkthrough::the_reliability_of_a_field_is_reachable_and_qualified_on_screen()
+{
+    // Tenet 9 as something a test can enforce. It is not enough for the numbers
+    // to exist: a noise floor shown without the sentence that says what it is
+    // NOT will be read as a total error bar by everyone, which is worse than
+    // showing nothing, because it looks like due diligence.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // Nobody had to ask for this, and there is no setting to have forgotten.
+    const CorrelationResult &result = window.lastResult();
+    QCOMPARE(result.noiseFloorMeasured, result.converged);
+
+    // Reachable by name from the screen, like any other channel.
+    auto *choice = viewport->findChild<QComboBox *>();
+    const int index = choice->findText(fieldChannelName(FieldChannel::NoiseFloor));
+    QVERIFY2(index >= 0, "the field's reliability cannot be reached from the screen");
+    choice->setCurrentIndex(index);
+    QCOMPARE(viewport->fieldChannel(), FieldChannel::NoiseFloor);
+
+    // And qualified where it is shown, not in documentation nobody has open.
+    QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("not a total error bar")),
+             "the noise floor is on screen without saying it is not an error bar");
+    QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("Larger is worse")),
+             "nothing says which direction of this scale is the bad one");
+    QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("one part in")),
+             "the noise floor is not put against the movement it qualifies");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
