@@ -67,9 +67,32 @@ jobs:
           git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
           echo "Engine at $(git -C OpenCorr rev-parse --short HEAD)"
 
+      # ⚑ THE DEPENDENCY DOWNLOAD IS THE SLOWEST THING IN THIS WORKFLOW, and it
+      # cannot be made smaller. libvtkN-qt-dev pulls the entire VTK stack as
+      # hard Depends -- python3-vtk9, python3-mpi4py, the Qt5 libraries, the
+      # Wayland integration -- so --no-install-recommends, which is already set,
+      # has nothing left to trim. Two runs on 2026-08-19 spent 25 and 33 minutes
+      # here and one of them hit its own timeout while still downloading.
+      #
+      # So it is cached instead of shrunk. The key covers this file, because
+      # this file is where the package list lives: change the list and the cache
+      # is correctly missed.
+      - name: Cache the dependency downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-archives
+          key: apt-surview-ubuntu-26.04-${{ hashFiles('.github/workflows/check.yml') }}
+
       - name: Install dependencies
         timeout-minutes: 25
         run: |
+          # Downloads land in the cached directory rather than apt's own, and
+          # Keep-Downloaded-Packages stops apt deleting them the moment they are
+          # unpacked -- without it the cache would save an empty folder.
+          mkdir -p "$HOME/apt-archives/partial"
+          apt_cached=(-o Acquire::Retries=3
+                      -o Dir::Cache::archives="$HOME/apt-archives"
+                      -o APT::Keep-Downloaded-Packages=true)
           # Acquire::Retries because the runner's default mirror
           # (azure.archive.ubuntu.com) is not always reachable: a run on
           # 2026-08-18 failed with every line of `apt-get update` ignored,
@@ -85,6 +108,13 @@ jobs:
           # Guard the toolkit, not just the name: a VTK Qt binding built against
           # Qt5 installs perfectly and fails much later, in a message about
           # neither Qt nor VTK.
+          #
+          # ⚑ DIRECT depends only, deliberately. Qt5 libraries DO appear in the
+          # full install closure on this image and that is not the fault this
+          # guard is looking for: a run on 2026-08-19 installed libqt5widgets5t64
+          # alongside libqt6widgets6 and built, configured and tested green
+          # against Qt6. Widening this to the resolved closure would fail every
+          # run for a reason that has never broken anything.
           if apt-cache depends "$vtk_qt" | grep -q 'libqt5'; then
             echo "$vtk_qt on this image is a Qt5 build; SurView is Qt6." >&2
             echo "Use a runner image whose VTK is built against Qt6." >&2
@@ -96,12 +126,14 @@ jobs:
             exit 1
           fi
           echo "Using VTK Qt package: $vtk_qt"
-          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+          sudo apt-get "${apt_cached[@]}" install -y --no-install-recommends \
             ninja-build cmake g++ \
             qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev \
             "$vtk_qt" \
             libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev \
             libomp-dev xvfb
+          # apt writes as root; the cache is saved as the runner user.
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
 
       - name: Configure
         run: cmake -S SurView -B SurView/build-ninja -G Ninja
@@ -136,13 +168,29 @@ jobs:
           git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
           git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
 
+      - name: Cache the dependency downloads
+        uses: actions/cache@v4
+        with:
+          path: ~/apt-archives
+          key: apt-engine-ubuntu-latest-${{ hashFiles('.github/workflows/check.yml') }}
+
+      # ⚑ Identical treatment to the SurView job above, and identical timeout.
+      # These two drifted once already: the hardening added on 2026-08-18 went
+      # into one job and not the other, and this one then died on an
+      # unretried `apt-get update` while its twin survived the same outage.
+      # Anything changed in one belongs in the other.
       - name: Install dependencies
-        timeout-minutes: 15
+        timeout-minutes: 25
         run: |
-          sudo apt-get update
-          sudo apt-get -o Acquire::Retries=3 install -y --no-install-recommends \
+          mkdir -p "$HOME/apt-archives/partial"
+          apt_cached=(-o Acquire::Retries=3
+                      -o Dir::Cache::archives="$HOME/apt-archives"
+                      -o APT::Keep-Downloaded-Packages=true)
+          sudo apt-get -o Acquire::Retries=3 update
+          sudo apt-get "${apt_cached[@]}" install -y --no-install-recommends \
             ninja-build cmake g++ \
             libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev libomp-dev
+          sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives"
 
       - name: Build the engine's smoke tests
         run: |
