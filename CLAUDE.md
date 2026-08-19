@@ -239,11 +239,36 @@ frame ordering itself, one layer out.
 Once too little of the field still correlates against the original reference,
 the run re-anchors: later frames are measured against the current frame instead,
 each point's displacement is banked, and what is REPORTED stays relative to the
-original reference and on the original grid. ncorr's decision rule, in
-OpenCorr's higher-is-better ZNCC convention: the reference holds while at least
-some share of the MEASURED points clears a correlation threshold. Off by
-default, matching ncorr's own policy, and explained where it is switched on,
-because it abandons any point it could not measure on the frame it happens.
+original reference and on the original grid. Off by default, and explained where
+it is switched on, because it abandons any point it could not measure on the
+frame it happens.
+
+⚑ **THE DECISION RULE COUNTS LOSSES, and getting that backwards made the whole
+feature inert.** The first version counted only points that SOLVED, reasoning
+that a rejected point holds a status code rather than a poor correlation and so
+has nothing to say about the reference. A test asserted exactly that, in those
+words, and passed. Then the synthetic tension sequence was run through the
+application: solved points fell from 97% of the field to 47% across five load
+steps and the reference never re-anchored once, because the surviving half was
+still correlating beautifully and was the only half allowed to vote. A point
+lost to decorrelation is the strongest evidence there is that the reference has
+gone stale. It votes.
+
+One exception, and it is the opposite mistake: a frame where NOTHING correlated
+must not re-anchor. Re-anchoring banks the increment just measured; with no
+increment it banks nothing, marks every point lost, and the rest of the sequence
+measures nothing at all. A stale reference that still fails is recoverable on a
+later frame; a field with no tracked points is not. That guard was itself nearly
+lost by writing the test assertion to match the implementation instead of
+thinking about it.
+
+The default share is **0.90, not ncorr's 0.75**, because the denominator is no
+longer ncorr's: theirs is a percentile over the points it could measure, ours is
+the share of the whole field still tracking, so the same figure does not mean
+the same thing. Set by measurement -- at 0.75 the tension sequence sat at 75.3%
+on the fourth step, a hair above, held the reference, and arrived at the fifth
+with 47% of points solved. At 0.90 it re-anchors a step earlier and the last
+frame keeps 8270 points instead of 5117.
 
 ⚑ **THE DECISION THAT SHAPED THIS: it is orchestrated in SurView, not delegated
 to the fork's `SequenceTracker2D`.** That class exists, is audited, and does the

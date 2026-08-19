@@ -450,7 +450,7 @@ QWidget *MainWindow::createAnalysisPanel()
 
     m_reanchorShare = new QSpinBox;
     m_reanchorShare->setRange(1, 100);
-    m_reanchorShare->setValue(75);
+    m_reanchorShare->setValue(90);
     m_reanchorShare->setSuffix(tr(" %"));
     reanchorForm->addRow(tr("Share of points that must keep it"), m_reanchorShare);
 

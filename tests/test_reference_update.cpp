@@ -81,7 +81,8 @@ private slots:
     void a_policy_that_is_off_never_re_anchors();
     void a_well_correlated_field_does_not_re_anchor();
     void a_field_that_has_lost_too_many_points_re_anchors();
-    void only_solved_points_vote_on_whether_to_re_anchor();
+    void losing_points_counts_against_the_reference();
+    void a_few_points_that_can_never_be_measured_do_not_re_anchor_a_good_run();
     void a_point_that_was_not_measured_is_lost_rather_than_frozen();
     void a_lost_point_stays_lost_and_reports_nothing();
 };
@@ -235,39 +236,85 @@ void TestReferenceUpdate::a_field_that_has_lost_too_many_points_re_anchors()
              "60 of 100 is below 75% and the reference should have re-anchored");
 }
 
-void TestReferenceUpdate::only_solved_points_vote_on_whether_to_re_anchor()
+void TestReferenceUpdate::losing_points_counts_against_the_reference()
 {
-    // A point the solver rejected has no correlation to contribute: its zncc
-    // field holds a negative status code, not a bad match. Counted as a bad
-    // match it would drag the field's share down and re-anchor a sequence that
-    // is tracking perfectly well wherever it can be measured at all.
+    // ⚑ THIS CASE REPLACES ONE THAT ASSERTED THE OPPOSITE, and the story is
+    // worth keeping. The original rule counted only points that SOLVED, on the
+    // reasoning that a rejected point holds a status code rather than a poor
+    // correlation and so has nothing to say about the reference. A test said so
+    // in as many words, and it passed.
+    //
+    // Then a synthetic tension sequence was run through the application: across
+    // five load steps, points solved fell from 97% to 47% of the field, and the
+    // reference never re-anchored once. The half of the field that survived was
+    // still correlating beautifully, and under that rule it was the only half
+    // allowed to vote. The feature was inert on exactly the sequences it exists
+    // for.
+    //
+    // A point lost to decorrelation is the strongest evidence there is that the
+    // reference has gone stale. It votes.
     ReferenceUpdatePolicy policy;
     policy.enabled = true;
     policy.znccThreshold = 0.9;
     policy.percentile = 0.75;
 
-    CorrelationResult sparse;
-    sparse.gridColumns = 100;
-    sparse.gridRows = 1;
+    CorrelationResult halfLost;
+    halfLost.gridColumns = 100;
+    halfLost.gridRows = 1;
     for (int i = 0; i < 100; i++) {
         if (i < 50)
-            sparse.points.append(solved(i, float(i), 0.f, 0.f, 0.f, 0.98f));
+            halfLost.points.append(solved(i, float(i), 0.f, 0.f, 0.f, 0.99f));
         else
-            sparse.points.append(rejected(i, float(i), 0.f));
+            halfLost.points.append(rejected(i, float(i), 0.f));
     }
-    sparse.converged = 50;
+    halfLost.converged = 50;
 
-    QVERIFY2(!fieldNeedsReanchor(sparse, policy),
-             "every point that could be measured was tracking well, so the "
-             "reference must hold");
+    QVERIFY2(fieldNeedsReanchor(halfLost, policy),
+             "half the field was lost and the reference did not re-anchor");
+}
 
-    // Nothing measured at all is not a verdict on the reference either.
+void TestReferenceUpdate::a_few_points_that_can_never_be_measured_do_not_re_anchor_a_good_run()
+{
+    // The other side of it. Some points fail for reasons that have nothing to
+    // do with the reference going stale -- a subset overhanging the edge of the
+    // image never solves at any load. A handful of those must not re-anchor a
+    // sequence that is otherwise tracking perfectly, which is what the
+    // threshold is for: it asks for MOST of the field, not all of it.
+    ReferenceUpdatePolicy policy;
+    policy.enabled = true;
+    policy.znccThreshold = 0.9;
+    policy.percentile = 0.75;
+
+    CorrelationResult mostlyFine;
+    mostlyFine.gridColumns = 100;
+    mostlyFine.gridRows = 1;
+    for (int i = 0; i < 100; i++) {
+        if (i < 95)
+            mostlyFine.points.append(solved(i, float(i), 0.f, 0.f, 0.f, 0.98f));
+        else
+            mostlyFine.points.append(rejected(i, float(i), 0.f));
+    }
+    mostlyFine.converged = 95;
+
+    QVERIFY2(!fieldNeedsReanchor(mostlyFine, policy),
+             "5 unmeasurable points out of 100 re-anchored a healthy run");
+
+    // ⚑ And the degenerate case, which I got wrong once already by writing the
+    // assertion to match the implementation instead of thinking about it.
+    // Under a rule that counts losses, a frame where NOTHING correlated is the
+    // most emphatic re-anchor signal there could be -- and acting on it is
+    // ruinous. Re-anchoring banks the increment just measured; with no
+    // increment anywhere it banks nothing and marks every point lost, so the
+    // remainder of the sequence measures nothing at all. A stale reference that
+    // still fails can be recovered from on a later frame. A field with no
+    // tracked points left cannot.
     CorrelationResult nothing;
     nothing.gridColumns = 4;
     nothing.gridRows = 1;
     for (int i = 0; i < 4; i++)
         nothing.points.append(rejected(i, float(i), 0.f));
-    QVERIFY(!fieldNeedsReanchor(nothing, policy));
+    QVERIFY2(!fieldNeedsReanchor(nothing, policy),
+             "a frame that correlated with nothing re-anchored onto itself");
 }
 
 void TestReferenceUpdate::a_point_that_was_not_measured_is_lost_rather_than_frozen()

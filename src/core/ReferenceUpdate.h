@@ -62,15 +62,30 @@ struct ReferenceUpdatePolicy
 {
     bool enabled = false;        // ncorr's own default is not to re-anchor
     double znccThreshold = 0.9;  // a point is "still tracking" at or above this
-    double percentile = 0.75;    // the share of measured points that must be
+    // ⚑ 0.90, not ncorr's 0.75, and deliberately so. That number went with
+    // ncorr's denominator, which is a percentile over the points it could
+    // measure; ours is the share of the WHOLE field still tracking, so the same
+    // figure does not mean the same thing and carrying it over would have been
+    // an accident rather than a citation.
+    //
+    // Chosen against a measurement. On the synthetic tension sequence at 0.75,
+    // the field sat at 75.3% on the fourth load step -- a hair above -- so the
+    // reference held, and by the fifth only 47% of points still solved. At 0.90
+    // it re-anchors one step earlier and the last frame keeps 8270 points
+    // instead of 5117. Waiting until a quarter of the field is gone means
+    // re-anchoring onto a frame that has already lost a quarter of the field.
+    double percentile = 0.90;
 };
 
 // True when too little of the field is still tracking against the current
 // reference. A whole-field decision on purpose: one unlucky point should not
-// re-anchor a sequence. Points the solver rejected do not vote -- their zncc
-// field holds a negative status code rather than a poor correlation, and
-// counting those as poor matches would re-anchor a sequence that is tracking
-// perfectly wherever it can be measured at all.
+// re-anchor a sequence.
+//
+// ⚑ Measured against EVERY point in the field, including the ones that failed.
+// A point lost to decorrelation is the strongest evidence there is that the
+// reference has gone stale, so it has to count against it -- see the comment on
+// the implementation for how getting this backwards made the rule silently
+// inert on exactly the sequences it was built for.
 bool fieldNeedsReanchor(const CorrelationResult &measured,
                         const ReferenceUpdatePolicy &policy);
 

@@ -18,23 +18,46 @@ bool fieldNeedsReanchor(const CorrelationResult &measured,
     if (!policy.enabled)
         return false;
 
-    int measuredPoints = 0;
+    // ⚑ THE DENOMINATOR IS EVERY POINT IN THE FIELD, not the ones that solved.
+    //
+    // This was the other way round to begin with, on the reasoning that a
+    // rejected point holds a status code rather than a poor correlation and so
+    // has nothing to contribute. That reasoning conflates two different
+    // failures. A point that cannot be measured because its subset left the
+    // image tells us nothing about the reference; a point that cannot be
+    // measured because it DECORRELATED is the single strongest evidence there
+    // is that the reference has gone stale. Excluding both made the rule blind
+    // to the failure it exists to catch.
+    //
+    // Found by running a synthetic tension sequence: correlation against the
+    // first frame fell from 97% of points solved to 47% across five load steps
+    // and the reference never re-anchored once, because the half of the field
+    // that survived was still correlating beautifully and was the only half
+    // allowed to vote.
+    const int placed = int(measured.points.size());
+    if (placed == 0)
+        return false;
+
     int stillTracking = 0;
+    int anyMeasurement = 0;
     for (const CorrelationPoint &point : measured.points) {
         if (!point.converged)
             continue;
-        measuredPoints++;
+        anyMeasurement++;
         if (double(point.zncc) >= policy.znccThreshold)
             stillTracking++;
     }
 
-    // Nothing measured is not a verdict on the reference. Re-anchoring to a
-    // frame that correlated with nothing would replace a reference that may
-    // still be good with one known to be useless.
-    if (measuredPoints == 0)
+    // ⚑ Nothing measured is the one case where re-anchoring is actively
+    // harmful rather than merely unhelpful. Re-anchoring banks the increment
+    // just measured; with no increment anywhere, it banks nothing and marks
+    // EVERY point lost, so the rest of the sequence measures nothing at all.
+    // A stale reference that still fails is recoverable on a later frame; a
+    // field with no tracked points left is not.
+    if (anyMeasurement == 0)
         return false;
 
-    return double(stillTracking) / double(measuredPoints) < policy.percentile;
+    return double(stillTracking) / double(placed) < policy.percentile;
 }
 
 QVector<TrackedPoint> startTracking(const CorrelationResult &first)
