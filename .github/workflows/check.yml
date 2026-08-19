@@ -91,8 +91,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-archives
-          key: apt-surview-26.04-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
-          restore-keys: apt-surview-26.04-${{ hashFiles('.github/workflows/check.yml') }}-
+          key: apt-surview-26.04-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
+          restore-keys: apt-surview-26.04-${{ hashFiles('SurView/.github/workflows/check.yml') }}-
 
       - name: Install dependencies
         timeout-minutes: 25
@@ -154,7 +154,7 @@ jobs:
         if: always()
         with:
           path: ~/apt-archives
-          key: apt-surview-26.04-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
+          key: apt-surview-26.04-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
 
       - name: Configure
         run: cmake -S SurView -B SurView/build-ninja -G Ninja
@@ -193,8 +193,8 @@ jobs:
         uses: actions/cache/restore@v4
         with:
           path: ~/apt-archives
-          key: apt-engine-latest-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
-          restore-keys: apt-engine-latest-${{ hashFiles('.github/workflows/check.yml') }}-
+          key: apt-engine-latest-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
+          restore-keys: apt-engine-latest-${{ hashFiles('SurView/.github/workflows/check.yml') }}-
 
       # ⚑ Identical treatment to the SurView job above, and identical timeout.
       # These two drifted once already: the hardening added on 2026-08-18 went
@@ -220,7 +220,7 @@ jobs:
         if: always()
         with:
           path: ~/apt-archives
-          key: apt-engine-latest-${{ hashFiles('.github/workflows/check.yml') }}-${{ github.run_id }}
+          key: apt-engine-latest-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
 
       - name: Build the engine's smoke tests
         run: |
