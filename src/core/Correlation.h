@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Roi.h"
+#include "core/StrainFit.h"
 
 #include <QMap>
 #include <QMetaType>
@@ -30,6 +31,19 @@ struct CorrelationSettings
     int    gridStep      = 5;       // px between points of interest
     int    maxIterations = 10;
     double convergence   = 0.001;   // ‖Δp‖ threshold
+
+    // --- strain -------------------------------------------------------------
+    // Strain is fitted from the displacements of neighbouring points, so it has
+    // its own neighbourhood and its own way of being unsatisfiable. See
+    // core/StrainFit.h, which is where that is worked out and said out loud.
+    bool   strainEnabled     = true;
+    double strainRadius      = 25.0;   // px, the subregion the fit spans
+    int    strainMinPoints   = 5;      // fewest points the fit will accept
+    StrainMeasure strainMeasure = StrainMeasure::Cauchy;
+
+    // Empty when the strain fit will use the subregion as asked. Restated from
+    // strainSubregionWarning() so a caller has one thing to ask.
+    QString strainWarning() const;
 
     // True where the engine offers the combination at all. Newton-Raphson is
     // implemented for the first-order shape function only.
@@ -73,6 +87,16 @@ struct CorrelationPoint
     float v = 0.f;
     float zncc = 0.f;  // correlation, or a negative engine status code
     bool  converged = false;
+
+    // Strain, FITTED from this point's neighbours rather than measured here.
+    // Meaningless unless strainFitted: the fit declines wherever too few
+    // neighbours cleared the correlation floor, and it leaves the components
+    // untouched when it does, so a zero here is indistinguishable from an
+    // unstrained point unless the flag is carried alongside.
+    float exx = 0.f;
+    float eyy = 0.f;
+    float exy = 0.f;
+    bool  strainFitted = false;
 };
 
 struct CorrelationResult
@@ -99,17 +123,24 @@ struct CorrelationResult
     // responses, and reporting a bare failure count would hide that.
     QMap<QString, int> failuresByReason;
 
+    // What the strain fit did, reported rather than inferred from the points:
+    // a strain field with holes in it needs to say whether the fit was asked
+    // for at all, how much of the grid it reached, and what it excluded.
+    bool strainRequested = false;
+    int  strainFitted    = 0;
+    int  belowStrainFloor = 0;   // points too poorly correlated to feed a fit
+    StrainMeasure strainMeasure = StrainMeasure::Cauchy;
+    double strainRadius = 0.0;
+
     double secondsElapsed = 0.0;
     bool   cancelled      = false;
 
     int total() const { return int(points.size()); }
 
-    // Smallest and largest displacement magnitude among SOLVED points, which is
-    // the range the colour scale and the project tree must both report. Rejected
-    // points are excluded: a point the solver refused is not a displacement of
-    // zero, and letting one into the range would stretch the scale over a value
-    // that was never measured. False when nothing was solved.
-    bool magnitudeRange(double &lowest, double &highest) const;
+    // Whether the run produced a strain field anyone can look at. False when
+    // strain was not asked for, and false when it was asked for and reached
+    // nothing -- the two are different, and only the result knows which.
+    bool hasStrain() const { return strainRequested && strainFitted > 0; }
 };
 
 // Crosses a thread boundary as a queued signal argument.

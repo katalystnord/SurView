@@ -3,19 +3,24 @@
 #include "ImageViewport.h"
 #include "RecordPanel.h"
 #include "core/Correlation.h"
+#include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
 #include "core/ImagePairing.h"
 #include "core/RoiDetect.h"
+#include "core/StrainFit.h"
 
 #include <QApplication>
 #include <QEventLoop>
-#include <QGuiApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
 #include <QFileDialog>
 #include <QFileInfo>
+#include <QFont>
 #include <QFormLayout>
+#include <QGroupBox>
+#include <QGuiApplication>
 #include <QLabel>
 #include <QMenuBar>
 #include <QMessageBox>
@@ -260,7 +265,12 @@ QWidget *MainWindow::createAnalysisPanel()
     // Real OpenCorr correlation parameters, so the panel reads as the actual
     // control surface even before it drives the engine.
     auto *panel = new QWidget;
-    auto *form = new QFormLayout(panel);
+    auto *column = new QVBoxLayout(panel);
+
+    auto *correlation = new QWidget(panel);
+    auto *form = new QFormLayout(correlation);
+    form->setContentsMargins(0, 0, 0, 0);
+    column->addWidget(correlation);
 
     // Built from offeredSolverChoices() rather than listed here, so the panel
     // cannot offer a solver that nothing measures: the tests walk the same list.
@@ -315,8 +325,104 @@ QWidget *MainWindow::createAnalysisPanel()
            "B-spline and offer no alternative."));
     form->addRow(tr("Interpolation"), interpolation);
 
+    // --- strain --------------------------------------------------------------
+    // Its own group, because it is a second measurement rather than another
+    // correlation parameter: it runs after the solve, over the solve's own
+    // output, and it has a neighbourhood and a failure mode of its own.
+    m_strainGroup = new QGroupBox(tr("Strain"), panel);
+    auto *strainColumn = new QVBoxLayout(m_strainGroup);
+
+    m_strainEnabled = new QCheckBox(tr("Fit strain from the displacement field"));
+    m_strainEnabled->setChecked(true);
+    m_strainEnabled->setToolTip(
+        tr("Strain is the gradient of displacement, so it is fitted from the "
+           "points around each point rather than measured at it."));
+    strainColumn->addWidget(m_strainEnabled);
+
+    auto *strainForm = new QFormLayout;
+    strainForm->setContentsMargins(0, 6, 0, 0);
+
+    m_strainRadius = new QDoubleSpinBox;
+    m_strainRadius->setDecimals(1);
+    m_strainRadius->setRange(1.0, 500.0);
+    m_strainRadius->setValue(25.0);
+    m_strainRadius->setSuffix(tr(" px"));
+    strainForm->addRow(tr("Subregion radius"), m_strainRadius);
+
+    m_strainMinPoints = new QSpinBox;
+    m_strainMinPoints->setRange(3, 500);   // three points define a plane
+    m_strainMinPoints->setValue(5);
+    strainForm->addRow(tr("Fewest points in the fit"), m_strainMinPoints);
+
+    // Built from offeredStrainMeasures(), the list the tests walk.
+    m_strainMeasure = new QComboBox;
+    for (const StrainMeasureChoice &choice : offeredStrainMeasures()) {
+        m_strainMeasure->addItem(choice.name, int(choice.measure));
+        m_strainMeasure->setItemData(m_strainMeasure->count() - 1, choice.note,
+                                     Qt::ToolTipRole);
+    }
+    strainForm->addRow(tr("Strain measure"), m_strainMeasure);
+
+    strainColumn->addLayout(strainForm);
+
+    // Stated rather than adjustable. It decides which measurements the strain
+    // field is built from, so leaving it unsaid would make a sparse strain map
+    // over a dense displacement map look like a fault.
+    auto *floorNote = new QLabel(
+        tr("Points correlating below %1 are left out of the fit.")
+            .arg(double(kStrainFitCorrelationFloor), 0, 'g', 2));
+    floorNote->setWordWrap(true);
+    // Set apart by weight, not by colour. palette(mid) was tried first and is
+    // near-white on this palette's near-white panel -- the note was on screen
+    // and unreadable, which is worse than absent, because nothing indicates
+    // there is anything to read. Italic carries "aside" in every palette.
+    QFont floorFont = floorNote->font();
+    floorFont.setItalic(true);
+    floorNote->setFont(floorFont);
+    strainColumn->addWidget(floorNote);
+
+    // The live warning. See updateStrainAdvice().
+    m_strainAdvice = new QLabel;
+    m_strainAdvice->setWordWrap(true);
+    m_strainAdvice->setStyleSheet(
+        QStringLiteral("color: #b9770e; border: 1px solid #b9770e;"
+                       " border-radius: 4px; padding: 6px;"));
+    m_strainAdvice->hide();
+    strainColumn->addWidget(m_strainAdvice);
+
+    column->addWidget(m_strainGroup);
+    column->addStretch(1);
+
+    connect(m_strainEnabled, &QCheckBox::toggled, this,
+            &MainWindow::updateStrainAdvice);
+    connect(m_strainRadius, &QDoubleSpinBox::valueChanged, this,
+            &MainWindow::updateStrainAdvice);
+    connect(m_strainMinPoints, &QSpinBox::valueChanged, this,
+            &MainWindow::updateStrainAdvice);
+    connect(m_gridStep, &QSpinBox::valueChanged, this,
+            &MainWindow::updateStrainAdvice);
+
     updateSolverConstraints();
+    updateStrainAdvice();
     return panel;
+}
+
+void MainWindow::updateStrainAdvice()
+{
+    // The sub-controls follow the checkbox, so the group always reads as one
+    // decision rather than four independent ones.
+    const bool on = m_strainEnabled->isChecked();
+    m_strainRadius->setEnabled(on);
+    m_strainMinPoints->setEnabled(on);
+    m_strainMeasure->setEnabled(on);
+
+    // Worked out by core/StrainFit.h, before the run, because the engine will
+    // not refuse these settings -- it will quietly fit over a different
+    // neighbourhood and return a field that looks exactly as complete as a
+    // good one.
+    const QString advice = currentSettings().strainWarning();
+    m_strainAdvice->setText(advice);
+    m_strainAdvice->setVisible(!advice.isEmpty());
 }
 
 void MainWindow::updateSolverConstraints()
@@ -354,6 +460,11 @@ CorrelationSettings MainWindow::currentSettings() const
     settings.gridStep = m_gridStep->value();
     settings.maxIterations = m_maxIterations->value();
     settings.convergence = m_convergence->value();
+
+    settings.strainEnabled = m_strainEnabled->isChecked();
+    settings.strainRadius = m_strainRadius->value();
+    settings.strainMinPoints = m_strainMinPoints->value();
+    settings.strainMeasure = StrainMeasure(m_strainMeasure->currentData().toInt());
     return settings;
 }
 
@@ -804,6 +915,20 @@ void MainWindow::runCorrelation()
                            .arg(m_roi.originText())
                      : tr("whole image")));
 
+    if (settings.strainEnabled) {
+        log(tr("  Strain: %1, fitted over a %2 px subregion, at least %3 points, "
+               "excluding anything correlating below %4")
+                .arg(strainMeasureName(settings.strainMeasure))
+                .arg(settings.strainRadius, 0, 'g', 4)
+                .arg(settings.strainMinPoints)
+                .arg(double(kStrainFitCorrelationFloor), 0, 'g', 2));
+        const QString advice = settings.strainWarning();
+        if (!advice.isEmpty())
+            log(tr("  %1").arg(advice));
+    } else {
+        log(tr("  Strain: not fitted."));
+    }
+
     m_hasResult = false;
     m_viewport->clearField();
 
@@ -894,13 +1019,40 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
         log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
     }
 
+    // How far the strain fit reached, separately from the solve. The two
+    // counts differ for reasons that are not faults -- a point can solve
+    // perfectly and still have too few well-correlated neighbours to fit a
+    // gradient through -- and reporting only one of them makes the gap in the
+    // strain map look like a defect.
+    if (result.strainRequested) {
+        log(tr("  Strain fitted at %1 of the %2 solved points (%3, %4 px "
+               "subregion)")
+                .arg(result.strainFitted)
+                .arg(result.converged)
+                .arg(strainMeasureName(result.strainMeasure))
+                .arg(result.strainRadius, 0, 'g', 4));
+        if (result.belowStrainFloor > 0) {
+            log(tr("  %1 solved point(s) correlated below %2 and were left out "
+                   "of every fit they fell inside")
+                    .arg(result.belowStrainFloor)
+                    .arg(double(kStrainFitCorrelationFloor), 0, 'g', 2));
+        }
+        if (result.strainFitted == 0) {
+            log(tr("  No point had enough well-correlated neighbours inside its "
+                   "subregion. Widen the subregion, lower the minimum, or "
+                   "improve the correlation."));
+        }
+    }
+
     // The tree said "Results -- none" through the first working run. A field
     // that exists but is not named in the project is the same defect as a
     // target image we claimed to have added and never read.
     double lowest = 0.0;
     double highest = 0.0;
-    if (m_hasResult && result.magnitudeRange(lowest, highest)) {
-        const QString summary =
+    if (m_hasResult
+        && fieldValueRange(result, FieldChannel::DisplacementMagnitude,
+                           lowest, highest)) {
+        QString summary =
             tr("Displacement field - %1 of %2 points%3, %4 to %5 px")
                 .arg(result.converged)
                 .arg(result.total())
@@ -908,6 +1060,23 @@ void MainWindow::onCorrelationFinished(const CorrelationResult &result)
                                             : QString())
                 .arg(lowest, 0, 'f', 2)
                 .arg(highest, 0, 'f', 2);
+
+        // Named in the project when it exists, and named as absent when it was
+        // asked for and did not: a strain field nothing mentions is a strain
+        // field nobody knows they have.
+        double strainLow = 0.0;
+        double strainHigh = 0.0;
+        if (result.hasStrain()
+            && fieldValueRange(result, FieldChannel::StrainXX, strainLow,
+                               strainHigh)) {
+            summary += tr("; strain at %1 points, exx %2 to %3")
+                           .arg(result.strainFitted)
+                           .arg(strainLow, 0, 'e', 2)
+                           .arg(strainHigh, 0, 'e', 2);
+        } else if (result.strainRequested) {
+            summary += tr("; no strain could be fitted");
+        }
+
         m_resultsItem->setText(0, summary);
         // The panel is narrow enough to clip the range off the end.
         m_resultsItem->setToolTip(0, summary);

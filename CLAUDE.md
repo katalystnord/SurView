@@ -142,6 +142,39 @@ the up vector matters: inverting up alone rotates the view 180° and mirrors x
 too. Consequence to remember: overlays drawn in front of the photograph sit at
 **negative** z.
 
+### Strain is fitted, not measured (2026-08-19)
+
+Correlation measures displacement at a point. Strain is its gradient, so it has
+no value at a single point at all: the engine fits a plane through the
+displacements of the neighbours inside a subregion. Three consequences that are
+invisible unless deliberately surfaced, and that this codebase now handles:
+
+- **A strain the fit declined is not a strain of zero.** `POI2D::clear()` zeroes
+  the strain members, and `Strain::compute()` leaves them untouched when it
+  gives up, so "no fit here" and "unstrained here" are the same three zeros.
+  `Correlation.cpp` writes a not-a-number sentinel into all three before the
+  fit and reads back `strainFitted` from whether the engine overwrote it. The
+  same rule as the existing "a rejected point is not a displacement of zero",
+  and equally load-bearing: the negative check in `tests/test_strain_measure.cpp`
+  records the sentinel being removed and the test going red.
+- **The engine does not refuse a subregion that is too small.** When the radius
+  search returns fewer than the minimum, `Strain::compute()` silently falls back
+  to a KNN search for the nearest N points, however far outside the subregion
+  they lie, and returns a field that looks exactly as complete as a good one.
+  `core/StrainFit.h` counts the lattice points a subregion actually holds and
+  the Analysis panel says so live, while the numbers are being chosen.
+- **Points correlating below 0.9 are excluded from every fit** (the engine's own
+  default). Stated in the panel and counted in the run report, because a sparse
+  strain map over a dense displacement map otherwise reads as a fault.
+
+Two display rules follow from the same place, both in `core/FieldLayout.h`:
+a strain scale is centred on zero and a displacement scale is not (strain's zero
+is a physical state; displacement's is wherever the reference frame happens to
+sit, so a specimen that merely translated would spend half the colours on values
+that cannot occur), and scale labels are sized in SIGNIFICANT digits rather than
+decimal places, since the two quantities sit at opposite ends of the number line
+and any fixed decimal count fails at one end or the other.
+
 ## License
 
 SurView DIC is licensed **LGPL-2.1-or-later**, matching FreeCAD's choice in

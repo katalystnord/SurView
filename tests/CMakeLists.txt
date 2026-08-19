@@ -18,6 +18,8 @@ set(SURVIEW_UNIT_TESTS
     test_roi_engine_boundary
     test_roi_detect
     test_solver_choices
+    test_strain_fit
+    test_strain_measure
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

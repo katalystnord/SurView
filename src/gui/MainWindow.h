@@ -8,8 +8,10 @@
 #include <QVector>
 
 class QAction;
+class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
+class QGroupBox;
 class QLabel;
 class QPlainTextEdit;
 class QProgressBar;
@@ -64,6 +66,12 @@ private slots:
     // second-order shape function is disabled while Newton-Raphson is chosen,
     // because the engine implements that solver for first order only.
     void updateSolverConstraints();
+
+    // Keeps the strain warning on screen honest about the numbers currently in
+    // the panel. Live, not on Run: the settings that make the fit impossible
+    // are chosen here, and a warning that waited for the run would arrive after
+    // the decision it is about.
+    void updateStrainAdvice();
 
 private:
     void createActions();
@@ -129,6 +137,13 @@ private:
     QSpinBox *m_gridStep = nullptr;
     QSpinBox *m_maxIterations = nullptr;
     QDoubleSpinBox *m_convergence = nullptr;
+
+    QCheckBox *m_strainEnabled = nullptr;
+    QDoubleSpinBox *m_strainRadius = nullptr;
+    QSpinBox *m_strainMinPoints = nullptr;
+    QComboBox *m_strainMeasure = nullptr;
+    QLabel *m_strainAdvice = nullptr;
+    QGroupBox *m_strainGroup = nullptr;
 
     QProgressBar *m_progress = nullptr;
 

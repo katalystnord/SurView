@@ -13,18 +13,24 @@
 // provides one.
 
 #include "core/Correlation.h"
+#include "core/FieldLayout.h"
 #include "core/Roi.h"
 #include "gui/ImageViewport.h"
 #include "gui/MainWindow.h"
 
 #include <QAction>
 #include <QApplication>
+#include <QCheckBox>
+#include <QComboBox>
 #include <QFrame>
 #include <QLabel>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTest>
 #include <QToolBar>
+#include <QDoubleSpinBox>
+#include <QFormLayout>
+#include <QSpinBox>
 #include <QTreeWidget>
 
 namespace {
@@ -67,6 +73,39 @@ QString projectLine(QWidget *root, const QString &heading)
     return QString();
 }
 
+// The control on the row a given label names. Found through the visible label
+// rather than by object name, so the test cannot reach a control the user
+// would have no way to identify.
+template <typename T>
+T *controlLabelled(QWidget *root, const QString &labelText)
+{
+    for (QFormLayout *form : root->findChildren<QFormLayout *>()) {
+        for (int row = 0; row < form->rowCount(); row++) {
+            QLayoutItem *labelItem = form->itemAt(row, QFormLayout::LabelRole);
+            QLayoutItem *fieldItem = form->itemAt(row, QFormLayout::FieldRole);
+            if (!labelItem || !fieldItem)
+                continue;
+            auto *label = qobject_cast<QLabel *>(labelItem->widget());
+            if (!label || !label->text().contains(labelText, Qt::CaseInsensitive))
+                continue;
+            if (auto *control = qobject_cast<T *>(fieldItem->widget()))
+                return control;
+        }
+    }
+    return nullptr;
+}
+
+// Any visible label under `root` whose text contains `text`. Used to assert
+// that a condition is EXPLAINED on screen, not merely handled.
+bool somethingOnScreenSays(QWidget *root, const QString &text)
+{
+    for (QLabel *label : root->findChildren<QLabel *>()) {
+        if (label->isVisible() && label->text().contains(text, Qt::CaseInsensitive))
+            return true;
+    }
+    return false;
+}
+
 // Where a given image pixel currently sits inside the viewport widget.
 //
 // This asks the viewport through its real projection rather than recomputing
@@ -104,6 +143,10 @@ private slots:
     void a_region_drawn_on_screen_is_reported_in_the_project();
     void cancelling_keeps_the_region_that_was_already_in_force();
     void a_correlation_inside_a_region_recovers_a_known_shift();
+
+    void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
+    void a_measured_field_can_be_switched_to_strain_from_the_screen();
+    void the_strain_channels_say_why_they_are_unavailable();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -431,6 +474,134 @@ void TestWorkspaceWalkthrough::a_correlation_inside_a_region_recovers_a_known_sh
         QVERIFY(point.x >= box.left() && point.x <= box.right());
         QVERIFY(point.y >= box.top() && point.y <= box.bottom());
     }
+}
+
+
+void TestWorkspaceWalkthrough::the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit()
+{
+    // The condition this covers is invisible by construction: the engine does
+    // not refuse a subregion too small for its minimum, it quietly fits over
+    // the nearest points instead. If the panel does not say so while the
+    // numbers are being chosen, nothing ever does.
+    //
+    // NEGATIVE CHECK (2026-08-19): with the advice label forced hidden, this
+    // failed on "a strain subregion too small for its minimum drew no warning".
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *strainRadius =
+        controlLabelled<QDoubleSpinBox>(&window, QStringLiteral("Subregion radius"));
+    auto *strainMinimum =
+        controlLabelled<QSpinBox>(&window, QStringLiteral("Fewest points"));
+    auto *gridStep = controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"));
+    QVERIFY2(strainRadius && strainMinimum && gridStep,
+             "the Analysis panel has no strain controls to set");
+
+    // Defaults must be usable without adjustment, or the first run of every
+    // new project starts on a warning.
+    QVERIFY2(!somethingOnScreenSays(&window, QStringLiteral("nearest")),
+             "the panel's own default strain settings draw a warning");
+
+    // Now ask for something the grid cannot supply.
+    gridStep->setValue(20);
+    strainRadius->setValue(20.0);
+    strainMinimum->setValue(30);
+
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("nearest")),
+             "a strain subregion too small for its minimum drew no warning");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("best case")),
+             "the warning did not say the count is for a point with grid all around it");
+
+    // And it goes away again when the settings become satisfiable, rather than
+    // staying up as permanent background noise.
+    strainMinimum->setValue(4);
+    QVERIFY2(!somethingOnScreenSays(&window, QStringLiteral("nearest")),
+             "the warning stayed up after the settings were made satisfiable");
+}
+
+void TestWorkspaceWalkthrough::a_measured_field_can_be_switched_to_strain_from_the_screen()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+
+    // A coarser grid than the default, so this stays a UI test rather than a
+    // two-minute correlation. Set through the same controls a user would.
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // What is on screen must name the channel being shown. Without that, a
+    // strain map and a displacement map are the same picture in the same
+    // colours meaning entirely different numbers.
+    auto *choice = viewport->findChild<QComboBox *>();
+    QVERIFY2(choice, "the field on screen offers no way to see which channel it is");
+    QVERIFY2(choice->isVisible(), "the field channel selector is not visible");
+    QCOMPARE(viewport->fieldChannel(), FieldChannel::DisplacementMagnitude);
+    QVERIFY(choice->currentText().contains(QStringLiteral("Displacement")));
+
+    // Switch to strain the way a user does: by picking its name from the list.
+    const int strainIndex = choice->findText(fieldChannelName(FieldChannel::StrainXX));
+    QVERIFY2(strainIndex >= 0, "the selector does not offer the strain channel");
+    choice->setCurrentIndex(strainIndex);
+
+    QCOMPARE(viewport->fieldChannel(), FieldChannel::StrainXX);
+    QVERIFY(viewport->hasField());
+
+    // And the run really did fit strain, so this is a channel with something
+    // in it rather than an empty overlay the selector was happy to switch to.
+    QVERIFY(window.lastResult().hasStrain());
+}
+
+void TestWorkspaceWalkthrough::the_strain_channels_say_why_they_are_unavailable()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    // Turn strain off through the visible control.
+    auto *strainOn = byVisibleText<QCheckBox>(&window, QStringLiteral("Fit strain"));
+    QVERIFY2(strainOn, "there is no visible control for whether strain is fitted");
+    strainOn->setChecked(false);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QVERIFY(!window.lastResult().hasStrain());
+
+    // The strain entries must be unselectable AND accounted for. A control
+    // that is merely greyed out cannot say whether it is broken, not yet
+    // reached, or not applicable.
+    //
+    // NEGATIVE CHECK (2026-08-19): with the entries left enabled, this failed
+    // on "a strain channel was selectable after a run that fitted no strain".
+    auto *choice = viewport->findChild<QComboBox *>();
+    QVERIFY(choice);
+    const int strainIndex = choice->findText(fieldChannelName(FieldChannel::StrainXX));
+    QVERIFY(strainIndex >= 0);
+    QVERIFY2(!(choice->model()->flags(choice->model()->index(strainIndex, 0))
+               & Qt::ItemIsEnabled),
+             "a strain channel was selectable after a run that fitted no strain");
+    QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("Strain was not fitted")),
+             "nothing on screen says why the strain channels cannot be picked");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

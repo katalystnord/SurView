@@ -6,6 +6,8 @@
 #include <QFileInfo>
 #include <QThread>
 
+#include <cmath>
+#include <limits>
 #include <memory>
 #include <vector>
 
@@ -57,22 +59,11 @@ std::unique_ptr<DIC> makeSolver(const CorrelationSettings &settings, int threads
 
 }  // namespace
 
-bool CorrelationResult::magnitudeRange(double &lowest, double &highest) const
+QString CorrelationSettings::strainWarning() const
 {
-    bool any = false;
-    for (const CorrelationPoint &point : points) {
-        if (!point.converged)
-            continue;
-        const double magnitude = std::hypot(point.u, point.v);
-        if (!any) {
-            lowest = highest = magnitude;
-            any = true;
-        } else {
-            lowest = std::min(lowest, magnitude);
-            highest = std::max(highest, magnitude);
-        }
-    }
-    return any;
+    if (!strainEnabled)
+        return QString();
+    return strainSubregionWarning(strainRadius, gridStep, strainMinPoints);
 }
 
 bool CorrelationSettings::isAvailable() const
@@ -263,6 +254,56 @@ void CorrelationRunner::run()
             }
         }
 
+        // --- strain ---------------------------------------------------------
+        // Fitted from the solved displacements, so it can only run once they
+        // exist. Skipped outright on a stopped run: a gradient fitted through
+        // points the solver never reached would be a strain field built partly
+        // from first guesses.
+        if (m_settings.strainEnabled && !m_cancelled) {
+            // Sentinel first. The engine leaves a POI's strain untouched when
+            // its fit declines, and POI2D starts life with strain zeroed -- so
+            // without this, "the fit found nothing here" and "this point is
+            // unstrained" are the same three zeros. Not-a-number is the only
+            // value the engine will never write.
+            const float unfitted = std::numeric_limits<float>::quiet_NaN();
+            for (POI2D &poi : queue) {
+                poi.strain.exx = unfitted;
+                poi.strain.eyy = unfitted;
+                poi.strain.exy = unfitted;
+            }
+
+            Strain strain(float(m_settings.strainRadius),
+                          m_settings.strainMinPoints, threads);
+            strain.setZnccThreshold(kStrainFitCorrelationFloor);
+            strain.setDescription(1);   // Lagrangian: gradients about the reference
+            strain.setApproximation(
+                m_settings.strainMeasure == StrainMeasure::GreenLagrange ? 2 : 1);
+            strain.prepare(queue);
+
+            const QString stageName = tr("fitting strain");
+            emit progress(0, total, stageName);
+
+            // Chunked for the same reason the solve is: the engine's own
+            // whole-queue call would block with no progress and no way to stop.
+            // Each point still fits against the WHOLE queue -- only the loop is
+            // divided, never the neighbourhood.
+            for (int start = 0; start < total; start += kChunkPoints) {
+                if (m_cancelled) {
+                    result.cancelled = true;
+                    break;
+                }
+                const int count = std::min(kChunkPoints, total - start);
+#pragma omp parallel for num_threads(threads)
+                for (int i = start; i < start + count; i++)
+                    strain.compute(&queue[size_t(i)], queue);
+                emit progress(start + count, total, stageName);
+            }
+
+            result.strainRequested = true;
+            result.strainMeasure = m_settings.strainMeasure;
+            result.strainRadius = m_settings.strainRadius;
+        }
+
         const QString notReached = tr("not reached before the run was stopped");
 
         for (int i = 0; i < total; i++) {
@@ -274,6 +315,17 @@ void CorrelationRunner::run()
             point.u    = poi.deformation.u;
             point.v    = poi.deformation.v;
             point.zncc = poi.result.zncc;
+
+            // Fitted only where the engine wrote over the sentinel. All three
+            // components come from one fit, so one of them answers for all.
+            point.strainFitted = result.strainRequested
+                                 && !std::isnan(poi.strain.exx);
+            if (point.strainFitted) {
+                point.exx = poi.strain.exx;
+                point.eyy = poi.strain.eyy;
+                point.exy = poi.strain.exy;
+                result.strainFitted++;
+            }
 
             if (i >= solvedUpTo) {
                 // Stopped before the solver reached this point. Counted and
@@ -290,6 +342,12 @@ void CorrelationRunner::run()
                 point.converged = !isFailureStatus(poi.result.zncc);
                 if (point.converged) {
                     result.converged++;
+                    // Solved, but too poorly correlated to be trusted as input
+                    // to a neighbour's strain fit. Counted so a sparse strain
+                    // field over a dense displacement field has a stated
+                    // reason rather than looking like a bug.
+                    if (poi.result.zncc < kStrainFitCorrelationFloor)
+                        result.belowStrainFloor++;
                 } else {
                     result.failuresByReason[QString::fromStdString(
                         statusDescription(poi.result.zncc))]++;

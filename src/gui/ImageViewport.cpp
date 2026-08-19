@@ -4,6 +4,7 @@
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
 
+#include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
 #include <QKeyEvent>
@@ -12,6 +13,8 @@
 #include <QPushButton>
 #include <QResizeEvent>
 #include <QShowEvent>
+#include <QSignalBlocker>
+#include <QStandardItemModel>
 #include <QVBoxLayout>
 
 #include <vtkActor.h>
@@ -23,6 +26,7 @@
 #include <vtkImageMapToColors.h>
 #include <vtkImageProperty.h>
 #include <vtkLookupTable.h>
+#include <vtkMath.h>
 #include <vtkPoints.h>
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
@@ -511,6 +515,7 @@ void ImageViewport::resizeEvent(QResizeEvent *event)
 {
     QVTKOpenGLNativeWidget::resizeEvent(event);
     positionRoiBar();
+    positionFieldBar();
 }
 
 void ImageViewport::showEvent(QShowEvent *event)
@@ -555,9 +560,39 @@ bool ImageViewport::loadImage(const QString &path)
 
 void ImageViewport::showField(const CorrelationResult &result)
 {
+    m_fieldResult = result;
+
+    // A run that fitted no strain must not leave the display on a strain
+    // channel, which would be an empty overlay with no explanation of itself.
+    if (fieldChannelIsStrain(m_fieldChannel) && !m_fieldResult.hasStrain())
+        m_fieldChannel = FieldChannel::DisplacementMagnitude;
+
+    drawField();
+    updateFieldBar();
+}
+
+void ImageViewport::drawField()
+{
+    const CorrelationResult &result = m_fieldResult;
+
     if (result.gridColumns <= 0 || result.gridRows <= 0) {
         clearField();
         return;
+    }
+
+    double lowest = 0.0;
+    double highest = 0.0;
+    if (!fieldColourRange(result, m_fieldChannel, lowest, highest)) {
+        clearField();
+        return;
+    }
+    if (highest <= lowest) {
+        // A uniform field still needs a valid scale. Widened about the value
+        // itself rather than upwards from it, so a uniform -0.002 does not
+        // acquire a range that excludes it.
+        const double nudge = std::max(1e-6, std::abs(highest) * 1e-3);
+        lowest -= nudge;
+        highest += nudge;
     }
 
     // The points of interest are a regular grid, so the field is an image in
@@ -571,23 +606,11 @@ void ImageViewport::showField(const CorrelationResult &result)
     field->AllocateScalars(VTK_FLOAT, 1);
 
     // Laid out by core/FieldLayout.h, which is where that arithmetic is tested.
-    const QVector<float> laid = layoutDisplacementMagnitude(result);
+    const QVector<float> laid = layoutField(result, m_fieldChannel);
     auto *values = static_cast<float *>(field->GetScalarPointer());
     std::copy(laid.begin(), laid.end(), values);
 
-    double lowest = 0.0;
-    double highest = 0.0;
-    if (!result.magnitudeRange(lowest, highest)) {
-        clearField();
-        return;
-    }
-    if (highest <= lowest)
-        highest = lowest + 1e-6;  // a uniform field still needs a valid scale
-
-    m_fieldColours->SetRange(lowest, highest);
-    m_fieldColours->SetHueRange(0.667, 0.0);  // blue (least) to red (most)
-    m_fieldColours->SetNanColor(0.55, 0.55, 0.58, 0.45);  // rejected: visibly not data
-    m_fieldColours->Build();
+    buildFieldColours(fieldChannelIsCentredOnZero(m_fieldChannel), lowest, highest);
 
     vtkNew<vtkImageMapToColors> colours;
     colours->SetInputData(field);
@@ -602,8 +625,19 @@ void ImageViewport::showField(const CorrelationResult &result)
     m_fieldActor->SetPosition(0.0, 0.0, -0.1);
 
     m_scalarBar->SetLookupTable(m_fieldColours);
-    m_scalarBar->SetTitle("Displacement (px)");
+    // Named with its unit, because "0.004" and "0.004 px" are different
+    // measurements and the map alone cannot say which one is on screen.
+    m_scalarBar->SetTitle(qPrintable(
+        QStringLiteral("%1 (%2)")
+            .arg(fieldChannelName(m_fieldChannel))
+            .arg(fieldChannelUnit(m_fieldChannel))));
     m_scalarBar->SetNumberOfLabels(5);
+    // Enough figures that the five labels differ from one another, and %g so
+    // that a strain scale reads as 8.3e-08 rather than as 0.000000083. Worked
+    // out and tested in core/FieldLayout.h.
+    const QByteArray labelFormat =
+        "%." + QByteArray::number(fieldScaleSignificantDigits(lowest, highest)) + "g";
+    m_scalarBar->SetLabelFormat(labelFormat.constData());
     m_scalarBar->SetWidth(0.08);
     m_scalarBar->SetHeight(0.42);
     m_scalarBar->SetPosition(0.90, 0.06);
@@ -616,8 +650,186 @@ void ImageViewport::showField(const CorrelationResult &result)
     m_renderWindow->Render();
 }
 
+void ImageViewport::buildFieldColours(bool diverging, double lowest, double highest)
+{
+    constexpr int kEntries = 256;
+
+    m_fieldColours->SetNumberOfTableValues(kEntries);
+    m_fieldColours->SetRange(lowest, highest);
+    m_fieldColours->Build();   // sizes the table; the entries below replace it
+
+    for (int i = 0; i < kEntries; i++) {
+        const double t = double(i) / double(kEntries - 1);
+        double r = 0.0;
+        double g = 0.0;
+        double b = 0.0;
+
+        if (diverging) {
+            // Blue for one sign, red for the other, pale in the middle. A
+            // sequential ramp cannot show a sign change: it puts compression
+            // and tension at two ends of one continuum and hides the zero
+            // crossing somewhere in the middle of the colours.
+            const double s = t * 2.0 - 1.0;          // -1 .. +1
+            const double m = std::abs(s);
+            const double lo = 1.0 - m;
+            if (s < 0.0) {
+                r = 0.19 + 0.72 * lo;
+                g = 0.34 + 0.57 * lo;
+                b = 0.75 + 0.16 * lo;
+            } else {
+                r = 0.79 + 0.12 * lo;
+                g = 0.22 + 0.69 * lo;
+                b = 0.18 + 0.73 * lo;
+            }
+        } else {
+            // The hue ramp the displacement field has always used: blue at the
+            // least, red at the most.
+            double hsv[3] = {0.667 * (1.0 - t), 1.0, 1.0};
+            double rgb[3];
+            vtkMath::HSVToRGB(hsv, rgb);
+            r = rgb[0];
+            g = rgb[1];
+            b = rgb[2];
+        }
+        m_fieldColours->SetTableValue(i, r, g, b, 1.0);
+    }
+
+    // Rejected, unreached, or unfitted: visibly not data, in every channel.
+    m_fieldColours->SetNanColor(0.55, 0.55, 0.58, 0.45);
+    m_fieldColours->Modified();
+}
+
+void ImageViewport::buildFieldBar()
+{
+    m_fieldBar = new QFrame(this);
+    m_fieldBar->setStyleSheet(QStringLiteral(
+        "QFrame { background: rgba(24, 26, 32, 235); border: 1px solid #4a4f5a;"
+        " border-radius: 6px; }"
+        "QLabel { color: #e8eaed; background: transparent; border: none; }"
+        "QComboBox { color: #e8eaed; background: #2f333c; border: 1px solid"
+        " #565c68; border-radius: 4px; padding: 3px 8px; }"
+        "QComboBox QAbstractItemView { color: #e8eaed; background: #2f333c;"
+        " selection-background-color: #3a4250; }"));
+
+    auto *row = new QHBoxLayout(m_fieldBar);
+    row->setContentsMargins(12, 8, 12, 8);
+    row->setSpacing(8);
+
+    row->addWidget(new QLabel(tr("Showing"), m_fieldBar));
+
+    m_fieldChoice = new QComboBox(m_fieldBar);
+    // Built from offeredFieldChannels(), the same list the layout and the
+    // tests walk, so the selector cannot offer a channel nothing can draw.
+    for (const FieldChannelInfo &channel : offeredFieldChannels()) {
+        m_fieldChoice->addItem(channel.name, QVariant::fromValue(int(channel.channel)));
+    }
+    connect(m_fieldChoice, &QComboBox::currentIndexChanged, this, [this](int index) {
+        if (index < 0)
+            return;
+        const auto chosen = FieldChannel(m_fieldChoice->itemData(index).toInt());
+        if (chosen == m_fieldChannel)
+            return;
+        m_fieldChannel = chosen;
+        drawField();
+        updateFieldBar();
+        emit fieldChannelChanged(m_fieldChannel);
+    });
+    row->addWidget(m_fieldChoice);
+
+    // Says why the strain entries are unselectable, when they are. A disabled
+    // control with no stated reason is a dead end -- the reader cannot tell
+    // whether it is broken, not yet reached, or not applicable.
+    m_fieldNote = new QLabel(m_fieldBar);
+    m_fieldNote->setWordWrap(true);
+    row->addWidget(m_fieldNote, 1);
+
+    m_fieldBar->hide();
+}
+
+void ImageViewport::updateFieldBar()
+{
+    if (!m_fieldBar)
+        buildFieldBar();
+
+    const bool strainAvailable = m_fieldResult.hasStrain();
+
+    QSignalBlocker blocked(m_fieldChoice);
+    for (int i = 0; i < m_fieldChoice->count(); i++) {
+        const auto channel = FieldChannel(m_fieldChoice->itemData(i).toInt());
+        const bool usable = strainAvailable || !fieldChannelIsStrain(channel);
+        auto *model = qobject_cast<QStandardItemModel *>(m_fieldChoice->model());
+        if (model && model->item(i))
+            model->item(i)->setEnabled(usable);
+        if (channel == m_fieldChannel)
+            m_fieldChoice->setCurrentIndex(i);
+    }
+
+    // The range the channel on display actually covers. Stated because the
+    // colours alone cannot distinguish a field that varies from one that is
+    // uniform to within float noise: both fill the same rainbow. With the
+    // numbers beside it, a scale spanning 3.000000 to 3.000002 px explains
+    // itself.
+    QString range;
+    double lowest = 0.0;
+    double highest = 0.0;
+    if (fieldValueRange(m_fieldResult, m_fieldChannel, lowest, highest)) {
+        const int digits = fieldScaleSignificantDigits(lowest, highest);
+        range = lowest == highest
+                    // Said as one value rather than as a range from a number
+                    // to itself, which reads as a rounding artefact.
+                    ? tr("%1 is %2 (%3) at every measured point. ")
+                          .arg(fieldChannelName(m_fieldChannel))
+                          .arg(lowest, 0, 'g', digits)
+                          .arg(fieldChannelUnit(m_fieldChannel))
+                    : tr("%1 runs from %2 to %3 (%4). ")
+                          .arg(fieldChannelName(m_fieldChannel))
+                          .arg(lowest, 0, 'g', digits)
+                          .arg(highest, 0, 'g', digits)
+                          .arg(fieldChannelUnit(m_fieldChannel));
+    }
+
+    if (strainAvailable) {
+        m_fieldNote->setText(range
+                             + tr("Strain fitted at %1 of %2 points, over a %3 px "
+                                  "subregion.")
+                                   .arg(m_fieldResult.strainFitted)
+                                   .arg(m_fieldResult.total())
+                                   .arg(m_fieldResult.strainRadius, 0, 'g', 4));
+    } else if (m_fieldResult.strainRequested) {
+        m_fieldNote->setText(range
+                             + tr("Strain was fitted at no point in this run, so "
+                                  "the strain channels are unavailable."));
+    } else {
+        m_fieldNote->setText(range
+                             + tr("Strain was not fitted for this run. Turn it on "
+                                  "in the Analysis panel and run again."));
+    }
+
+    m_fieldBar->show();
+    m_fieldBar->raise();
+    positionFieldBar();
+}
+
+void ImageViewport::positionFieldBar()
+{
+    if (!m_fieldBar || m_fieldBar->isHidden())
+        return;
+
+    constexpr int kMargin = 10;
+    // Top of the viewport: the region-drawing bar owns the bottom, and the two
+    // are on screen together whenever a region is redrawn over a field.
+    const int barWidth = std::max(120, width() - 2 * kMargin);
+    int barHeight = m_fieldBar->heightForWidth(barWidth);
+    if (barHeight <= 0)
+        barHeight = m_fieldBar->sizeHint().height();
+
+    m_fieldBar->setGeometry(kMargin, kMargin, barWidth, barHeight);
+}
+
 void ImageViewport::clearField()
 {
+    if (m_fieldBar)
+        m_fieldBar->hide();
     if (!m_hasField)
         return;
     m_renderer->RemoveActor(m_fieldActor);

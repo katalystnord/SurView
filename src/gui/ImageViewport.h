@@ -1,5 +1,7 @@
 #pragma once
 
+#include "core/Correlation.h"
+#include "core/FieldLayout.h"
 #include "core/ImageRecord.h"
 #include "core/Roi.h"
 
@@ -20,7 +22,7 @@
 #include <vtkRenderer.h>
 #include <vtkScalarBarActor.h>
 
-struct CorrelationResult;
+class QComboBox;
 class QFrame;
 class QLabel;
 class QPushButton;
@@ -48,11 +50,16 @@ public:
     // one on screen would attribute those pixels to the current selection.
     void showMessage(const QString &text);
 
-    // Overlay a measured displacement field on the reference image, with the
-    // colour scale that makes it readable as numbers rather than as a picture.
+    // Overlay a measured field on the reference image, with the colour scale
+    // that makes it readable as numbers rather than as a picture. Which of the
+    // result's channels is drawn is chosen on screen, from the bar this puts up
+    // alongside it; a result that carries no strain falls back to displacement
+    // rather than offering an empty map.
     void showField(const CorrelationResult &result);
     void clearField();
     bool hasField() const { return m_hasField; }
+
+    FieldChannel fieldChannel() const { return m_fieldChannel; }
 
     bool hasImage() const { return m_hasImage; }
 
@@ -82,6 +89,10 @@ public:
     const ImageRecord &record() const { return m_record; }
 
 signals:
+    // The displayed channel changed, so anything reporting on the field can say
+    // which one it is reporting on.
+    void fieldChannelChanged(FieldChannel channel);
+
     // A boundary was completed. The region is in image pixel coordinates; the
     // viewport draws it, but the project owns it.
     void roiDrawn(const RegionOfInterest &roi);
@@ -100,6 +111,17 @@ protected:
 
 private:
     void applyImageInteractorStyle();
+
+    // --- field display -----------------------------------------------------
+    void buildFieldBar();
+    void positionFieldBar();
+    void updateFieldBar();
+    void drawField();
+
+    // Fills the lookup table for the channel on display. A channel whose zero
+    // is a physical state gets a diverging scale about it; the rest get a
+    // sequential one.
+    void buildFieldColours(bool diverging, double lowest, double highest);
 
     // Chooses the intensity window sent to screen and writes it into the
     // record, so the mapping is reported rather than silently applied.
@@ -137,6 +159,17 @@ private:
     bool m_hasImage = false;
     bool m_hasField = false;
     ImageRecord m_record;
+
+    QFrame *m_fieldBar = nullptr;
+    QComboBox *m_fieldChoice = nullptr;
+    QLabel *m_fieldNote = nullptr;
+
+    // The result on display, kept so the channel can be changed without
+    // re-running anything. The viewport owns a copy rather than a pointer: the
+    // project may drop its result at any time, and a stale pointer here would
+    // be drawn over the image.
+    CorrelationResult m_fieldResult;
+    FieldChannel m_fieldChannel = FieldChannel::DisplacementMagnitude;
 
     QFrame *m_roiBar = nullptr;
     QLabel *m_roiBarText = nullptr;

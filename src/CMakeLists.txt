@@ -21,6 +21,8 @@ add_library(surview_core STATIC
     core/Roi.h
     core/RoiDetect.cpp
     core/RoiDetect.h
+    core/StrainFit.cpp
+    core/StrainFit.h
 )
 
 # Headers are included by their path from src/ (e.g. "core/ImageRecord.h").
