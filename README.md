@@ -30,8 +30,16 @@ tools/check-engine.sh [path-to-OpenCorr-checkout]
 
 ## Status
 
-Early scaffolding. Builds and runs (Qt shell + VTK link) on Linux with
-Qt6, VTK 9.5, CMake ≥ 3.21.
+Working, and narrow. Import a reference and target image, draw or auto-detect a
+region of interest, run a correlation, read the displacement and strain fields
+on screen, and export them as `.vtu` for ParaView or FreeCAD. Linux, Qt6,
+VTK 9.5, CMake >= 3.21.
+
+Run the tests - both SurView's and the pinned engine's - with:
+
+```sh
+tools/run-tests.sh
+```
 
 ## License
 

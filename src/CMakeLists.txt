@@ -7,8 +7,12 @@
 add_library(surview_core STATIC
     core/Correlation.cpp
     core/Correlation.h
+    core/FieldExport.cpp
+    core/FieldExport.h
     core/FieldLayout.cpp
     core/FieldLayout.h
+    core/FieldMesh.cpp
+    core/FieldMesh.h
     core/ImageDecode.cpp
     core/ImageDecode.h
     core/ImagePairing.cpp
@@ -52,6 +56,10 @@ target_link_libraries(surview_gui PUBLIC
 
 target_compile_definitions(surview_gui PUBLIC
     SURVIEW_VERSION="${PROJECT_VERSION}"
+    # The engine commit this build is pinned to, compiled in so an exported
+    # field can name what measured it. Read from cmake/opencorr.pin, the same
+    # single source the configure-time check and tools/check-engine.sh use.
+    SURVIEW_OPENCORR_PIN="${SURVIEW_OPENCORR_PIN}"
 )
 
 # --- the application ------------------------------------------------------

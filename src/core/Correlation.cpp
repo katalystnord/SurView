@@ -316,17 +316,6 @@ void CorrelationRunner::run()
             point.v    = poi.deformation.v;
             point.zncc = poi.result.zncc;
 
-            // Fitted only where the engine wrote over the sentinel. All three
-            // components come from one fit, so one of them answers for all.
-            point.strainFitted = result.strainRequested
-                                 && !std::isnan(poi.strain.exx);
-            if (point.strainFitted) {
-                point.exx = poi.strain.exx;
-                point.eyy = poi.strain.eyy;
-                point.exy = poi.strain.exy;
-                result.strainFitted++;
-            }
-
             if (i >= solvedUpTo) {
                 // Stopped before the solver reached this point. Counted and
                 // named, not silently dropped: the grid the run set out to
@@ -348,6 +337,27 @@ void CorrelationRunner::run()
                     // reason rather than looking like a bug.
                     if (poi.result.zncc < kStrainFitCorrelationFloor)
                         result.belowStrainFloor++;
+
+                    // Fitted only where the engine wrote over the sentinel --
+                    // all three components come from one fit, so one of them
+                    // answers for all -- and only at a point whose OWN
+                    // displacement was measured.
+                    //
+                    // ⚑ That second condition is not the engine's. Strain::
+                    // compute() fits at every point it is given: a rejected
+                    // centre merely excludes itself from its own regression and
+                    // still receives a value from its neighbours. That value is
+                    // an extrapolation into a place the instrument measured
+                    // nothing, indistinguishable downstream from a measured
+                    // one, and it made a run report "strain fitted at 1092 of
+                    // the 1025 solved points".
+                    if (result.strainRequested && !std::isnan(poi.strain.exx)) {
+                        point.strainFitted = true;
+                        point.exx = poi.strain.exx;
+                        point.eyy = poi.strain.eyy;
+                        point.exy = poi.strain.exy;
+                        result.strainFitted++;
+                    }
                 } else {
                     result.failuresByReason[QString::fromStdString(
                         statusDescription(poi.result.zncc))]++;

@@ -99,6 +99,7 @@ private slots:
     void turning_strain_off_leaves_no_strain_field_rather_than_a_field_of_zeros();
     void a_point_the_fit_could_not_reach_is_marked_not_zeroed();
     void the_run_reports_the_subregion_and_measure_it_actually_used();
+    void no_strain_is_reported_where_the_displacement_it_describes_was_not();
 };
 
 void TestStrainMeasure::a_rigid_translation_is_not_a_strain()
@@ -221,6 +222,43 @@ void TestStrainMeasure::the_run_reports_the_subregion_and_measure_it_actually_us
     QVERIFY(result.strainRequested);
     QCOMPARE(result.strainRadius, 30.0);
     QVERIFY(result.strainMeasure == StrainMeasure::GreenLagrange);
+}
+
+
+void TestStrainMeasure::no_strain_is_reported_where_the_displacement_it_describes_was_not()
+{
+    // FOUND BY EXPORTING, 2026-08-19. The engine fits a strain at every point
+    // it is given, whether or not that point's OWN displacement solved: the fit
+    // reads the neighbours, and a rejected centre simply excludes itself from
+    // its own regression. The result was a run reporting "strain fitted at 1092
+    // of the 1025 solved points", and an exported file carrying a confident
+    // strain at 67 places where the displacement was not-a-number.
+    //
+    // A strain there is an extrapolation from elsewhere, not a measurement of
+    // that point, and nothing downstream can tell the two apart. Tenet 9: the
+    // conservative reading is the substantiable one, so strain lives only where
+    // the displacement it describes does.
+    CorrelationSettings settings = baseSettings();
+    // One iteration against a strict threshold: the solve reaches many points
+    // and fails to converge at plenty of them, which is the mixture needed.
+    settings.maxIterations = 1;
+    settings.convergence = 1e-9;
+
+    const CorrelationResult result = runOnce(settings);
+
+    int rejected = 0;
+    for (const CorrelationPoint &point : result.points) {
+        if (!point.converged)
+            rejected++;
+        QVERIFY2(!(point.strainFitted && !point.converged),
+                 "a strain was reported at a point whose displacement was not");
+    }
+    QVERIFY2(rejected > 0,
+             "these settings solved everything, so the case was never exercised");
+
+    // And the count the run reports can no longer exceed the count it is
+    // reported against, which is what made the defect visible.
+    QVERIFY(result.strainFitted <= result.converged);
 }
 
 QTEST_MAIN(TestStrainMeasure)

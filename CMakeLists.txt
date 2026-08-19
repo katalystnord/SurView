@@ -32,6 +32,7 @@ find_package(VTK REQUIRED COMPONENTS
     ImagingCore           # vtkImageMapToColors (field scalars -> displayed colour)
     RenderingAnnotation   # vtkScalarBarActor (the field's colour scale)
     IOImage               # vtkImageReader2Factory (TIFF/PNG/JPEG speckle images)
+    IOXML                 # vtkXMLUnstructuredGridWriter (.vtu field export)
     GUISupportQt          # QVTKOpenGLNativeWidget (VTK inside a Qt widget)
 )
 

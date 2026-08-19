@@ -166,6 +166,15 @@ invisible unless deliberately surfaced, and that this codebase now handles:
 - **Points correlating below 0.9 are excluded from every fit** (the engine's own
   default). Stated in the panel and counted in the run report, because a sparse
   strain map over a dense displacement map otherwise reads as a fault.
+- **Strain is reported only where the displacement it describes was measured.**
+  This one is ours, not the engine's: `Strain::compute()` fits at every point it
+  is given, and a point whose own displacement was rejected merely excludes
+  itself from its own regression and still receives a value from its neighbours.
+  That value is an extrapolation into a place the instrument measured nothing,
+  and it is indistinguishable downstream from a measured one. Found by exporting
+  and reading the file back: a run reported "strain fitted at 1092 of the 1025
+  solved points" and the file carried confident strain at 67 points whose
+  displacement was not-a-number.
 
 Two display rules follow from the same place, both in `core/FieldLayout.h`:
 a strain scale is centred on zero and a displacement scale is not (strain's zero
@@ -174,6 +183,49 @@ sit, so a specimen that merely translated would spend half the colours on values
 that cannot occur), and scale labels are sized in SIGNIFICANT digits rather than
 decimal places, since the two quantities sit at opposite ends of the number line
 and any fixed decimal count fails at one end or the other.
+
+### The field leaving the application (2026-08-19)
+
+`Export Results (.vtu)` writes the measured field as a VTK unstructured grid,
+which ParaView and FreeCAD's FEM workbench open directly. Three decisions worth
+not re-deriving, plus one trap:
+
+- **A cell exists where all four of its corners were ATTEMPTED**, not where they
+  succeeded (`core/FieldMesh.h`). Geometry then says where the instrument was
+  pointed and the data arrays say what came back, so a difficult specimen does
+  not quietly export as a smaller one. Cell corners walk the perimeter; listed
+  diagonally they make a cell every reader opens, as a bow tie.
+- **Nothing unmeasured is written as zero.** In any viewer a field of zeros is a
+  perfectly good blue region, indistinguishable from a real measurement of no
+  movement. Rejected points and unfitted strains are not-a-number, and a
+  `solved` array states the rejection outright rather than leaving it to be
+  inferred from the holes. Strain arrays are ABSENT, not present-and-empty, when
+  strain was never asked for: an all-not-a-number strain array reads as a
+  measurement that failed everywhere.
+- **The file states its own coordinate frame**, because no mesh viewer assumes
+  ours. Coordinates are reference-image pixels with y DOWN, unaltered, so the
+  field lays straight back over the photograph; a reader that assumes y up draws
+  it mirrored and cannot tell, since the picture is plausible either way. The
+  same trap as the viewport's, one file format further out. Provenance travels
+  with it (tenet 10): both images with their SHA-256, the solver and its
+  settings, the region, the strain fit, and the engine commit the build is
+  pinned to, compiled in as `SURVIEW_OPENCORR_PIN`. Captured when the run
+  STARTS, not read back from the panel at export time: the panel keeps taking
+  input after a run finishes, and reading it later writes a file stating, with
+  a SHA-256 beside it, a configuration that never measured anything.
+
+Provenance is not greppable, and that is a property of the format rather than
+an oversight: the file is written in binary mode, so field data is base64 and
+compressed on disk. Read it with ParaView's Information panel, or any VTK
+reader. A walkthrough test that searched the raw bytes failed against correct
+code before this was understood.
+
+⚑ **`vtkXMLUnstructuredGridWriter::Write()` returns 1 on failure.** Verified
+against VTK 9.5 in a standalone program, not inferred: given a path in a
+directory that does not exist it returns 1 (success) while `GetErrorCode()`
+reports `CannotOpenFileError` and no file appears. A writer trusted on its
+return value tells a user their measurement is saved when it is not. The error
+code is the signal, with the file's existence checked behind it.
 
 ## License
 
@@ -600,5 +652,8 @@ decisions:
   Still to be designed: the live speckle-quality indicator, and editing a
   boundary after it is committed (today it is redrawn, not adjusted).
 - **VTK `.vtu` export**: confirmed a real differentiator empirically - only
-  1 of 11 tools reviewed has any VTK-family export. Reinforces the existing
-  VTK decision; no new action needed.
+  1 of 11 tools reviewed has any VTK-family export. **Built 2026-08-19** (see
+  *The field leaving the application* above): points and quad cells, every
+  channel the run measured, and full provenance in the file's own field data.
+  Still to be designed: exporting a sequence rather than one field, and whether
+  a plain CSV alongside it is worth having for spreadsheet users.

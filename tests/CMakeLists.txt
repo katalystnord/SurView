@@ -15,6 +15,8 @@ set(SURVIEW_UNIT_TESTS
     test_image_pairing
     test_image_decode
     test_field_layout
+    test_field_mesh
+    test_field_export
     test_roi_engine_boundary
     test_roi_detect
     test_solver_choices

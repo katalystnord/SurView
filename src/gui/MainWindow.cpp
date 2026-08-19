@@ -3,6 +3,7 @@
 #include "ImageViewport.h"
 #include "RecordPanel.h"
 #include "core/Correlation.h"
+#include "core/FieldExport.h"
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
 #include "core/ImagePairing.h"
@@ -108,8 +109,7 @@ void MainWindow::createActions()
     m_actExport = new QAction(tr("Export Results (.vtu)…"), this);
     m_actExport->setStatusTip(
         tr("Write displacement/strain fields as VTK data for ParaView / FreeCAD"));
-    connect(m_actExport, &QAction::triggered, this,
-            [this] { notImplemented(tr("VTK .vtu export")); });
+    connect(m_actExport, &QAction::triggered, this, &MainWindow::exportField);
 }
 
 void MainWindow::createMenus()
@@ -932,6 +932,15 @@ void MainWindow::runCorrelation()
     m_hasResult = false;
     m_viewport->clearField();
 
+    // Captured here, from the very values handed to the runner, so what the
+    // export states is what ran. See m_resultProvenance.
+    m_resultProvenance = FieldProvenance();
+    m_resultProvenance.reference = m_referenceRecord;
+    m_resultProvenance.target = target;
+    m_resultProvenance.settings = settings;
+    m_resultProvenance.applicationVersion = QStringLiteral(SURVIEW_VERSION);
+    m_resultProvenance.enginePin = QStringLiteral(SURVIEW_OPENCORR_PIN);
+
     m_workerThread = new QThread(this);
     m_runner = new CorrelationRunner(settings, m_roi,
                                      m_referenceRecord.filePath,
@@ -1125,6 +1134,55 @@ void MainWindow::onCorrelationFailed(const QString &reason)
     updateActionStates();
 }
 
+void MainWindow::exportField()
+{
+    // Suggested from the images the field came from, so a folder of exports
+    // stays attributable without anyone having to name them carefully.
+    const QString suggested =
+        QFileInfo(m_referenceRecord.filePath).absolutePath() + QLatin1Char('/')
+        + QFileInfo(m_referenceRecord.fileName).completeBaseName()
+        + QStringLiteral("_field.vtu");
+
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export measured field"), suggested,
+        tr("VTK unstructured grid (*.vtu)"));
+    if (path.isEmpty())
+        return;
+
+    exportFieldTo(path);
+}
+
+bool MainWindow::exportFieldTo(const QString &path)
+{
+    if (!m_hasResult) {
+        QMessageBox::warning(this, tr("Nothing to export"),
+                             tr("Run a correlation first: there is no measured "
+                                "field to write."));
+        return false;
+    }
+
+    const QString refusal = writeFieldVtu(path, m_result, m_resultProvenance);
+    if (!refusal.isEmpty()) {
+        log(tr("Export failed: %1").arg(refusal));
+        QMessageBox::warning(this, tr("Export failed"), refusal);
+        return false;
+    }
+
+    // Named in full, and in the log rather than only in a status message that
+    // disappears: a file written to a path chosen in a dialog that has since
+    // closed is a file the user cannot find again.
+    log(tr("Exported the measured field to %1 - %2 points, %3 of them solved%4")
+            .arg(path)
+            .arg(m_result.total())
+            .arg(m_result.converged)
+            .arg(m_result.hasStrain()
+                     ? tr(", with strain at %1").arg(m_result.strainFitted)
+                     : QString()));
+    statusBar()->showMessage(tr("Field exported to %1").arg(QFileInfo(path).fileName()),
+                             6000);
+    return true;
+}
+
 void MainWindow::showAbout()
 {
     QMessageBox::about(
@@ -1197,9 +1255,10 @@ void MainWindow::updateActionStates()
 
     m_actStop->setEnabled(running);
 
-    // Export needs results, and writing them is not built yet.
-    m_actExport->setEnabled(false);
-    m_actExport->setToolTip(m_hasResult
-                                ? tr("Exporting results is not implemented yet")
-                                : tr("Run a correlation first"));
+    m_actExport->setEnabled(m_hasResult && !running);
+    m_actExport->setToolTip(
+        running    ? tr("Wait for the correlation to finish")
+        : m_hasResult ? tr("Write the measured field to a VTK .vtu file, which "
+                           "ParaView and FreeCAD open directly")
+                      : tr("Run a correlation first: there is no field to export"));
 }

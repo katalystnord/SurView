@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Correlation.h"
+#include "core/FieldExport.h"
 #include "core/ImageRecord.h"
 #include "core/Roi.h"
 
@@ -41,10 +42,18 @@ public:
     const CorrelationResult &lastResult() const { return m_result; }
     const RegionOfInterest &roi() const { return m_roi; }
 
+    // Write the measured field to `path`. The same route the File menu takes,
+    // which asks for the path and then calls this -- exposed for the same
+    // reason openReferenceImage() is: everything except choosing the file
+    // should be drivable without a modal dialog in the way. Reports failure
+    // to the user itself; the return value is for a caller that wants to know.
+    bool exportFieldTo(const QString &path);
+
 private slots:
     void importReferenceImage();
     void importTargetImages();
     void runCorrelation();
+    void exportField();
     void showAbout();
 
     // Selecting an image in the project tree shows its record, and displays it
@@ -152,6 +161,12 @@ private:
 
     CorrelationResult m_result;
     bool m_hasResult = false;
+
+    // How m_result was produced, captured when the run STARTS rather than read
+    // back from the panel at export time. The panel keeps taking input after a
+    // run finishes, so reading it later would write a file stating, with a
+    // SHA-256 beside it, a configuration that never measured anything.
+    FieldProvenance m_resultProvenance;
 
     // Actions whose enabled state depends on project progress.
     QAction *m_actRun = nullptr;

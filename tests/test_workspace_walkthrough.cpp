@@ -29,9 +29,19 @@
 #include <QTest>
 #include <QToolBar>
 #include <QDoubleSpinBox>
+#include <QFile>
+#include <QFileInfo>
+#include <QPlainTextEdit>
 #include <QFormLayout>
 #include <QSpinBox>
+#include <QTemporaryDir>
 #include <QTreeWidget>
+
+#include <vtkFieldData.h>
+#include <vtkNew.h>
+#include <vtkStringArray.h>
+#include <vtkUnstructuredGrid.h>
+#include <vtkXMLUnstructuredGridReader.h>
 
 namespace {
 
@@ -106,6 +116,25 @@ bool somethingOnScreenSays(QWidget *root, const QString &text)
     return false;
 }
 
+// Everything an exported file states about how it was made, as one string.
+QString provenanceIn(const QString &path)
+{
+    vtkNew<vtkXMLUnstructuredGridReader> reader;
+    reader->SetFileName(path.toLocal8Bit().constData());
+    reader->Update();
+
+    QString all;
+    vtkFieldData *data = reader->GetOutput()->GetFieldData();
+    for (int i = 0; i < data->GetNumberOfArrays(); i++) {
+        auto *array = vtkStringArray::SafeDownCast(data->GetAbstractArray(i));
+        if (!array)
+            continue;
+        for (vtkIdType v = 0; v < array->GetNumberOfValues(); v++)
+            all += QString::fromStdString(array->GetValue(v)) + QLatin1Char('\n');
+    }
+    return all;
+}
+
 // Where a given image pixel currently sits inside the viewport widget.
 //
 // This asks the viewport through its real projection rather than recomputing
@@ -147,6 +176,9 @@ private slots:
     void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
     void a_measured_field_can_be_switched_to_strain_from_the_screen();
     void the_strain_channels_say_why_they_are_unavailable();
+    void exporting_is_refused_with_a_reason_until_there_is_a_field();
+    void a_measured_field_leaves_the_application_and_says_where_it_went();
+    void an_export_records_the_settings_that_produced_it_not_the_ones_on_screen();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -602,6 +634,121 @@ void TestWorkspaceWalkthrough::the_strain_channels_say_why_they_are_unavailable(
              "a strain channel was selectable after a run that fitted no strain");
     QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("Strain was not fitted")),
              "nothing on screen says why the strain channels cannot be picked");
+}
+
+
+void TestWorkspaceWalkthrough::exporting_is_refused_with_a_reason_until_there_is_a_field()
+{
+    // The menu item existed for weeks and answered "not implemented yet" when
+    // clicked, which is the worst of the three possible states: it looks like
+    // a capability, behaves like a bug, and teaches the reader to distrust the
+    // rest of the menu. Disabled with a stated reason is the honest version.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QAction *exportAction = actionLabelled(&window, QStringLiteral("Export"));
+    QVERIFY2(exportAction, "there is no way to get results out of the application");
+    QVERIFY(!exportAction->isEnabled());
+    QVERIFY2(exportAction->toolTip().contains(QStringLiteral("correlation"),
+                                              Qt::CaseInsensitive),
+             "the disabled export does not say what is missing");
+
+    // NEGATIVE CHECK (2026-08-19): this case does NOT catch the export being
+    // unbuilt, and it was written believing it did. With the action forced
+    // disabled and its tooltip restored to "not implemented yet", it still
+    // passed -- because before a run the tooltip takes the "run a correlation
+    // first" branch either way. The assertion that has teeth against that
+    // state lives in the case below, where a result exists.
+}
+
+void TestWorkspaceWalkthrough::a_measured_field_leaves_the_application_and_says_where_it_went()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QAction *exportAction = actionLabelled(&window, QStringLiteral("Export"));
+    QVERIFY2(exportAction->isEnabled(),
+             "a measured field still could not be exported");
+    QVERIFY2(!exportAction->toolTip().contains(QStringLiteral("not implemented"),
+                                               Qt::CaseInsensitive),
+             "the export still describes itself as unbuilt");
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("walkthrough.vtu"));
+    QVERIFY2(window.exportFieldTo(path), "the export reported failure");
+    QVERIFY2(QFile::exists(path), "the export reported success and wrote nothing");
+    QVERIFY(QFileInfo(path).size() > 0);
+
+    // Where it went has to be visible afterwards. A file written silently to a
+    // path chosen in a dialog that has since closed is a file the user cannot
+    // find again.
+    auto *log = window.findChild<QPlainTextEdit *>();
+    QVERIFY(log);
+    QVERIFY2(log->toPlainText().contains(QStringLiteral("walkthrough.vtu")),
+             "nothing on screen says where the export went");
+}
+
+
+void TestWorkspaceWalkthrough::an_export_records_the_settings_that_produced_it_not_the_ones_on_screen()
+{
+    // The Analysis panel keeps taking input after a run finishes, so the
+    // settings on screen at export time are not necessarily the ones that
+    // measured the field on screen. Reading the panel at export would write a
+    // file that states, with full confidence and a SHA-256 beside it, a
+    // configuration that never produced anything -- which is worse than
+    // omitting provenance, because it is provenance that cannot be doubted by
+    // looking.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *subsetRadius =
+        controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    subsetRadius->setValue(16);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // Change the panel after the run, the way anyone setting up the next one
+    // would, and only then export.
+    subsetRadius->setValue(31);
+
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("provenance.vtu"));
+    QVERIFY(window.exportFieldTo(path));
+
+    // Read back through a reader rather than by searching the file's bytes:
+    // the writer stores field data in binary, so the provenance is base64 and
+    // compressed on disk. A first version of this case grepped the raw text and
+    // failed against correct code, which is its own small lesson -- the file is
+    // for programs, and the test has to be one.
+    const QString stated = provenanceIn(path);
+
+    QVERIFY2(stated.contains(QStringLiteral("subset radius 16 px")),
+             "the file does not state the subset radius the field was measured with");
+    QVERIFY2(!stated.contains(QStringLiteral("subset radius 31 px")),
+             "the file states a subset radius that never measured anything");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
