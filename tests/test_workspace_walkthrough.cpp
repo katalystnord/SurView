@@ -203,6 +203,7 @@ private slots:
     void every_frame_of_a_sequence_is_measured_and_listed();
     void a_frame_can_be_picked_from_the_project_and_shows_its_own_field();
     void exporting_a_sequence_writes_one_numbered_file_for_each_frame();
+    void re_anchoring_is_offered_off_by_default_and_says_what_it_costs();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -967,6 +968,46 @@ void TestWorkspaceWalkthrough::exporting_a_sequence_writes_one_numbered_file_for
     // Numbered so that they sort into frame order as filenames, which is how
     // ParaView groups them: unpadded, frame 10 would open before frame 2.
     QVERIFY(precedesInSequence(written.at(0), written.at(1)));
+}
+
+
+void TestWorkspaceWalkthrough::re_anchoring_is_offered_off_by_default_and_says_what_it_costs()
+{
+    // Re-anchoring changes what every later frame is compared against. That is
+    // the right answer for a specimen that deforms far, and the wrong one for a
+    // specimen that does not - it resets each point's baseline and abandons any
+    // point that could not be measured on the frame it happens. So it is
+    // offered, defaulted OFF, and explained where it is switched on rather than
+    // in documentation nobody has open.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *reanchor = byVisibleText<QCheckBox>(&window, QStringLiteral("Re-anchor"));
+    QVERIFY2(reanchor, "the panel offers no way to re-anchor the reference");
+    QVERIFY2(!reanchor->isChecked(),
+             "re-anchoring is on by default, which changes every sequence "
+             "silently");
+
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("original reference")),
+             "nothing says what the reference is measured against by default");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("lost")),
+             "nothing says that re-anchoring abandons points it cannot measure");
+
+    // The two numbers that decide it are only meaningful while it is on, and
+    // must be reachable by the label a reader sees.
+    auto *threshold =
+        controlLabelled<QDoubleSpinBox>(&window, QStringLiteral("Correlation a point"));
+    auto *share =
+        controlLabelled<QSpinBox>(&window, QStringLiteral("Share of points"));
+    QVERIFY2(threshold && share, "the re-anchor rule has no visible settings");
+    QVERIFY2(!threshold->isEnabled() && !share->isEnabled(),
+             "the re-anchor settings are live while re-anchoring is off");
+
+    reanchor->setChecked(true);
+    QVERIFY2(threshold->isEnabled() && share->isEnabled(),
+             "switching re-anchoring on did not enable its own settings");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

@@ -177,25 +177,62 @@ void CorrelationRunner::run()
             region = std::make_unique<Polygon2D>(vertex_x, vertex_y);
         }
 
-        const PoiGrid grid = buildPoiGrid(
-            ref_img.width, ref_img.height, radius, m_settings.gridStep, m_roi,
-            [&region](int x, int y) { return region->contains(x, y); });
-
-        if (!grid.isValid()) {
-            emit failed(grid.refusal);
-            return;
-        }
-
         std::vector<POI2D> queue;
         std::vector<int> gridIndex;
-        queue.reserve(size_t(grid.cells.size()));
-        gridIndex.reserve(size_t(grid.cells.size()));
-        for (const PoiGridCell &cell : grid.cells) {
-            queue.emplace_back(Point2D(float(cell.x), float(cell.y)));
-            gridIndex.push_back(cell.gridIndex);
+
+        CorrelationResult result;
+
+        if (m_seeding.isEmpty()) {
+            const PoiGrid grid = buildPoiGrid(
+                ref_img.width, ref_img.height, radius, m_settings.gridStep, m_roi,
+                [&region](int x, int y) { return region->contains(x, y); });
+
+            if (!grid.isValid()) {
+                emit failed(grid.refusal);
+                return;
+            }
+
+            queue.reserve(size_t(grid.cells.size()));
+            gridIndex.reserve(size_t(grid.cells.size()));
+            for (const PoiGridCell &cell : grid.cells) {
+                queue.emplace_back(Point2D(float(cell.x), float(cell.y)));
+                gridIndex.push_back(cell.gridIndex);
+            }
+
+            result.gridColumns = grid.columns;
+            result.gridRows    = grid.rows;
+            result.originX     = float(grid.originX);
+            result.originY     = float(grid.originY);
+            result.step        = grid.step;
+            result.restrictedToRoi = grid.restricted;
+            if (grid.restricted)
+                result.roi = m_roi;
+        } else {
+            // Positions handed in, because these points have been followed from
+            // an earlier frame and are no longer where a grid would put them.
+            // Deliberately NOT filtered against the image bounds here: a point
+            // that has moved out of the picture is a measurement that failed,
+            // and the engine says so in its own words. Dropping it quietly
+            // would shrink the field with no account of why.
+            queue.reserve(size_t(m_seeding.points.size()));
+            gridIndex.reserve(size_t(m_seeding.points.size()));
+            for (const PoiSeeding::Seed &seed : m_seeding.points) {
+                queue.emplace_back(Point2D(seed.x, seed.y));
+                gridIndex.push_back(seed.gridIndex);
+            }
+
+            result.gridColumns = m_seeding.gridColumns;
+            result.gridRows    = m_seeding.gridRows;
+            result.originX     = m_seeding.originX;
+            result.originY     = m_seeding.originY;
+            result.step        = m_seeding.step;
+            result.restrictedToRoi = m_seeding.restrictedToRoi;
+            if (m_seeding.restrictedToRoi)
+                result.roi = m_roi;
         }
 
-        // An empty grid is already a refusal from buildPoiGrid(), handled above.
+        // Never zero: an empty grid is a refusal from buildPoiGrid() above, and
+        // a seeding with no points is treated as no seeding at all.
         const int total = int(queue.size());
         emit progress(0, total, tr("estimating displacement"));
 
@@ -212,15 +249,6 @@ void CorrelationRunner::run()
         solver->setImages(ref_img, tar_img);
         solver->prepare();
 
-        CorrelationResult result;
-        result.gridColumns = grid.columns;
-        result.gridRows    = grid.rows;
-        result.originX     = float(grid.originX);
-        result.originY     = float(grid.originY);
-        result.step        = grid.step;
-        result.restrictedToRoi = grid.restricted;
-        if (grid.restricted)
-            result.roi = m_roi;
         result.points.reserve(total);
 
         // How far the SOLVER got. Points beyond this still hold the integer-

@@ -199,13 +199,11 @@ appears to jump about. `core/Sequence.h` compares digit runs as numbers, and the
 project tree is sorted into that order ON IMPORT, so what is listed is what will
 be measured and the two cannot disagree unnoticed.
 
-**Every frame is measured against the original reference**, never against the
-frame before it. That is the ordinary meaning of a DIC sequence and it keeps the
-displacements directly comparable, but correlation degrades as the specimen
-moves away from where it started, and past some deformation the engine's
-reference-update tracking is what a run needs instead. Not built. Said in the
-run log rather than left implicit, because a sequence that stops correlating
-halfway through looks exactly like a specimen that stopped deforming.
+**By default every frame is measured against the original reference**, never
+against the frame before it. That is the ordinary meaning of a DIC sequence and
+it keeps the displacements directly comparable, but correlation degrades as the
+specimen moves away from where it started. Reference updating handles that, and
+is off by default (see below).
 
 `SequenceRunner` owns only the loop; `CorrelationRunner` stays the single-pair
 engine it already was, with its tests intact. The cost of that separation is
@@ -235,6 +233,85 @@ Export writes one file per frame, numbered and zero-padded, which is how
 ParaView groups a series into a time series -- unpadded, `frame_10` sorts before
 `frame_2` and the animation plays out of order, which is the same trap as the
 frame ordering itself, one layer out.
+
+### Reference updating, and why it is orchestrated here (2026-08-19)
+
+Once too little of the field still correlates against the original reference,
+the run re-anchors: later frames are measured against the current frame instead,
+each point's displacement is banked, and what is REPORTED stays relative to the
+original reference and on the original grid. ncorr's decision rule, in
+OpenCorr's higher-is-better ZNCC convention: the reference holds while at least
+some share of the MEASURED points clears a correlation threshold. Off by
+default, matching ncorr's own policy, and explained where it is switched on,
+because it abandons any point it could not measure on the frame it happens.
+
+⚑ **THE DECISION THAT SHAPED THIS: it is orchestrated in SurView, not delegated
+to the fork's `SequenceTracker2D`.** That class exists, is audited, and does the
+same job -- but its API takes the whole sequence at once, loops with all state in
+locals, and hands back only the FINAL cumulative displacement plus a bool per
+frame. Using it would cost per-frame fields, progress, and cancellation, which
+are three things the application already has.
+
+David's question settled the direction, and it splits the two changes the fork
+would have needed:
+
+- Per-frame output is a genuine LIBRARY gap. Any consumer of a sequence tracker
+  wants the fields, not just the endpoint. Worth fixing in the fork one day, and
+  possibly upstreaming. Not needed for this.
+- Progress and cancellation are an APPLICATION concern. They exist because a GUI
+  has a Stop button, and putting them in a numerical library is SurView leaking
+  into the engine -- the half that would make OpenCorr less self-contained, not
+  more.
+
+Four things follow, and they are the reasons to prefer composing here:
+
+1. **We already made this decision once and it held.** `CorrelationRunner`
+   chunks the POI queue precisely because the engine's `compute()` blocks with
+   no progress and no cancel. We composed around it rather than asking the
+   engine to grow a callback, and that trick has since survived strain,
+   reliability and sequences without the engine knowing it exists.
+2. **Testability.** The banking step is pure arithmetic on positions and
+   displacements. In `core/ReferenceUpdate.h` it is engine-free, and its whole
+   test suite runs in a millisecond with no image and no solver. Inside the
+   engine's loop the same logic can only be exercised through a real
+   correlation. The trickiest bookkeeping in the project became the most
+   cheaply tested code in it.
+3. **The engine's API shape is wrong for its own roadmap.** `compute()` takes
+   `std::vector<Image2D>` -- every frame resident. The fork has already ported
+   `.cine` high-speed-camera I/O, and those sequences run to thousands of
+   frames. We stream one pair at a time.
+4. **Rebase cost.** Upstream is mid-rewrite; every line added to the fork's API
+   is a line to re-port. This adds none.
+
+The honest cost is that the same bookkeeping now exists in two places and a fix
+to one will not reach the other. What blunts it is a property test rather than
+an argument: **re-anchoring must not change the answer where the original
+reference still correlates.** `re_anchoring_does_not_change_the_answer_when_it_
+did_not_need_to` measures one sequence both ways and requires them to agree, with
+re-anchoring forced on every frame by an unreachable threshold so no
+decorrelating fixture is needed. Negative-checked: dropping the banked
+displacement reads 0 px where it should read 3, and banking without moving the
+reference reads 6 -- the two ways this can go wrong, each caught with a legible
+message.
+
+Two rules the bookkeeping enforces, both tested:
+
+- A frame is reported on the ORIGINAL grid in displacement relative to the
+  ORIGINAL reference, whatever it was measured against. Otherwise the field
+  drifts across the picture as the specimen does, and no two frames can be laid
+  over one another or over the reference photograph.
+- A point with no increment on a re-anchor frame is LOST, not frozen. Its
+  position in the new reference is unknown, so measuring it from then on reads
+  the wrong pixels, and a frozen point reports its last displacement forever --
+  a region that appears to have stopped moving, which is a measurement rather
+  than an absence.
+
+Found while building it: the Analysis panel had outgrown its dock. Mounted
+directly, Qt shrank its word-wrapped notes below the height their text needs and
+the widgets below drew over them -- the Reference group's own explanation was cut
+off mid-sentence with a checkbox on top of it. A wrapped QLabel reports one line
+as its minimum, so nothing is loud about it; the panel simply looks broken, and
+only at the sizes where it is. It lives in a QScrollArea now.
 
 ### Reliability: two questions, never one score (2026-08-19)
 

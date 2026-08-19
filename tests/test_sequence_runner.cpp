@@ -16,6 +16,7 @@
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
+#include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
 
 #include <QSignalSpy>
@@ -58,6 +59,8 @@ private slots:
     void a_frame_that_cannot_be_read_stops_the_run_and_names_itself();
     void an_empty_sequence_is_refused_rather_than_reported_as_done();
     void stopping_reaches_into_the_frame_that_is_running();
+    void re_anchoring_does_not_change_the_answer_when_it_did_not_need_to();
+    void a_re_anchor_is_announced_rather_than_done_quietly();
 };
 
 void TestSequenceRunner::every_frame_arrives_identified_and_in_the_order_it_was_given()
@@ -265,6 +268,129 @@ void TestSequenceRunner::stopping_reaches_into_the_frame_that_is_running()
     // first. The frame in flight must come back marked as interrupted.
     QVERIFY2(aFrameWasInterrupted,
              "Stop ended the sequence but let the running frame finish first");
+}
+
+
+namespace {
+
+// Mean measured displacement along x over the solved points of one field.
+double meanU(const CorrelationResult &result)
+{
+    double sum = 0.0;
+    int counted = 0;
+    for (const CorrelationPoint &point : result.points) {
+        if (!point.converged)
+            continue;
+        sum += point.u;
+        counted++;
+    }
+    return counted > 0 ? sum / counted : 0.0;
+}
+
+// A three-frame sequence out of the two fixtures: still, moved, still again.
+// Against a fixed reference the answers are 0, 3, 3 px.
+QStringList threeFrames()
+{
+    return {fixture(QStringLiteral("shift_reference.tif")),
+            fixture(QStringLiteral("shift_target.tif")),
+            fixture(QStringLiteral("shift_target.tif"))};
+}
+
+QVector<double> measureSequence(const ReferenceUpdatePolicy &policy, int *reanchors)
+{
+    SequenceRunner runner(coarseSettings(), RegionOfInterest(),
+                          fixture(QStringLiteral("shift_reference.tif")),
+                          threeFrames(), policy);
+
+    QVector<double> totals;
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&totals](int, const CorrelationResult &result) {
+                         totals.append(meanU(result));
+                     });
+    int counted = 0;
+    QObject::connect(&runner, &SequenceRunner::referenceReanchored,
+                     [&counted](int, int) { counted++; });
+    runner.run();
+    if (reanchors)
+        *reanchors = counted;
+    return totals;
+}
+
+}  // namespace
+
+void TestSequenceRunner::re_anchoring_does_not_change_the_answer_when_it_did_not_need_to()
+{
+    // ⚑ THE PROPERTY THAT GUARDS THE WHOLE SCHEME, and the reason this can be
+    // orchestrated here rather than inside the engine's own tracker without
+    // giving up the check that tracker would have provided.
+    //
+    // Re-anchoring changes what each frame is COMPARED AGAINST. It must not
+    // change what each frame REPORTS. Where the original reference still
+    // correlates, a re-anchored run and a fixed-reference run are measuring the
+    // same physical thing by two routes, so they have to agree -- and if the
+    // banking arithmetic is wrong in any way that matters, they will not.
+    //
+    // Forced on every frame rather than waited for, so the case does not need a
+    // specimen that decorrelates: a threshold above any achievable correlation
+    // re-anchors unconditionally, which is the harshest version of the same
+    // question. Against a fixed reference this sequence reads 0, 3, 3 px; via
+    // re-anchoring it is 0, then 0+3, then 3+0, arriving the same way round.
+    ReferenceUpdatePolicy fixed;
+    fixed.enabled = false;
+
+    ReferenceUpdatePolicy always;
+    always.enabled = true;
+    always.znccThreshold = 1.1;   // unreachable, so every frame re-anchors
+    always.percentile = 1.0;
+
+    int fixedReanchors = 0;
+    int alwaysReanchors = 0;
+    const QVector<double> withFixed = measureSequence(fixed, &fixedReanchors);
+    const QVector<double> withUpdate = measureSequence(always, &alwaysReanchors);
+
+    QCOMPARE(fixedReanchors, 0);
+    QCOMPARE(alwaysReanchors, 3);
+
+    QCOMPARE(withFixed.size(), 3);
+    QCOMPARE(withUpdate.size(), 3);
+
+    for (int frame = 0; frame < 3; frame++) {
+        QVERIFY2(qAbs(withFixed.at(frame) - withUpdate.at(frame)) < 0.05,
+                 qPrintable(QStringLiteral("frame %1 reads %2 px against a fixed "
+                                           "reference and %3 px with re-anchoring; "
+                                           "the route must not change the answer")
+                                .arg(frame)
+                                .arg(withFixed.at(frame))
+                                .arg(withUpdate.at(frame))));
+    }
+
+    // And the answers are the ones the fixtures actually encode, so this cannot
+    // pass by both routes being equally wrong.
+    QVERIFY2(qAbs(withUpdate.at(0)) < 0.05, "frame 0 is the reference against itself");
+    QVERIFY2(qAbs(withUpdate.at(1) - 3.0) < 0.1, "frame 1 is displaced 3 px");
+    QVERIFY2(qAbs(withUpdate.at(2) - 3.0) < 0.1, "frame 2 is still displaced 3 px");
+}
+
+void TestSequenceRunner::a_re_anchor_is_announced_rather_than_done_quietly()
+{
+    // Changing what a run compares against changes what its numbers mean if
+    // anything downstream gets the bookkeeping wrong, so it is not something to
+    // do without saying.
+    ReferenceUpdatePolicy always;
+    always.enabled = true;
+    always.znccThreshold = 1.1;
+    always.percentile = 1.0;
+
+    SequenceRunner runner(coarseSettings(), RegionOfInterest(),
+                          fixture(QStringLiteral("shift_reference.tif")),
+                          threeFrames(), always);
+
+    QVector<int> announced;
+    QObject::connect(&runner, &SequenceRunner::referenceReanchored,
+                     [&announced](int frame, int) { announced.append(frame); });
+    runner.run();
+
+    QCOMPARE(announced, QVector<int>({0, 1, 2}));
 }
 
 QTEST_MAIN(TestSequenceRunner)

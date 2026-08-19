@@ -21,6 +21,7 @@
 #include <QFileInfo>
 #include <QFont>
 #include <QFormLayout>
+#include <QFrame>
 #include <QGroupBox>
 #include <QGuiApplication>
 #include <QLabel>
@@ -28,6 +29,7 @@
 #include <QMessageBox>
 #include <QPlainTextEdit>
 #include <QProgressBar>
+#include <QScrollArea>
 #include <QStandardItemModel>
 #include <QThread>
 #include <QSpinBox>
@@ -241,7 +243,19 @@ void MainWindow::createDockPanels()
     splitDockWidget(project, record, Qt::Vertical);
     resizeDocks({project, record}, {200, 560}, Qt::Vertical);
 
-    addDock(tr("Analysis"), createAnalysisPanel(), Qt::RightDockWidgetArea);
+    // ⚑ Inside a scroll area, because the panel is taller than the dock and
+    // getting taller. Mounted directly, Qt shrank its word-wrapped notes below
+    // the height their text needs and the widgets below drew straight over
+    // them: the Reference group's own explanation was cut off mid-sentence with
+    // a checkbox on top of it. A wrapped QLabel reports a single line as its
+    // minimum, so nothing about that is loud -- the panel simply looks broken,
+    // and only at the sizes where it is.
+    auto *analysis = new QScrollArea;
+    analysis->setWidget(createAnalysisPanel());
+    analysis->setWidgetResizable(true);
+    analysis->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    analysis->setFrameShape(QFrame::NoFrame);
+    addDock(tr("Analysis"), analysis, Qt::RightDockWidgetArea);
     addDock(tr("Log"), createLogPanel(), Qt::BottomDockWidgetArea);
 }
 
@@ -407,7 +421,62 @@ QWidget *MainWindow::createAnalysisPanel()
     strainColumn->addWidget(m_strainAdvice);
 
     column->addWidget(m_strainGroup);
+
+    // --- the reference a sequence measures against --------------------------
+    auto *referenceGroup = new QGroupBox(tr("Reference"), panel);
+    auto *referenceColumn = new QVBoxLayout(referenceGroup);
+
+    auto *referenceNote = new QLabel(
+        tr("Every frame is measured against the original reference, so the "
+           "displacements are directly comparable. Correlation degrades as the "
+           "specimen moves away from where it started."));
+    referenceNote->setWordWrap(true);
+    referenceColumn->addWidget(referenceNote);
+
+    m_reanchorEnabled =
+        new QCheckBox(tr("Re-anchor the reference when tracking degrades"));
+    m_reanchorEnabled->setChecked(false);
+    referenceColumn->addWidget(m_reanchorEnabled);
+
+    auto *reanchorForm = new QFormLayout;
+    reanchorForm->setContentsMargins(0, 6, 0, 0);
+
+    m_reanchorThreshold = new QDoubleSpinBox;
+    m_reanchorThreshold->setDecimals(2);
+    m_reanchorThreshold->setRange(0.10, 0.99);
+    m_reanchorThreshold->setSingleStep(0.05);
+    m_reanchorThreshold->setValue(0.90);
+    reanchorForm->addRow(tr("Correlation a point must keep"), m_reanchorThreshold);
+
+    m_reanchorShare = new QSpinBox;
+    m_reanchorShare->setRange(1, 100);
+    m_reanchorShare->setValue(75);
+    m_reanchorShare->setSuffix(tr(" %"));
+    reanchorForm->addRow(tr("Share of points that must keep it"), m_reanchorShare);
+
+    referenceColumn->addLayout(reanchorForm);
+
+    // The cost, next to the switch. Re-anchoring is the right answer for a
+    // specimen that deforms far and the wrong one for a specimen that does not,
+    // and the part nobody expects is that it abandons points.
+    auto *reanchorCost = new QLabel(
+        tr("Once too few points still correlate, later frames are measured "
+           "against the current frame instead, and each point's displacement "
+           "is carried forward so results stay relative to the original "
+           "reference. Any point that could not be measured on that frame is "
+           "lost for the rest of the run."));
+    reanchorCost->setWordWrap(true);
+    QFont costFont = reanchorCost->font();
+    costFont.setItalic(true);
+    reanchorCost->setFont(costFont);
+    referenceColumn->addWidget(reanchorCost);
+
+    column->addWidget(referenceGroup);
     column->addStretch(1);
+
+    connect(m_reanchorEnabled, &QCheckBox::toggled, this,
+            &MainWindow::updateReferenceUpdateControls);
+    updateReferenceUpdateControls();
 
     connect(m_strainEnabled, &QCheckBox::toggled, this,
             &MainWindow::updateStrainAdvice);
@@ -421,6 +490,22 @@ QWidget *MainWindow::createAnalysisPanel()
     updateSolverConstraints();
     updateStrainAdvice();
     return panel;
+}
+
+ReferenceUpdatePolicy MainWindow::currentReferencePolicy() const
+{
+    ReferenceUpdatePolicy policy;
+    policy.enabled = m_reanchorEnabled->isChecked();
+    policy.znccThreshold = m_reanchorThreshold->value();
+    policy.percentile = m_reanchorShare->value() / 100.0;
+    return policy;
+}
+
+void MainWindow::updateReferenceUpdateControls()
+{
+    const bool on = m_reanchorEnabled->isChecked();
+    m_reanchorThreshold->setEnabled(on);
+    m_reanchorShare->setEnabled(on);
 }
 
 void MainWindow::updateStrainAdvice()
@@ -1075,7 +1160,7 @@ void MainWindow::runCorrelation()
 
     m_workerThread = new QThread(this);
     m_runner = new SequenceRunner(settings, m_roi, m_referenceRecord.filePath,
-                                  targetPaths);
+                                  targetPaths, currentReferencePolicy());
     m_runner->moveToThread(m_workerThread);
 
     connect(m_workerThread, &QThread::started, m_runner, &SequenceRunner::run);
@@ -1085,6 +1170,24 @@ void MainWindow::runCorrelation()
             &MainWindow::onFrameFinished);
     connect(m_runner, &SequenceRunner::finished, this,
             &MainWindow::onSequenceFinished);
+    connect(m_runner, &SequenceRunner::referenceReanchored, this,
+            [this](int frame, int pointsLost) {
+                // Never silent: after this, every later frame is compared
+                // against a different picture, and a reader who does not know
+                // that cannot judge the numbers.
+                log(tr("  Frame %1: too little of the field was still tracking, "
+                       "so the reference re-anchored to %2.%3")
+                        .arg(frame + 1)
+                        .arg(frame < m_plannedFrames.size()
+                                 ? m_plannedFrames.at(frame).target.fileName
+                                 : QString())
+                        .arg(pointsLost > 0
+                                 ? tr(" %1 point(s) could not be measured on that "
+                                      "frame and are lost for the rest of the run.")
+                                       .arg(pointsLost)
+                                 : QString()));
+            });
+
     connect(m_runner, &SequenceRunner::failed, this,
             &MainWindow::onCorrelationFailed);
 

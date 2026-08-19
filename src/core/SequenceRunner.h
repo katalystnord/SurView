@@ -1,6 +1,7 @@
 #pragma once
 
 #include "core/Correlation.h"
+#include "core/ReferenceUpdate.h"
 #include "core/Roi.h"
 
 #include <QObject>
@@ -16,13 +17,17 @@
 // single-pair engine it already was and keeps the tests that cover it. This
 // owns only the loop and the cancellation across frames.
 //
-// ⚑ EVERY FRAME IS MEASURED AGAINST THE ORIGINAL REFERENCE, never against the
-// frame before it. That is the ordinary meaning of a DIC sequence and it makes
-// the displacements directly comparable, but it also means correlation degrades
-// as the specimen moves away from where it started: past some deformation the
-// engine's reference-update tracking is what a run needs instead, and this does
-// not do that yet. Said here because a sequence that quietly stops correlating
-// halfway through looks like a specimen that stopped deforming.
+// ⚑ BY DEFAULT EVERY FRAME IS MEASURED AGAINST THE ORIGINAL REFERENCE, never
+// against the frame before it. That is the ordinary meaning of a DIC sequence
+// and it keeps the displacements directly comparable, but correlation degrades
+// as the specimen moves away from where it started.
+//
+// With a ReferenceUpdatePolicy switched on, the reference re-anchors to the
+// current frame once too little of the field is still tracking, and each
+// point's displacement is banked so that what is REPORTED stays relative to the
+// original reference and on the original grid. The bookkeeping for that lives
+// in core/ReferenceUpdate.h, engine-free and unit-tested; this class only
+// decides when to apply it.
 //
 // Known cost of the same simplicity: each frame re-reads the reference image
 // and rebuilds the solver's preparation. That is a fraction of a frame's solve,
@@ -35,6 +40,7 @@ class SequenceRunner : public QObject
 public:
     SequenceRunner(CorrelationSettings settings, RegionOfInterest roi,
                    QString referencePath, QStringList targetPaths,
+                   ReferenceUpdatePolicy policy = ReferenceUpdatePolicy(),
                    QObject *parent = nullptr);
 
 public slots:
@@ -53,6 +59,11 @@ signals:
     // until all of them finish is a result withheld for no reason.
     void frameFinished(int frame, const CorrelationResult &result);
 
+    // The reference moved on after this frame, so everything after it is
+    // measured against a different picture. Reported because a sequence that
+    // silently changed what it was comparing against would be unaccountable.
+    void referenceReanchored(int frame, int pointsLost);
+
     void finished(int framesMeasured, bool cancelled);
     void failed(const QString &reason);
 
@@ -61,6 +72,7 @@ private:
     RegionOfInterest m_roi;
     QString m_referencePath;
     QStringList m_targetPaths;
+    ReferenceUpdatePolicy m_policy;
     std::atomic<bool> m_cancelled{false};
 
     // The frame currently running, so Stop reaches INTO it rather than merely
@@ -69,4 +81,13 @@ private:
     // because cancel() arrives on the GUI thread while run() owns this one.
     QMutex m_currentGuard;
     CorrelationRunner *m_current = nullptr;
+
+    // The grid the first measured frame laid out, which every later frame
+    // reports on however far its points have been followed.
+    int m_gridColumns = 0;
+    int m_gridRows = 0;
+    float m_originX = 0.f;
+    float m_originY = 0.f;
+    int m_step = 1;
+    bool m_restrictedToRoi = false;
 };

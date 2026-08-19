@@ -186,6 +186,37 @@ struct CorrelationResult
 // Crosses a thread boundary as a queued signal argument.
 Q_DECLARE_METATYPE(CorrelationResult)
 
+// Where to put the points, when they are not to be laid out fresh from the
+// settings. Used by sequence tracking, where a frame is measured at the
+// positions its points have been followed TO, not where they started -- and
+// still has to report on the grid they started on.
+//
+// Empty means the ordinary case: build the grid from the settings and the
+// region, as every run did before sequences existed.
+struct PoiSeeding
+{
+    struct Seed
+    {
+        int gridIndex = 0;
+        float x = 0.f;
+        float y = 0.f;
+    };
+
+    QVector<Seed> points;
+
+    // The grid the results are reported on, which is the ORIGINAL grid however
+    // far the points have since moved. Carried here because the runner can no
+    // longer derive it: it did not lay these points out.
+    int gridColumns = 0;
+    int gridRows = 0;
+    float originX = 0.f;
+    float originY = 0.f;
+    int step = 1;
+    bool restrictedToRoi = false;
+
+    bool isEmpty() const { return points.isEmpty(); }
+};
+
 // Runs one correlation on a worker thread.
 //
 // The engine's own compute() is a single blocking call with no progress and no
@@ -204,6 +235,10 @@ public:
                       QString referencePath, QString targetPath,
                       QObject *parent = nullptr);
 
+    // Measure at these positions instead of laying out a fresh grid. Must be
+    // set before run().
+    void setSeeding(PoiSeeding seeding) { m_seeding = std::move(seeding); }
+
 public slots:
     void run();
     void cancel();
@@ -218,5 +253,6 @@ private:
     RegionOfInterest m_roi;
     QString m_referencePath;
     QString m_targetPath;
+    PoiSeeding m_seeding;
     std::atomic<bool> m_cancelled{false};
 };

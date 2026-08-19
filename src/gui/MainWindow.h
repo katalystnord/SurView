@@ -2,6 +2,7 @@
 
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
+#include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
 #include "core/Roi.h"
@@ -94,6 +95,10 @@ private slots:
     // the decision it is about.
     void updateStrainAdvice();
 
+    // The re-anchor rule's own numbers mean nothing while it is off, so they
+    // follow the switch that turns it on.
+    void updateReferenceUpdateControls();
+
 private:
     void createActions();
     void createMenus();
@@ -116,6 +121,9 @@ private:
     // Reads the Analysis panel. One place, so the run and the panel cannot
     // drift apart.
     CorrelationSettings currentSettings() const;
+
+    // Reads the reference-update controls. One place, as with currentSettings().
+    ReferenceUpdatePolicy currentReferencePolicy() const;
 
     // Restate the region in the project tree and the log. One place, so a
     // region set by hand and one proposed by the detector are reported in the
@@ -175,6 +183,10 @@ private:
     QComboBox *m_strainMeasure = nullptr;
     QLabel *m_strainAdvice = nullptr;
     QGroupBox *m_strainGroup = nullptr;
+
+    QCheckBox *m_reanchorEnabled = nullptr;
+    QDoubleSpinBox *m_reanchorThreshold = nullptr;
+    QSpinBox *m_reanchorShare = nullptr;
 
     QProgressBar *m_progress = nullptr;
 
