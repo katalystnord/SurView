@@ -89,6 +89,16 @@ public:
     const ImageRecord &record() const { return m_record; }
 
 signals:
+    // Where the pointer is over the picture, in image pixels, and whether it is
+    // over the picture at all. Emitted continuously, which is why this widget
+    // tracks the mouse: a readout that only followed a drag would be a gesture
+    // nobody discovers.
+    void fieldPointHovered(const QPointF &imagePixel, bool insideImage);
+
+    // A point of the picture was clicked, outside any mode that claims clicks
+    // for itself. What that means is the window's business, not the viewport's.
+    void fieldPointPicked(const QPointF &imagePixel);
+
     // The displayed channel changed, so anything reporting on the field can say
     // which one it is reporting on.
     void fieldChannelChanged(FieldChannel channel);
@@ -140,8 +150,13 @@ private:
 
     // Widget position to image pixel. False when there is no image to hit.
     // Positions beyond the image are held to its edge rather than refused, so
-    // a boundary can be taken right up to the border.
-    bool widgetToImagePixel(const QPointF &position, QPoint &pixel) const;
+    // a boundary can be taken right up to the border. `insideImage`, when
+    // asked for, reports whether the position was over the picture BEFORE that
+    // clamping -- which a readout needs and a boundary corner does not: held to
+    // the edge, a pointer beyond the picture would otherwise report on whatever
+    // point happens to sit at the border.
+    bool widgetToImagePixel(const QPointF &position, QPoint &pixel,
+                            bool *insideImage = nullptr) const;
 
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;

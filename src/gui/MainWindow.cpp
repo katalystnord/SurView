@@ -1,12 +1,14 @@
 #include "MainWindow.h"
 
 #include "ImageViewport.h"
+#include "PointPanel.h"
 #include "RecordPanel.h"
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
 #include "core/ImagePairing.h"
+#include "core/PointReadout.h"
 #include "core/RoiDetect.h"
 #include "core/Sequence.h"
 #include "core/StrainFit.h"
@@ -61,6 +63,10 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_viewport);
 
     connect(m_viewport, &ImageViewport::roiDrawn, this, &MainWindow::onRoiDrawn);
+    connect(m_viewport, &ImageViewport::fieldPointHovered, this,
+            &MainWindow::onFieldPointHovered);
+    connect(m_viewport, &ImageViewport::fieldPointPicked, this,
+            &MainWindow::onFieldPointPicked);
     // While a boundary is being placed the pipeline controls would compete with
     // the mode's own bar for the same decision, so they follow it.
     connect(m_viewport, &ImageViewport::roiDrawingChanged, this,
@@ -255,7 +261,21 @@ void MainWindow::createDockPanels()
     analysis->setWidgetResizable(true);
     analysis->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     analysis->setFrameShape(QFrame::NoFrame);
-    addDock(tr("Analysis"), analysis, Qt::RightDockWidgetArea);
+    QDockWidget *analysisDock = addDock(tr("Analysis"), analysis,
+                                       Qt::RightDockWidgetArea);
+
+    // The readout sits under the settings that produced the field, on the
+    // interpretation side of the window, where a reader is already looking
+    // when they ask what a point measured.
+    m_point = new PointPanel;
+    auto *pointScroll = new QScrollArea;
+    pointScroll->setWidget(m_point);
+    pointScroll->setWidgetResizable(true);
+    pointScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    pointScroll->setFrameShape(QFrame::NoFrame);
+    QDockWidget *pointDock = addDock(tr("Point"), pointScroll,
+                                     Qt::RightDockWidgetArea);
+    splitDockWidget(analysisDock, pointDock, Qt::Vertical);
     addDock(tr("Log"), createLogPanel(), Qt::BottomDockWidgetArea);
 }
 
@@ -849,10 +869,64 @@ const CorrelationResult &MainWindow::frameResult(int frame) const
     return m_frames.at(frame).result;
 }
 
+void MainWindow::showPoint(int index)
+{
+    if (!m_hasResult) {
+        m_point->clear();
+        return;
+    }
+    m_point->showReadout(pointReadout(m_result, index), m_pinnedPoint >= 0);
+}
+
+void MainWindow::onFieldPointHovered(const QPointF &imagePixel, bool insideImage)
+{
+    // A pinned reading is not disturbed by the pointer. That is the whole
+    // point of pinning: a readout that follows the pointer cannot be read and
+    // written down at the same time, because looking away erases it.
+    if (m_pinnedPoint >= 0)
+        return;
+
+    if (!insideImage) {
+        showPoint(-1);
+        return;
+    }
+    showPoint(pointNearestTo(m_result, float(imagePixel.x()),
+                             float(imagePixel.y())));
+}
+
+void MainWindow::onFieldPointPicked(const QPointF &imagePixel)
+{
+    if (!m_hasResult)
+        return;
+
+    const int index = pointNearestTo(m_result, float(imagePixel.x()),
+                                     float(imagePixel.y()));
+
+    // Clicking the pinned point again releases it; clicking a different one
+    // moves the pin there. Clicking away from the field releases too, which is
+    // the reading that matches what a user just did: they pointed somewhere
+    // there is no measurement.
+    if (m_pinnedPoint >= 0 && (index < 0 || index == m_pinnedPoint)) {
+        m_pinnedPoint = -1;
+        showPoint(index);
+        return;
+    }
+
+    m_pinnedPoint = index;
+    showPoint(index);
+}
+
 void MainWindow::displayFrame(int frame)
 {
     if (frame < 0 || frame >= m_frames.size())
         return;
+
+    // Whether this is a DIFFERENT frame, asked before m_displayedFrame moves.
+    // Re-displaying the frame already on screen happens for reasons that have
+    // nothing to do with the reading -- the project tree re-selecting the same
+    // node, a run finishing on the frame already shown -- and throwing the
+    // pinned point away then would erase a reading nobody asked to erase.
+    const bool frameChanged = frame != m_displayedFrame;
 
     m_displayedFrame = frame;
     m_result = m_frames.at(frame).result;
@@ -862,6 +936,14 @@ void MainWindow::displayFrame(int frame)
         m_viewport->showField(m_result);
     else
         m_viewport->clearField();
+
+    // ⚑ The pin is an index into the result that WAS displayed. Carried across
+    // a frame change it would keep reading, in the same authoritative panel, a
+    // different point of a different frame.
+    if (frameChanged) {
+        m_pinnedPoint = -1;
+        showPoint(-1);
+    }
 
     updateActionStates();
 }
@@ -913,6 +995,8 @@ void MainWindow::discardStaleResult()
     m_hasResult = false;
     m_result = CorrelationResult();
     m_viewport->clearField();
+    m_pinnedPoint = -1;
+    m_point->clear();
     m_resultsItem->setText(0, tr("Results - none"));
     m_resultsItem->setToolTip(0, QString());
     log(tr("Previous displacement field discarded - it was measured over a "

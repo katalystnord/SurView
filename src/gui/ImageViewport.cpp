@@ -68,6 +68,13 @@ ImageViewport::ImageViewport(QWidget *parent)
     setRenderWindow(m_renderWindow);
     applyImageInteractorStyle();
 
+    // Tracked permanently, not only while a mode wants it. Two things depend on
+    // it -- the region's rubber band and the point readout -- and a readout that
+    // followed the pointer only after a click would be a gesture nobody
+    // discovers. It was previously switched on when region drawing began and
+    // off when it ended.
+    setMouseTracking(true);
+
     // On-screen guidance until the first image is loaded. QVTKOpenGLNativeWidget
     // composites regular Qt child widgets over its GL surface, so a plain QLabel
     // works as an overlay here.
@@ -186,9 +193,6 @@ void ImageViewport::beginRoiDrawing()
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
-    // Tracking is on only for the duration, so the rubber band can follow the
-    // pointer without the widget watching every movement the rest of the time.
-    setMouseTracking(true);
     setCursor(Qt::CrossCursor);
     setFocus(Qt::OtherFocusReason);
 
@@ -208,7 +212,6 @@ void ImageViewport::cancelRoiDrawing()
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
-    setMouseTracking(false);
     unsetCursor();
     m_roiBar->hide();
 
@@ -232,7 +235,6 @@ void ImageViewport::finishRoiDrawing()
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
-    setMouseTracking(false);
     unsetCursor();
     m_roiBar->hide();
 
@@ -393,9 +395,11 @@ bool ImageViewport::widgetPositionForImagePixel(const QPointF &pixel,
     return true;
 }
 
-bool ImageViewport::widgetToImagePixel(const QPointF &position,
-                                       QPoint &pixel) const
+bool ImageViewport::widgetToImagePixel(const QPointF &position, QPoint &pixel,
+                                       bool *insideImage) const
 {
+    if (insideImage)
+        *insideImage = false;
     if (!m_hasImage || m_record.width <= 0 || m_record.height <= 0)
         return false;
 
@@ -422,6 +426,11 @@ bool ImageViewport::widgetToImagePixel(const QPointF &position,
     // Held to the image rather than refused: dragging a corner slightly past
     // the edge means the edge, and silently dropping the click would read as
     // the application having missed it.
+    if (insideImage) {
+        *insideImage = x >= 0.0 && x <= double(m_record.width - 1)
+                       && y >= 0.0 && y <= double(m_record.height - 1);
+    }
+
     pixel.setX(std::clamp(int(std::lround(x)), 0, m_record.width - 1));
     pixel.setY(std::clamp(int(std::lround(y)), 0, m_record.height - 1));
     return true;
@@ -455,11 +464,34 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+    if (event->button() == Qt::LeftButton) {
+        QPoint pixel;
+        bool inside = false;
+        if (widgetToImagePixel(event->position(), pixel, &inside) && inside)
+            emit fieldPointPicked(QPointF(pixel));
+    }
+
+    // Passed on rather than accepted: the interactor's own pan and zoom still
+    // belong to the left button, and claiming the click here would take them
+    // away to add a readout.
     QVTKOpenGLNativeWidget::mousePressEvent(event);
 }
 
 void ImageViewport::mouseMoveEvent(QMouseEvent *event)
 {
+    if (!m_roiDrawing) {
+        // Reported whether or not it lands on the picture: "off the field" is
+        // an answer a readout has to be able to give, and going silent instead
+        // would leave the last point on screen as though it were still under
+        // the pointer.
+        QPoint pixel;
+        bool inside = false;
+        if (widgetToImagePixel(event->position(), pixel, &inside))
+            emit fieldPointHovered(QPointF(pixel), inside);
+        else
+            emit fieldPointHovered(QPointF(), false);
+    }
+
     if (m_roiDrawing) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {

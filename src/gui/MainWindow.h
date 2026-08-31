@@ -23,6 +23,7 @@ class QThread;
 class QTreeWidget;
 class QTreeWidgetItem;
 class ImageViewport;
+class PointPanel;
 class RecordPanel;
 
 class MainWindow : public QMainWindow
@@ -71,6 +72,12 @@ private slots:
     // in the viewport. Without this a target's record would exist but be
     // unreachable from the interface, which is the same as not having it.
     void showSelectedImage();
+
+    // Reading one point of the measured field. Hover follows the pointer;
+    // a click pins, so a reading can be looked at and written down rather than
+    // erased by looking away.
+    void onFieldPointHovered(const QPointF &imagePixel, bool insideImage);
+    void onFieldPointPicked(const QPointF &imagePixel);
 
     // A boundary was completed in the viewport, or discarded from the project.
     void onRoiDrawn(const RegionOfInterest &roi);
@@ -141,6 +148,11 @@ private:
     // different endings and a missed teardown leaks a thread per run.
     void tearDownWorker();
 
+    // Show one point of the displayed field, or the standing invitation when
+    // there is nothing to show. One place, so hovering, pinning and a new
+    // frame arriving cannot describe the same state in different words.
+    void showPoint(int index);
+
     // Put one measured frame on screen, and say in the project which one.
     void displayFrame(int frame);
 
@@ -150,6 +162,14 @@ private:
 
     ImageViewport *m_viewport = nullptr;
     RecordPanel *m_record = nullptr;
+    PointPanel *m_point = nullptr;
+
+    // The point held on screen, as an index into the displayed result, or -1
+    // when the readout is following the pointer. Dropped whenever the field
+    // under it changes: an index into a result that is no longer displayed
+    // would read out a different point of a different frame while looking
+    // exactly as authoritative.
+    int m_pinnedPoint = -1;
     QPlainTextEdit *m_log = nullptr;
     QLabel *m_stageLabel = nullptr;
 

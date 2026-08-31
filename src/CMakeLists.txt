@@ -52,6 +52,8 @@ add_library(surview_gui STATIC
     gui/MainWindow.h
     gui/ImageViewport.cpp
     gui/ImageViewport.h
+    gui/PointPanel.cpp
+    gui/PointPanel.h
     gui/RecordPanel.cpp
     gui/RecordPanel.h
 )

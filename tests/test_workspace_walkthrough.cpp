@@ -14,9 +14,11 @@
 
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
+#include "core/PointReadout.h"
 #include "core/Sequence.h"
 #include "core/Roi.h"
 #include "gui/ImageViewport.h"
+#include "gui/PointPanel.h"
 #include "gui/MainWindow.h"
 
 #include <QAction>
@@ -153,6 +155,22 @@ double meanU(const CorrelationResult &result)
     return counted > 0 ? sum / counted : 0.0;
 }
 
+// Everything the point readout panel currently says, as one string. Read from
+// the visible labels rather than from the panel's own model, so the case is
+// asserting what reaches a reader.
+QString pointPanelText(QWidget *root)
+{
+    auto *panel = root->findChild<PointPanel *>();
+    if (!panel)
+        return QString();
+    QStringList parts;
+    for (QLabel *label : panel->findChildren<QLabel *>()) {
+        if (label->isVisible())
+            parts << label->text();
+    }
+    return parts.join(QLatin1Char('\n'));
+}
+
 // Where a given image pixel currently sits inside the viewport widget.
 //
 // This asks the viewport through its real projection rather than recomputing
@@ -204,6 +222,11 @@ private slots:
     void a_frame_can_be_picked_from_the_project_and_shows_its_own_field();
     void exporting_a_sequence_writes_one_numbered_file_for_each_frame();
     void re_anchoring_is_offered_off_by_default_and_says_what_it_costs();
+
+    void the_point_panel_says_how_to_read_a_field_before_one_exists();
+    void pointing_at_a_measured_point_reads_out_what_it_measured();
+    void a_pinned_point_stays_on_screen_when_the_pointer_moves_away();
+    void pointing_away_from_the_field_says_so_rather_than_going_blank();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -1008,6 +1031,201 @@ void TestWorkspaceWalkthrough::re_anchoring_is_offered_off_by_default_and_says_w
     reanchor->setChecked(true);
     QVERIFY2(threshold->isEnabled() && share->isEnabled(),
              "switching re-anchoring on did not enable its own settings");
+}
+
+// --- reading one point out of the field ------------------------------------
+//
+// A field could only be read as colour before this. These cases are written the
+// way the rules require: everything they do is something the screen tells them
+// to do, and the FIRST case is what licenses the other three -- if the panel did
+// not say "move the pointer over the field, click to pin", then hovering and
+// clicking would be tribal knowledge and the test would be cheating.
+//
+// NEGATIVE CHECK (2026-08-31): five breaks, each reverted after. All five
+// turned the case named for them red -- the panel omitting its own
+// instructions, clicking not pinning, a pinned reading still following the
+// pointer, the viewport no longer tracking the pointer, and a position off the
+// picture reporting the point nearest the border.
+//
+// ⚑ That last one did NOT redden at first, and the reason is worth keeping.
+// The POI grid is inset from the image edge by one SUBSET RADIUS, while a point
+// is read out to one GRID STEP. At the defaults (16 and 5) a position held to
+// the border can never reach a measured point, so the inset was doing the work
+// and the case was reporting on a guard it never touched. It now sets the two
+// controls to 8 and 20, where the guard is the only thing between a pointer
+// off the picture and a real measurement attributed to it, and the break goes
+// red as it should.
+
+void TestWorkspaceWalkthrough::the_point_panel_says_how_to_read_a_field_before_one_exists()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    const QString said = pointPanelText(&window);
+    QVERIFY2(!said.isEmpty(), "there is no point panel on screen at all");
+
+    // Both gestures have to be visible before they are needed. A readout that
+    // only appears once you happen to hover is a hidden mode: nothing would
+    // ever tell a reader the capability exists.
+    QVERIFY2(said.contains(QStringLiteral("pointer"), Qt::CaseInsensitive),
+             qPrintable(said));
+    QVERIFY2(said.contains(QStringLiteral("click"), Qt::CaseInsensitive),
+             qPrintable(said));
+    QVERIFY2(said.contains(QStringLiteral("pin"), Qt::CaseInsensitive),
+             qPrintable(said));
+}
+
+void TestWorkspaceWalkthrough::pointing_at_a_measured_point_reads_out_what_it_measured()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // Point at the middle of the picture, the way the panel says to.
+    const ImageRecord &record = viewport->record();
+    const double px = record.width / 2.0;
+    const double py = record.height / 2.0;
+    // Moved twice, with a wait between. QTest's synthetic move and the X
+    // server's own pointer motion both arrive, and the last one wins; repeating
+    // the gesture is what a user does anyway, and makes which one that is
+    // stop mattering.
+    QTest::mouseMove(viewport, widgetPointForPixel(viewport, px, py));
+    QTest::qWait(50);
+    QTest::mouseMove(viewport, widgetPointForPixel(viewport, px, py));
+    QTest::qWait(50);
+
+    const CorrelationResult &result = window.lastResult();
+    const int index = pointNearestTo(result, float(px), float(py));
+    QVERIFY2(index >= 0, "no measured point near the middle of the picture");
+    const CorrelationPoint &point = result.points[index];
+    QVERIFY(point.converged);
+
+    const QString said = pointPanelText(&window);
+
+    // The screen must carry this point's OWN measurement, not a summary and
+    // not a placeholder. Compared against the value in the result, so what is
+    // asserted is that the panel is wired to the real measurement.
+    QVERIFY2(said.contains(QString::number(double(point.u), 'g', 4)),
+             qPrintable(QStringLiteral("panel said:\n%1\nu was %2")
+                            .arg(said, QString::number(double(point.u)))));
+    QVERIFY2(said.contains(QStringLiteral("Displacement"), Qt::CaseInsensitive),
+             qPrintable(said));
+
+    // And the reliability half, which is the thing no colour map could show:
+    // a number a reader can put against the displacement beside it.
+    QVERIFY2(said.contains(QStringLiteral("Noise floor"), Qt::CaseInsensitive),
+             qPrintable(said));
+    QVERIFY2(said.contains(fieldChannelNote(FieldChannel::NoiseFloor)),
+             qPrintable(said));
+}
+
+void TestWorkspaceWalkthrough::a_pinned_point_stays_on_screen_when_the_pointer_moves_away()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // Let the window finish arriving before reading it. The field appears as
+    // soon as the frame lands; the project tree and the status line follow.
+    QTest::qWait(300);
+
+    const ImageRecord &record = viewport->record();
+    const QPoint at = widgetPointForPixel(viewport, record.width / 2.0,
+                                          record.height / 2.0);
+    // Click to pin, as the panel says. The reading is taken from the pinned
+    // state rather than from a hover beforehand: a synthetic pointer move races
+    // with the X server's own, so which of them lands last is not something
+    // this case is about. A click is unambiguous.
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at);
+    QTest::qWait(50);
+    const QString hovered = pointPanelText(&window);
+    QVERIFY2(hovered.contains(QStringLiteral("pinned"), Qt::CaseInsensitive),
+             qPrintable(hovered));
+    QVERIFY2(hovered.contains(QStringLiteral("Displacement"), Qt::CaseInsensitive),
+             qPrintable(hovered));
+
+    // Now leave. Without pinning, a readout that follows the pointer cannot be
+    // read and written down at the same time: looking away is what erases it.
+    QTest::mouseMove(viewport, QPoint(4, 4));
+    QTest::qWait(50);
+
+    const QString afterLeaving = pointPanelText(&window);
+    QVERIFY2(afterLeaving.contains(hovered.section(QLatin1Char('\n'), 1, 4)),
+             qPrintable(QStringLiteral("pinned readout changed when the pointer "
+                                       "left:\nwas:\n%1\nnow:\n%2")
+                            .arg(hovered, afterLeaving)));
+
+    // And the way out is stated, not remembered.
+    QVERIFY2(afterLeaving.contains(QStringLiteral("release"), Qt::CaseInsensitive)
+                 || afterLeaving.contains(QStringLiteral("unpin"), Qt::CaseInsensitive),
+             qPrintable(afterLeaving));
+}
+
+void TestWorkspaceWalkthrough::pointing_away_from_the_field_says_so_rather_than_going_blank()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    // ⚑ These two numbers are the case, not decoration. The grid is inset from
+    // the image edge by one SUBSET RADIUS, and a point is read out to a
+    // distance of one GRID STEP, so a position held to the border only reaches
+    // a measured point when the step is the larger of the two. At the default
+    // 16 and 5 it never does, and an earlier version of this case passed
+    // against a build with the guard removed: the inset was doing the work, and
+    // the case was reporting on a mechanism it never touched.
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->setValue(8);
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+    QTest::qWait(300);
+
+    // The very corner of the widget, which is off the picture entirely.
+    QTest::mouseMove(viewport, QPoint(2, 2));
+    QTest::qWait(50);
+    QTest::mouseMove(viewport, QPoint(2, 2));
+    QTest::qWait(50);
+
+    const QString said = pointPanelText(&window);
+    QVERIFY2(!said.trimmed().isEmpty(),
+             "the panel emptied itself, which reads as broken software rather "
+             "than as an absence of measurement");
+
+    // And it must not report on the point nearest the edge instead. A position
+    // off the picture is held to the border everywhere else in this widget,
+    // which is right for a region corner and wrong here: it would attribute a
+    // real measurement to a place the pointer is not.
+    QVERIFY2(said.contains(QStringLiteral("no point measured here")),
+             qPrintable(said));
+    QVERIFY2(!said.contains(QStringLiteral("Displacement"), Qt::CaseInsensitive),
+             qPrintable(said));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
