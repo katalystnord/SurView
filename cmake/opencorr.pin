@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=c2d989e8b1b6c0a540173e65000c7a954bbb792f
+SURVIEW_OPENCORR_PIN=f06b78b5990d6d4141e7fc8b35b36d0fc28a4db3
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=aligned-solver-structs-no-abort
+SURVIEW_OPENCORR_PIN_NOTE=feature-affine3d-constructor-radius-z
