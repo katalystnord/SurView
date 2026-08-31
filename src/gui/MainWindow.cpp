@@ -134,6 +134,11 @@ void MainWindow::createActions()
     m_actExport->setStatusTip(
         tr("Write displacement/strain fields as VTK data for ParaView / FreeCAD"));
     connect(m_actExport, &QAction::triggered, this, &MainWindow::exportField);
+
+    m_actExportCsv = new QAction(tr("Export Results as Table (.csv)…"), this);
+    m_actExportCsv->setStatusTip(
+        tr("Write the same fields as a plain table any spreadsheet opens"));
+    connect(m_actExportCsv, &QAction::triggered, this, &MainWindow::exportFieldCsv);
 }
 
 void MainWindow::createMenus()
@@ -164,6 +169,7 @@ void MainWindow::createMenus()
 
     fileMenu->addSeparator();
     fileMenu->addAction(m_actExport);
+    fileMenu->addAction(m_actExportCsv);
     fileMenu->addSeparator();
 
     QAction *quit = fileMenu->addAction(tr("&Quit"));
@@ -1532,7 +1538,33 @@ void MainWindow::exportField()
     exportFieldTo(path);
 }
 
+void MainWindow::exportFieldCsv()
+{
+    const QString suggested =
+        QFileInfo(m_referenceRecord.filePath).absolutePath() + QLatin1Char('/')
+        + QFileInfo(m_referenceRecord.fileName).completeBaseName()
+        + QStringLiteral("_field.csv");
+
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Export measured field as a table"), suggested,
+        tr("Comma-separated values (*.csv)"));
+    if (path.isEmpty())
+        return;
+
+    exportFieldCsvTo(path);
+}
+
 bool MainWindow::exportFieldTo(const QString &path)
+{
+    return exportFrames(path, FieldFormat::Vtu);
+}
+
+bool MainWindow::exportFieldCsvTo(const QString &path)
+{
+    return exportFrames(path, FieldFormat::Csv);
+}
+
+bool MainWindow::exportFrames(const QString &path, FieldFormat format)
 {
     if (m_frames.isEmpty()) {
         QMessageBox::warning(this, tr("Nothing to export"),
@@ -1544,6 +1576,9 @@ bool MainWindow::exportFieldTo(const QString &path)
     const QFileInfo chosen(path);
     const QString folder = chosen.absolutePath();
     const QString stem = chosen.completeBaseName();
+    const QString extension = format == FieldFormat::Vtu
+                                  ? QStringLiteral(".vtu")
+                                  : QStringLiteral(".csv");
 
     QStringList written;
     for (int frame = 0; frame < m_frames.size(); frame++) {
@@ -1555,13 +1590,17 @@ bool MainWindow::exportFieldTo(const QString &path)
         // ordering itself had to solve.
         const QString framePath =
             m_frames.size() == 1
-                ? folder + QLatin1Char('/') + stem + QStringLiteral(".vtu")
+                ? folder + QLatin1Char('/') + stem + extension
                 : folder + QLatin1Char('/') + stem
-                      + QStringLiteral("_%1.vtu")
-                            .arg(frame, 4, 10, QLatin1Char('0'));
+                      + QStringLiteral("_%1").arg(frame, 4, 10, QLatin1Char('0'))
+                      + extension;
 
-        const QString refusal = writeFieldVtu(framePath, m_frames.at(frame).result,
-                                              m_frames.at(frame).provenance);
+        const QString refusal =
+            format == FieldFormat::Vtu
+                ? writeFieldVtu(framePath, m_frames.at(frame).result,
+                                m_frames.at(frame).provenance)
+                : writeFieldCsv(framePath, m_frames.at(frame).result,
+                                m_frames.at(frame).provenance);
         if (!refusal.isEmpty()) {
             // Stopped at the first failure rather than pressing on: whatever
             // stopped this frame stops the rest, and the files already written
@@ -1683,6 +1722,13 @@ void MainWindow::updateActionStates()
     m_actStop->setEnabled(running);
 
     m_actExport->setEnabled(m_hasResult && !running);
+    m_actExportCsv->setEnabled(m_hasResult && !running);
+    m_actExportCsv->setToolTip(
+        running       ? tr("Wait for the correlation to finish")
+        : m_hasResult ? tr("Write the measured field as a plain table, with the "
+                           "provenance in a commented header. Anything that was "
+                           "not measured is an empty cell, never a zero")
+                      : tr("Run a correlation first: there is no field to export"));
     m_actExport->setToolTip(
         running    ? tr("Wait for the correlation to finish")
         : m_hasResult ? tr("Write the measured field to a VTK .vtu file, which "

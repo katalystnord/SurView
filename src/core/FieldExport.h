@@ -34,3 +34,22 @@ struct FieldProvenance
 // export succeeds, and the emptiness is then discovered somewhere else.
 QString writeFieldVtu(const QString &path, const CorrelationResult &result,
                       const FieldProvenance &provenance);
+
+// The same field as a plain comma-separated table, for a reader who will open
+// it in a spreadsheet rather than in ParaView.
+//
+// The .vtu is the right format for the ecosystem SurView sits in, and it is
+// unreadable without a VTK-aware tool: binary, base64 and compressed, so even
+// its provenance cannot be grepped. This is the same measurement in the format
+// everything can read, with the provenance in a commented header block that
+// CAN be grepped.
+//
+// ⚑ CSV has no not-a-number, which is the whole difficulty of the format.
+// Anything that was not measured is an EMPTY cell, never a zero, and the file
+// says so in its own header: a rejected point written as 0 is a perfectly good
+// row that plots as a real measurement of no movement, and nothing downstream
+// can tell the two apart.
+//
+// Returns an empty string on success, otherwise the reason, naming the file.
+QString writeFieldCsv(const QString &path, const CorrelationResult &result,
+                      const FieldProvenance &provenance);

@@ -27,6 +27,8 @@
 #include <QComboBox>
 #include <QFrame>
 #include <QLabel>
+#include <QMenu>
+#include <QMenuBar>
 #include <QPushButton>
 #include <QSignalSpy>
 #include <QTest>
@@ -61,6 +63,27 @@ T *byVisibleText(QWidget *root, const QString &text)
     for (T *candidate : root->findChildren<T *>()) {
         if (candidate->text().contains(text, Qt::CaseInsensitive))
             return candidate;
+    }
+    return nullptr;
+}
+
+// An action reachable from the MENU BAR, as opposed to one that merely exists
+// as a child of the window.
+//
+// ⚑ The difference is the whole rule. findChildren<QAction*> finds an action
+// that was constructed and then added to nothing, which is a capability no user
+// can reach -- and a negative check proved that is not hypothetical: removing
+// the CSV export from the File menu left its case green.
+QAction *menuActionLabelled(QMainWindow *window, const QString &text)
+{
+    for (QAction *menuAction : window->menuBar()->actions()) {
+        QMenu *menu = menuAction->menu();
+        if (!menu)
+            continue;
+        for (QAction *action : menu->actions()) {
+            if (action->text().contains(text, Qt::CaseInsensitive))
+                return action;
+        }
     }
     return nullptr;
 }
@@ -227,6 +250,9 @@ private slots:
     void pointing_at_a_measured_point_reads_out_what_it_measured();
     void a_pinned_point_stays_on_screen_when_the_pointer_moves_away();
     void pointing_away_from_the_field_says_so_rather_than_going_blank();
+
+    void a_measured_field_can_also_leave_as_a_table_anything_opens();
+    void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -696,7 +722,8 @@ void TestWorkspaceWalkthrough::exporting_is_refused_with_a_reason_until_there_is
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
-    QAction *exportAction = actionLabelled(&window, QStringLiteral("Export"));
+    QAction *exportAction =
+        actionLabelled(&window, QStringLiteral("Export Results (.vtu)"));
     QVERIFY2(exportAction, "there is no way to get results out of the application");
     QVERIFY(!exportAction->isEnabled());
     QVERIFY2(exportAction->toolTip().contains(QStringLiteral("correlation"),
@@ -1226,6 +1253,106 @@ void TestWorkspaceWalkthrough::pointing_away_from_the_field_says_so_rather_than_
              qPrintable(said));
     QVERIFY2(!said.contains(QStringLiteral("Displacement"), Qt::CaseInsensitive),
              qPrintable(said));
+}
+
+// --- the field as a table ---------------------------------------------------
+//
+// NEGATIVE CHECK (2026-08-31): three breaks. Two of them stayed GREEN at first
+// and both were real gaps, of the same kind: a case reporting on a mechanism it
+// never touched.
+//
+//   - removing the export from the File menu did not redden anything, because
+//     the case looked the action up with findChildren<QAction*>, which finds an
+//     action that was constructed and added to nothing. That is exactly a
+//     capability no user can reach. menuActionLabelled() now walks the menu bar.
+//   - writing the frame number and extension together as "_%1.vtu" meant a
+//     sequence exported as tables would write VTK files, and no case noticed,
+//     because every sequence export case used the .vtu path. Covered now.
+//
+// The third (the table export writing a .vtu) reddened immediately, and reddens
+// both cases now.
+
+void TestWorkspaceWalkthrough::a_measured_field_can_also_leave_as_a_table_anything_opens()
+{
+    // The .vtu needs a VTK-aware tool to open at all. A reader checking three
+    // numbers should not have to install ParaView, so the same field goes out
+    // as a table too -- and the capability has to be VISIBLE, not a matter of
+    // typing a different extension into the save dialog and hoping.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // Looked up through the MENU BAR, not among the window's children: an
+    // action that exists but sits in no menu is a capability nobody can reach.
+    QAction *csv = menuActionLabelled(&window, QStringLiteral(".csv"));
+    QVERIFY2(csv, "no menu offers the field as a table");
+    QVERIFY2(csv->isEnabled(), "a measured field still could not be exported as a table");
+    QVERIFY2(!csv->toolTip().isEmpty(), "the action does not say what it does");
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("walkthrough.csv"));
+    QVERIFY2(window.exportFieldCsvTo(path), "the export reported failure");
+    QVERIFY2(QFile::exists(path), "the export reported success and wrote nothing");
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly | QIODevice::Text));
+    const QString text = QString::fromUtf8(file.readAll());
+
+    // Unlike the .vtu's, this provenance is greppable -- which is most of why
+    // the format is worth having beside it.
+    QVERIFY2(text.contains(QStringLiteral("shift_reference.tif")), qPrintable(text.left(600)));
+    QVERIFY2(text.contains(QStringLiteral("x_px,y_px")), qPrintable(text.left(600)));
+
+    // And where it went has to be visible afterwards, as with the .vtu.
+    auto *log = window.findChild<QPlainTextEdit *>();
+    QVERIFY2(log->toPlainText().contains(QStringLiteral("walkthrough.csv")),
+             "nothing on screen says where the table went");
+}
+
+void TestWorkspaceWalkthrough::exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension()
+{
+    // The same numbering rule as the .vtu sequence, in the other format. Found
+    // by a negative check: the frame number and the extension were formatted
+    // together as "_%1.vtu", so a sequence exported as tables would have
+    // written .vtu files, and no case noticed because none exported a sequence
+    // as anything but a .vtu.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages(outOfOrderFrames());
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() == 2; }, 180000));
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QVERIFY(window.exportFieldCsvTo(dir.filePath(QStringLiteral("run.csv"))));
+
+    const QStringList written =
+        QDir(dir.path()).entryList({QStringLiteral("*.csv")}, QDir::Files, QDir::Name);
+    QCOMPARE(written.size(), 2);
+    QVERIFY2(written.at(0).contains(QStringLiteral("0000")),
+             qPrintable(written.join(QLatin1Char(' '))));
+    QVERIFY(precedesInSequence(written.at(0), written.at(1)));
+
+    // And nothing of the other format was left in the folder.
+    QVERIFY2(QDir(dir.path()).entryList({QStringLiteral("*.vtu")}, QDir::Files).isEmpty(),
+             "exporting tables wrote VTK files as well");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

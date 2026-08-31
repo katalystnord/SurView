@@ -61,11 +61,18 @@ public:
     // to the user itself; the return value is for a caller that wants to know.
     bool exportFieldTo(const QString &path);
 
+    // The same field as a plain table. Separate entry point rather than a
+    // format argument on the one above, so a caller cannot pick the wrong
+    // format by passing the wrong enumerator, and so each has a name that says
+    // which file it writes.
+    bool exportFieldCsvTo(const QString &path);
+
 private slots:
     void importReferenceImage();
     void importTargetImages();
     void runCorrelation();
     void exportField();
+    void exportFieldCsv();
     void showAbout();
 
     // Selecting an image in the project tree shows its record, and displays it
@@ -140,6 +147,13 @@ private:
     // Drop a measured field once the region it was measured over stops being
     // the region in force.
     void discardStaleResult();
+
+    // Which file format an export writes. The per-frame loop, the numbering,
+    // the stop-at-first-failure rule and the reporting are identical for both;
+    // only the extension and the writer differ, and duplicating the rest is how
+    // the two would drift apart.
+    enum class FieldFormat { Vtu, Csv };
+    bool exportFrames(const QString &path, FieldFormat format);
 
     // Everything one measured frame has to say about itself, in the log.
     void logFrameResult(int frame, const CorrelationResult &result);
@@ -251,4 +265,5 @@ private:
     QAction *m_actAutoRoi = nullptr;
     QAction *m_actClearRoi = nullptr;
     QAction *m_actExport = nullptr;
+    QAction *m_actExportCsv = nullptr;
 };

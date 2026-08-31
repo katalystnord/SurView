@@ -3,8 +3,11 @@
 #include "core/FieldMesh.h"
 #include "core/StrainFit.h"
 
+#include <QFile>
 #include <QFileInfo>
+#include <QLocale>
 #include <QObject>
+#include <QTextStream>
 
 #include <vtkCellArray.h>
 #include <vtkErrorCode.h>
@@ -42,6 +45,41 @@ vtkSmartPointer<vtkFloatArray> namedArray(const char *name, int components,
     array->SetNumberOfComponents(components);
     array->SetNumberOfTuples(tuples);
     return array;
+}
+
+// --- the comma-separated half ----------------------------------------------
+
+// A measured value, or an empty cell. Six significant digits: enough that two
+// neighbouring points differ, few enough that a float's own noise stays out of
+// the file.
+QString csvValue(bool measured, double value)
+{
+    return measured ? QString::number(value, 'g', 6) : QString();
+}
+
+// A field that may contain a comma, a quote or a newline, quoted the way RFC
+// 4180 asks. The engine's failure descriptions are prose and go in a column, so
+// this is not hypothetical.
+QString csvQuoted(const QString &text)
+{
+    if (!text.contains(QLatin1Char(',')) && !text.contains(QLatin1Char('"'))
+        && !text.contains(QLatin1Char('\n'))) {
+        return text;
+    }
+    QString escaped = text;
+    escaped.replace(QLatin1Char('"'), QStringLiteral("\"\""));
+    return QLatin1Char('"') + escaped + QLatin1Char('"');
+}
+
+// One line of the commented header block. '#' is what every spreadsheet import
+// and every CSV reader can be told to skip, and it leaves the provenance
+// greppable, which is half the reason this format is worth having beside the
+// .vtu at all.
+void csvNote(QTextStream &out, const QString &text)
+{
+    const QStringList lines = text.split(QLatin1Char('\n'));
+    for (const QString &line : lines)
+        out << "# " << line << '\n';
 }
 
 }  // namespace
@@ -264,5 +302,159 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
             .arg(name);
     }
 
+    return QString();
+}
+
+QString writeFieldCsv(const QString &path, const CorrelationResult &result,
+                      const FieldProvenance &provenance)
+{
+    const QString name = QFileInfo(path).fileName();
+
+    // Refused rather than written empty, for the same reason the .vtu is: an
+    // empty export succeeds, and the emptiness is discovered somewhere else.
+    if (result.points.isEmpty()) {
+        return QObject::tr("There is no measured field to write to %1. Run a "
+                           "correlation first.")
+            .arg(name);
+    }
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        return QObject::tr("Could not write %1: %2.")
+            .arg(name, file.errorString());
+    }
+
+    QTextStream out(&file);
+    // A comma-separated file whose decimal separator is a comma is a file
+    // nothing can read.
+    out.setLocale(QLocale::c());
+
+    const bool withStrain = result.strainRequested;
+
+    // --- how it was made, and how to read it --------------------------------
+    csvNote(out, QObject::tr("SurView DIC %1 - measured displacement field")
+                     .arg(provenance.applicationVersion));
+    csvNote(out, QObject::tr("An EMPTY cell means the quantity was not measured "
+                             "at that point. It is never a zero: a zero here "
+                             "would read as a real measurement of no movement, "
+                             "and nothing downstream could tell the two apart."));
+    csvNote(out, QObject::tr("Coordinates are reference image pixels: x right, "
+                             "y down, origin at the top-left pixel centre. "
+                             "Displacement u and v are in the same frame, so a "
+                             "positive v is movement DOWN the image."));
+    csvNote(out, QObject::tr("engine: OpenCorr, katalystnord fork, pinned at %1")
+                     .arg(provenance.enginePin));
+    csvNote(out, QObject::tr("reference image: %1")
+                     .arg(provenance.reference.filePath));
+    csvNote(out, QObject::tr("reference image sha256: %1")
+                     .arg(provenance.reference.sha256));
+    csvNote(out, QObject::tr("target image: %1").arg(provenance.target.filePath));
+    csvNote(out, QObject::tr("target image sha256: %1")
+                     .arg(provenance.target.sha256));
+
+    const CorrelationSettings &settings = provenance.settings;
+    csvNote(out, QObject::tr("correlation: %1, shape order %2, subset radius %3 "
+                             "px, grid step %4 px, up to %5 iterations, "
+                             "convergence %6")
+                     .arg(solverDisplayName(settings.solver))
+                     .arg(settings.shapeOrder)
+                     .arg(settings.subsetRadius)
+                     .arg(settings.gridStep)
+                     .arg(settings.maxIterations)
+                     .arg(settings.convergence));
+    csvNote(out, result.restrictedToRoi
+                     ? QObject::tr("region of interest: %1 corners; points "
+                                   "outside it were never measured.")
+                           .arg(result.roi.vertices.size())
+                     : QObject::tr("region of interest: none, the whole image "
+                                   "was measured."));
+    csvNote(out, withStrain
+                     ? QObject::tr("strain: %1, fitted over a %2 px subregion "
+                                   "from at least %3 points, excluding any "
+                                   "point correlating below %4. Fitted at %5 of "
+                                   "%6 points. Strain is FITTED from the "
+                                   "neighbours of a point, not measured at it.")
+                           .arg(strainMeasureName(result.strainMeasure))
+                           .arg(result.strainRadius, 0, 'g', 4)
+                           .arg(settings.strainMinPoints)
+                           .arg(double(kStrainFitCorrelationFloor), 0, 'g', 2)
+                           .arg(result.strainFitted)
+                           .arg(result.total())
+                     : QObject::tr("strain: not fitted."));
+    csvNote(out, QObject::tr("noise_floor_px is DIC's sigma: the finest "
+                             "displacement each subset's speckle can resolve "
+                             "against an estimated image noise of %1 grey "
+                             "levels. A lower bound on error, not a total error "
+                             "bar, computed from the reference image alone. "
+                             "match_conditioning is DIC's beta, dimensionless: "
+                             "how sharply the correlation cost rises around the "
+                             "solution found, comparable within this run only. "
+                             "Larger is worse in both.")
+                     .arg(result.referenceNoise, 0, 'g', 4));
+    csvNote(out, QObject::tr("%1 of %2 attempted points solved.")
+                     .arg(result.converged)
+                     .arg(result.total()));
+
+    // --- the columns --------------------------------------------------------
+    QStringList columns{QStringLiteral("x_px"),
+                        QStringLiteral("y_px"),
+                        QStringLiteral("u_px"),
+                        QStringLiteral("v_px"),
+                        QStringLiteral("magnitude_px"),
+                        QStringLiteral("zncc"),
+                        QStringLiteral("solved"),
+                        QStringLiteral("rejection"),
+                        QStringLiteral("noise_floor_px"),
+                        QStringLiteral("match_conditioning")};
+    // Absent rather than present and empty when strain was never asked for. A
+    // column of empty strain cells reads as a fit that failed everywhere, which
+    // is a far more alarming statement than "not attempted" -- the same
+    // distinction the .vtu makes by omitting the arrays.
+    if (withStrain) {
+        columns << QStringLiteral("exx") << QStringLiteral("eyy")
+                << QStringLiteral("exy");
+    }
+    out << columns.join(QLatin1Char(',')) << '\n';
+
+    // --- one row per point the run ATTEMPTED --------------------------------
+    // Attempted, not solved: the grid the run set out to measure is part of
+    // what happened, and a difficult specimen must not export as a smaller one.
+    for (const CorrelationPoint &point : result.points) {
+        const bool has = point.converged;
+        QStringList row;
+        row << csvValue(true, double(point.x))
+            << csvValue(true, double(point.y))
+            << csvValue(has, double(point.u))
+            << csvValue(has, double(point.v))
+            << csvValue(has, std::hypot(double(point.u), double(point.v)))
+            // The engine reports a failure as a negative code in this same
+            // field, so a rejected point's zncc is a status rather than a
+            // correlation and must not land in a column anyone will average.
+            << csvValue(has, double(point.zncc))
+            << (has ? QStringLiteral("1") : QStringLiteral("0"))
+            // Stated outright rather than inferred from the holes: a row of
+            // empty cells could as easily be a bug in this writer as a point
+            // the solver refused.
+            << csvQuoted(has ? QString() : point.failureReason)
+            // Zero is the FLATTERING reading for both of these -- a perfect
+            // measurement, a perfectly sharp cost -- so an unestablished one is
+            // empty like everything else nobody measured.
+            << csvValue(point.noiseFloorMeasured, double(point.noiseFloor))
+            << csvValue(point.conditioningMeasured, double(point.conditioning));
+
+        if (withStrain) {
+            row << csvValue(point.strainFitted, double(point.exx))
+                << csvValue(point.strainFitted, double(point.eyy))
+                << csvValue(point.strainFitted, double(point.exy));
+        }
+        out << row.join(QLatin1Char(',')) << '\n';
+    }
+
+    out.flush();
+    if (file.error() != QFileDevice::NoError) {
+        return QObject::tr("Could not finish writing %1: %2.")
+            .arg(name, file.errorString());
+    }
+    file.close();
     return QString();
 }
