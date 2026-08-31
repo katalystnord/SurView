@@ -21,6 +21,8 @@ add_library(surview_core STATIC
     core/ImageRecord.h
     core/PoiGrid.cpp
     core/PoiGrid.h
+    core/PointReadout.cpp
+    core/PointReadout.h
     core/SequenceRunner.cpp
     core/SequenceRunner.h
     core/Sequence.cpp

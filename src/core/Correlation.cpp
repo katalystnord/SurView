@@ -393,6 +393,7 @@ void CorrelationRunner::run()
                 // named, not silently dropped: the grid the run set out to
                 // measure is part of what happened.
                 point.converged = false;
+                point.failureReason = notReached;
                 result.failuresByReason[notReached]++;
             } else {
                 // The engine reports a failure as a negative code in the same
@@ -462,8 +463,9 @@ void CorrelationRunner::run()
                         result.strainFitted++;
                     }
                 } else {
-                    result.failuresByReason[QString::fromStdString(
-                        statusDescription(poi.result.zncc))]++;
+                    point.failureReason = QString::fromStdString(
+                        statusDescription(poi.result.zncc));
+                    result.failuresByReason[point.failureReason]++;
                 }
             }
             result.points.append(point);

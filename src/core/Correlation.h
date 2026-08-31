@@ -88,6 +88,14 @@ struct CorrelationPoint
     float zncc = 0.f;  // correlation, or a negative engine status code
     bool  converged = false;
 
+    // Why the engine rejected this point, in its own words, empty where it did
+    // not. The run report already counts failures by reason; this is the same
+    // fact carried per point, because the place a reader asks "why is there a
+    // hole here" is the hole, not the summary. Resolved here rather than at the
+    // point of reading: statusDescription() is the engine's, and core/
+    // Correlation.cpp is one of only two files allowed to know that.
+    QString failureReason;
+
     // Strain, FITTED from this point's neighbours rather than measured here.
     // Meaningless unless strainFitted: the fit declines wherever too few
     // neighbours cleared the correlation floor, and it leaves the components
