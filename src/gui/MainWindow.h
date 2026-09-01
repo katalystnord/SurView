@@ -11,6 +11,7 @@
 #include <QVector>
 
 class QAction;
+class QMenu;
 class QCheckBox;
 class QComboBox;
 class QDoubleSpinBox;
@@ -69,6 +70,7 @@ public:
 
 private slots:
     void importReferenceImage();
+    void openExample();
     void importTargetImages();
     void runCorrelation();
     void exportField();
@@ -116,6 +118,11 @@ private slots:
 private:
     void createActions();
     void createMenus();
+
+    // Fill the Open Example submenu from whatever is on disk. Built once, at
+    // start-up, because the examples ship with the application and do not
+    // change under it.
+    void buildExampleMenu(QMenu *menu);
     void createToolBar();
     void createDockPanels();
     void createStatusBar();

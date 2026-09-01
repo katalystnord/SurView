@@ -7,6 +7,8 @@
 add_library(surview_core STATIC
     core/Correlation.cpp
     core/Correlation.h
+    core/Examples.cpp
+    core/Examples.h
     core/FieldExport.cpp
     core/FieldExport.h
     core/FieldLayout.cpp
@@ -81,3 +83,21 @@ vtk_module_autoinit(
     TARGETS SurView surview_core surview_gui
     MODULES ${VTK_LIBRARIES}
 )
+
+# --- installing ------------------------------------------------------------
+# ⚑ The example data is part of the application, not a developer convenience.
+# Left out of the install, a packaged SurView starts at an empty window with an
+# Open Example menu that finds nothing, and a first-time reader has to go and
+# obtain speckle images before the software can do anything at all.
+#
+# The layout matches what core/Examples.cpp looks for: share/surview/examples
+# beside the bin directory.
+include(GNUInstallDirs)
+
+install(TARGETS SurView RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/surview/examples)
+
+install(FILES ${CMAKE_SOURCE_DIR}/LICENSE ${CMAKE_SOURCE_DIR}/README.md
+        DESTINATION ${CMAKE_INSTALL_DOCDIR})

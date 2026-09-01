@@ -28,6 +28,7 @@ set(SURVIEW_UNIT_TESTS
     test_strain_measure
     test_uncertainty_measure
     test_point_readout
+    test_examples
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

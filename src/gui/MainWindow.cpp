@@ -7,6 +7,7 @@
 #include "core/FieldExport.h"
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
+#include "core/Examples.h"
 #include "core/ImagePairing.h"
 #include "core/PointReadout.h"
 #include "core/RoiDetect.h"
@@ -14,6 +15,8 @@
 #include "core/StrainFit.h"
 
 #include <QApplication>
+#include <QCoreApplication>
+#include <QMenu>
 #include <QEventLoop>
 #include <QCheckBox>
 #include <QComboBox>
@@ -181,6 +184,13 @@ void MainWindow::createMenus()
             &MainWindow::importTargetImages);
 
     fileMenu->addSeparator();
+    // ⚑ Before the Import entries, not after the exports: opening an example is
+    // the fastest way to have something on screen, and it is the entry a reader
+    // with no speckle images of their own needs first.
+    QMenu *examples = fileMenu->addMenu(tr("Open Example"));
+    buildExampleMenu(examples);
+    fileMenu->addSeparator();
+
     fileMenu->addAction(m_actExport);
     fileMenu->addAction(m_actExportCsv);
     fileMenu->addSeparator();
@@ -240,6 +250,62 @@ void MainWindow::createToolBar()
 // ---------------------------------------------------------------------------
 // Dock panels -- laid out along the DIC pipeline (project ▸ parameters ▸ log)
 // ---------------------------------------------------------------------------
+
+void MainWindow::buildExampleMenu(QMenu *menu)
+{
+    const QVector<ExampleSet> sets =
+        findExamples(exampleSearchPaths(QCoreApplication::applicationDirPath()));
+
+    if (sets.isEmpty()) {
+        // Said rather than left empty: an empty submenu reads as a broken
+        // feature, where a disabled line naming what is missing reads as a
+        // build without its example data.
+        QAction *none = menu->addAction(tr("No example data found beside this build"));
+        none->setEnabled(false);
+        return;
+    }
+
+    // Headed by family, because two sets can carry the same name: the real
+    // rotation plate and the synthetic rotation both do, and side by side as
+    // two identical words they are a choice nobody can make. The difference is
+    // the one that matters most here, so it is the heading.
+    QString shownGroup;
+    for (const ExampleSet &set : sets) {
+        if (set.group != shownGroup) {
+            shownGroup = set.group;
+            if (menu->actions().size() > 0)
+                menu->addSeparator();
+            QAction *heading = menu->addAction(
+                set.group.compare(QStringLiteral("Synthetic"), Qt::CaseInsensitive) == 0
+                    ? tr("Synthetic, with an exactly known answer")
+                    : tr("Real experiments"));
+            heading->setEnabled(false);
+        }
+
+        QAction *action = menu->addAction(set.name);
+        action->setToolTip(set.summary);
+        action->setStatusTip(set.summary);
+        action->setData(set.frames);
+        connect(action, &QAction::triggered, this, &MainWindow::openExample);
+    }
+    // Tooltips on menu items are off by default in Qt, and the frame count is
+    // the thing that says whether this is a pair or a sequence.
+    menu->setToolTipsVisible(true);
+}
+
+void MainWindow::openExample()
+{
+    auto *action = qobject_cast<QAction *>(sender());
+    if (!action)
+        return;
+    const QStringList frames = action->data().toStringList();
+    if (frames.size() < 2)
+        return;
+
+    openReferenceImage(frames.first());
+    addTargetImages(frames.mid(1));
+    log(tr("Opened the %1 example: %2").arg(action->text(), action->toolTip()));
+}
 
 void MainWindow::createDockPanels()
 {

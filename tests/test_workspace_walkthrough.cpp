@@ -254,6 +254,7 @@ private slots:
     void a_measured_field_can_also_leave_as_a_table_anything_opens();
     void the_first_screen_shows_the_whole_path_not_only_its_first_step();
     void the_toolbar_carries_an_icon_beside_every_name();
+    void the_shipped_examples_can_be_opened_from_the_menu();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
@@ -1418,6 +1419,63 @@ void TestWorkspaceWalkthrough::the_toolbar_carries_an_icon_beside_every_name()
                  qPrintable(QStringLiteral("'%1' has no icon").arg(action->text())));
     }
     QVERIFY2(actions >= 6, "the toolbar lost actions");
+}
+
+void TestWorkspaceWalkthrough::the_shipped_examples_can_be_opened_from_the_menu()
+{
+    // The examples were in the repository and reachable from nothing. A reader
+    // who installs SurView should be able to measure something before going to
+    // find speckle images of their own.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QMenu *examples = nullptr;
+    for (QAction *top : window.menuBar()->actions()) {
+        QMenu *menu = top->menu();
+        if (!menu)
+            continue;
+        for (QAction *action : menu->actions()) {
+            if (action->menu() && action->text().contains(QStringLiteral("example"),
+                                                          Qt::CaseInsensitive))
+                examples = action->menu();
+        }
+    }
+    QVERIFY2(examples, "no menu offers the examples that ship with SurView");
+
+    QList<QAction *> entries;
+    for (QAction *action : examples->actions()) {
+        if (!action->isSeparator() && action->isEnabled())
+            entries << action;
+    }
+    // Headings are disabled, so this counts openable examples only.
+    QVERIFY2(entries.size() >= 5,
+             qPrintable(QStringLiteral("only %1 example(s) offered").arg(entries.size())));
+
+    // Each says how many frames it has, so a reader knows whether they are
+    // opening a pair or a sequence before they open it.
+    for (QAction *action : entries) {
+        QVERIFY2(!action->toolTip().isEmpty(), qPrintable(action->text()));
+        QVERIFY2(action->toolTip().contains(QStringLiteral("frames")),
+                 qPrintable(action->toolTip()));
+    }
+
+    // And opening one actually loads it: a reference and at least one target,
+    // with the run now possible.
+    entries.first()->trigger();
+    QVERIFY2(QTest::qWaitFor([&window] { return window.measuredFrames() >= 0
+                                                && !window.roi().isValid(); }, 5000),
+             "opening an example did nothing");
+
+    QVERIFY2(projectLine(&window, QStringLiteral("Reference image"))
+                 .contains(QStringLiteral("none")) == false,
+             qPrintable(projectLine(&window, QStringLiteral("Reference image"))));
+    QVERIFY2(!projectLine(&window, QStringLiteral("Target images"))
+                  .contains(QStringLiteral("none")),
+             qPrintable(projectLine(&window, QStringLiteral("Target images"))));
+    QVERIFY2(actionLabelled(&window, QStringLiteral("Run Correlation"))->isEnabled(),
+             "an opened example still cannot be run");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
