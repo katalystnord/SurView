@@ -37,8 +37,15 @@ dashes=$(printf '\342\200\220\|\342\200\221\|\342\200\223\|\342\200\224\|\342\21
 if [ "$#" -gt 0 ]; then
     files=$*
 else
-    # Tracked files only: build trees and third-party checkouts are not ours.
-    files=$(git -C "$here" ls-files)
+    # Tracked files, plus files that are new but not ignored.
+    #
+    # ⚑ Tracked-only silently skipped anything not yet added, so running this by
+    # hand on a file just written reported "clean" about a file it never opened.
+    # The pre-commit hook was never fooled, because staging makes a file
+    # tracked - but a check whose manual run does not mean what a reader thinks
+    # it means is worse than no manual run at all. Found when a new page for the
+    # website passed with an em-dash in its title.
+    files=$(git -C "$here" ls-files --cached --others --exclude-standard)
 fi
 
 found=0
