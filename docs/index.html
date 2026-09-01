@@ -92,10 +92,6 @@
     font-size: clamp(2.1rem, 4.6vw, 3.1rem);
     line-height: 1.1; margin: 0 0 16px; letter-spacing: -0.02em;
   }
-  h1 .grad {
-    background: linear-gradient(92deg, var(--accent-grad-1), var(--accent-grad-2));
-    -webkit-background-clip: text; background-clip: text; color: transparent;
-  }
   .tagline {
     font-size: clamp(1.05rem, 2vw, 1.22rem); color: var(--text-dim);
     max-width: 660px; margin: 0 auto 30px;
@@ -216,7 +212,8 @@
     SurView DIC
   </div>
   <nav class="nav-links">
-    <a href="#what">What it does</a>
+    <a href="#what">Overview</a>
+    <a href="#features">Features</a>
     <a href="#gallery">Screenshots</a>
     <a href="#examples">Examples</a>
     <a href="#get">Get it</a>
@@ -227,12 +224,13 @@
 <div class="wrap">
 
   <section class="hero">
-    <h1>Speckle images in,<br><span class="grad">trustworthy fields out</span></h1>
+    <h1>Measure full-field displacement and strain<br>with SurView DIC</h1>
     <p class="tagline">
-      The open-source world has excellent digital image correlation engines and
-      very little to drive them with. SurView DIC is the missing half: a
-      cross-platform desktop workspace a working scientist can adopt and hand to
-      a colleague.
+      SurView DIC is open-source software for digital image correlation. It
+      turns sequences of speckle images into displacement and strain fields,
+      keeping the provenance of every image and the reliability of every point
+      alongside the result, and writes them where ParaView and FreeCAD read
+      them directly.
     </p>
     <div class="cta-row">
       <a class="btn btn-primary" href="#get">Build it and run it</a>
@@ -246,10 +244,10 @@
   </section>
 
   <section id="what">
-    <h2>Two pillars, equally load-bearing</h2>
+    <h2>The record, and the measurement</h2>
     <p class="section-sub">
-      A measurement is only worth what the record behind it is worth. SurView
-      keeps both halves in view at once.
+      A measurement is worth what the record behind it is worth. SurView keeps
+      both in view at once.
     </p>
     <div class="pillars">
       <div class="pillar">
@@ -272,8 +270,8 @@
     </div>
   </section>
 
-  <section>
-    <h2>What it does</h2>
+  <section id="features">
+    <h2>Features</h2>
     <p class="section-sub">
       Everything here is on screen and reachable without knowing it is there.
     </p>
@@ -322,7 +320,7 @@
   </section>
 
   <section id="gallery">
-    <h2>See it working</h2>
+    <h2>The workspace</h2>
     <p class="section-sub">
       Straight from a running build, measuring the example data that ships with it.
     </p>
@@ -384,6 +382,27 @@
         </div>
       </div>
 
+      <div class="gallery-item">
+        <div class="shot">
+          <img src="assets/paraview.png" alt="ParaView with the exported .vtu open: the pipeline browser shows gauge.vtu, the properties panel lists displacement, strain, correlation, solved and both reliability arrays, and the strain field is drawn on the specimen with unmeasured points left as visible holes.">
+        </div>
+        <div>
+          <h3>The same file, open in ParaView</h3>
+          <p>
+            This is SurView's own export, written from the File menu and opened
+            in ParaView with no conversion step: the format is VTK's own. Every
+            channel the run measured is in the array list, and so are the
+            provenance strings, so the file can still say which images it came
+            from and how they were correlated.
+          </p>
+          <p>
+            The gaps in the field are the point. Unmeasured points are
+            not-a-number rather than zero, so they arrive as holes instead of a
+            plausible flat region that no reader could tell from a measurement.
+          </p>
+        </div>
+      </div>
+
       <div class="gallery-item flip">
         <div class="shot">
           <img src="assets/channels.png" alt="The field channel selector open, listing displacement magnitude, displacement u and v, strain exx, eyy and shear exy, noise floor sigma and match conditioning beta.">
@@ -403,7 +422,7 @@
   </section>
 
   <section id="examples">
-    <h2>It comes with something to measure</h2>
+    <h2>Example data included</h2>
     <p class="section-sub">
       Two kinds of example, because they answer different questions, and neither
       substitutes for the other.
@@ -486,7 +505,7 @@ cmake --build build
   </section>
 
   <section>
-    <h2>Open, and built on open</h2>
+    <h2>Licence and credits</h2>
     <div class="credit-box">
       <p>
         Correlation is by <a href="https://github.com/vincentjzy/OpenCorr">OpenCorr</a>
