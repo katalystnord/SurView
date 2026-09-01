@@ -271,11 +271,33 @@ int fieldScaleSignificantDigits(double lowest, double highest)
 
 QString noiseFloorAgainstMovement(const CorrelationResult &result)
 {
-    double worstFloor = 0.0;
-    double bestFloor = 0.0;
-    if (!fieldValueRange(result, FieldChannel::NoiseFloor, bestFloor, worstFloor))
+    // ⚑ A PERCENTILE, not the worst point. The worst point is not the field.
+    //
+    // Found on real data, and only findable there: a synthetic pattern fills
+    // the frame, while a photograph of a specimen leaves dark background around
+    // it that the grid covers too. A subset out there carries almost no
+    // gradient energy, so its noise floor is enormous -- and it correlates
+    // beautifully, because flat matches flat. On the pyALDIC tension sequence
+    // just 8 of 5401 solved points fell below 0.9, so no correlation threshold
+    // would have excluded them, and one of them made an excellent measurement
+    // report itself as "at worst one part in 3".
+    QVector<double> floors;
+    floors.reserve(result.points.size());
+    for (const CorrelationPoint &point : result.points) {
+        if (point.converged && point.noiseFloorMeasured && point.noiseFloor > 0.f)
+            floors.append(double(point.noiseFloor));
+    }
+    if (floors.isEmpty())
         return QString();
-    if (!(worstFloor > 0.0))
+
+    std::sort(floors.begin(), floors.end());
+    // Nearest-rank, so the answer is always a floor some point actually has
+    // rather than an interpolation between two of them. With two points it is
+    // the poorer of the two, which is the honest reading of "95 per cent" on a
+    // sample that small.
+    const int rank = int(std::ceil(0.95 * floors.size())) - 1;
+    const double floor = floors.at(std::clamp(rank, 0, int(floors.size()) - 1));
+    if (!(floor > 0.0))
         return QString();
 
     double smallest = 0.0;
@@ -288,12 +310,12 @@ QString noiseFloorAgainstMovement(const CorrelationResult &result)
     // A movement no larger than the floor that qualifies it is not a movement
     // this can put in proportion; saying "one part in 1" would be worse than
     // saying nothing.
-    if (largest <= worstFloor)
+    if (largest <= floor)
         return QString();
 
-    const double ratio = largest / worstFloor;
-    return QObject::tr("At worst one part in %1 of the largest displacement "
-                       "measured.")
+    const double ratio = largest / floor;
+    return QObject::tr("For 95 per cent of measured points, one part in %1 of "
+                       "the largest displacement measured, or better.")
         .arg(qRound(ratio));
 }
 

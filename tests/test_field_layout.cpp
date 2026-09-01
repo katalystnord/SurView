@@ -74,6 +74,7 @@ private slots:
     void every_channel_carries_the_sentence_that_stops_it_being_misread();
     void a_reliability_channel_reads_the_opposite_way_from_the_rest();
     void the_noise_floor_is_put_against_the_movement_it_qualifies();
+    void one_bad_point_does_not_set_the_number_that_speaks_for_the_field();
 };
 
 void TestFieldLayout::a_value_lands_in_the_cell_its_point_recorded()
@@ -416,14 +417,17 @@ void TestFieldLayout::the_noise_floor_is_put_against_the_movement_it_qualifies()
     result.gridRows = 1;
 
     CorrelationPoint a = measured(0, 3.f, 0.f);      // 3 px of movement
+    a.zncc = 0.99f;
     a.noiseFloor = 0.004f;
     a.noiseFloorMeasured = true;
     CorrelationPoint b = measured(1, 4.f, 0.f);      // 4 px, the largest
+    b.zncc = 0.99f;
     b.noiseFloor = 0.002f;
     b.noiseFloorMeasured = true;
     result.points << a << b;
 
-    // Worst floor 0.004 against the largest displacement 4: one part in 1000.
+    // Two points, so the floor 95 per cent of them beat is the poorer of the
+    // two: 0.004 against the largest displacement 4, one part in 1000.
     const QString stated = noiseFloorAgainstMovement(result);
     QVERIFY2(!stated.isEmpty(), "the noise floor was left without context");
     QVERIFY2(stated.contains(QStringLiteral("1000")),
@@ -435,6 +439,7 @@ void TestFieldLayout::the_noise_floor_is_put_against_the_movement_it_qualifies()
     still.gridColumns = 1;
     still.gridRows = 1;
     CorrelationPoint c = measured(0, 0.f, 0.f);
+    c.zncc = 0.99f;
     c.noiseFloor = 0.004f;
     c.noiseFloorMeasured = true;
     still.points << c;
@@ -444,6 +449,55 @@ void TestFieldLayout::the_noise_floor_is_put_against_the_movement_it_qualifies()
     // And a run with no reliability at all says nothing rather than dividing by
     // a floor it never measured.
     QVERIFY(noiseFloorAgainstMovement(CorrelationResult()).isEmpty());
+}
+
+void TestFieldLayout::one_bad_point_does_not_set_the_number_that_speaks_for_the_field()
+{
+    // ⚑ Found on real data, which is the only place it could be found. Our
+    // synthetic patterns fill the frame; a photograph of a specimen does not,
+    // and the grid covers the dark background around it as well. A subset out
+    // there has almost no gradient energy, so its noise floor is enormous --
+    // and it CORRELATES beautifully, because flat matches flat. On the pyALDIC
+    // tension sequence only 8 of 5401 solved points fell below 0.9, so no
+    // correlation threshold would have excluded these; the run reported "at
+    // worst one part in 3" about a measurement that was excellent.
+    //
+    // A headline number describes the field. One point cannot be the field.
+    CorrelationResult result;
+    result.gridColumns = 21;
+    result.gridRows = 1;
+
+    for (int i = 0; i < 20; i++) {
+        CorrelationPoint good = measured(i, 4.f, 0.f);
+        good.zncc = 0.99f;
+        good.noiseFloor = 0.002f;
+        good.noiseFloorMeasured = true;
+        result.points << good;
+    }
+
+    CorrelationPoint background = measured(20, 4.f, 0.f);
+    background.zncc = 0.99f;          // a flat region correlates perfectly
+    background.noiseFloor = 2.0f;     // and resolves nothing at all
+    background.noiseFloorMeasured = true;
+    result.points << background;
+
+    const QString stated = noiseFloorAgainstMovement(result);
+    QVERIFY2(!stated.isEmpty(), "the noise floor was left without context");
+
+    // 4 px of movement against the floor 95 per cent of points beat: 0.002 px,
+    // one part in 2000.
+    QVERIFY2(stated.contains(QStringLiteral("2000")),
+             qPrintable(QStringLiteral("one outlier still speaks for the whole "
+                                       "field: %1").arg(stated)));
+
+    // And it says whose floor it is quoting, rather than implying every point.
+    QVERIFY2(stated.contains(QStringLiteral("95")), qPrintable(stated));
+
+    // NEGATIVE CHECK (2026-09-01): three breaks, all three red. Taking the
+    // worst floor again reddens this case; taking the median instead of the
+    // 95th percentile reddens the case above, which pins the percentile from
+    // the other side; dropping "95 per cent" from the sentence reddens this
+    // one, because a number that speaks for most of the field has to say so.
 }
 
 QTEST_MAIN(TestFieldLayout)
