@@ -191,6 +191,30 @@
   .footer-links a { color: var(--text-dim); text-decoration: none; }
   .footer-links a:hover { color: var(--text); }
   .footer-note { text-align: center; color: var(--text-dim); font-size: 0.86rem; }
+
+  /* Specification list, the way an engineering tool is actually compared:
+     scannable rows of fact rather than benefit cards. */
+  .spec { display: grid; grid-template-columns: 1fr; gap: 0; border: 1px solid var(--border);
+          border-radius: 12px; overflow: hidden; background: var(--surface); }
+  .spec-row { display: grid; grid-template-columns: 1fr; gap: 4px; padding: 14px 18px;
+              border-top: 1px solid var(--border); }
+  .spec-row:first-child { border-top: none; }
+  @media (min-width: 720px) {
+    .spec-row { grid-template-columns: 230px 1fr; gap: 18px; align-items: baseline; }
+  }
+  .spec-key { font-weight: 600; font-size: 0.93rem; }
+  .spec-val { color: var(--text-dim); font-size: 0.93rem; }
+  .spec-val code { background: var(--code-bg); padding: 1px 5px; border-radius: 4px; font-size: 0.88em; }
+
+  .bullets { columns: 2; column-gap: 34px; margin: 0; padding-left: 20px; color: var(--text-dim); font-size: 0.96rem; }
+  .bullets li { margin-bottom: 9px; break-inside: avoid; }
+  @media (max-width: 700px) { .bullets { columns: 1; } }
+
+  .status {
+    display: inline-block; padding: 5px 12px; border-radius: 999px;
+    background: var(--accent-soft); color: var(--accent-strong);
+    font-size: 0.82rem; font-weight: 600; margin-bottom: 20px;
+  }
 </style>
 </head>
 <body>
@@ -212,11 +236,11 @@
     SurView DIC
   </div>
   <nav class="nav-links">
-    <a href="#what">Overview</a>
-    <a href="#features">Features</a>
-    <a href="#gallery">Screenshots</a>
-    <a href="#examples">Examples</a>
-    <a href="#get">Get it</a>
+    <a href="#capabilities">Capabilities</a>
+    <a href="#specification">Specification</a>
+    <a href="#screenshots">Screenshots</a>
+    <a href="#examples">Example data</a>
+    <a href="#get">Download</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </nav>
 </header>
@@ -224,17 +248,15 @@
 <div class="wrap">
 
   <section class="hero">
-    <h1>Measure full-field displacement and strain<br>with SurView DIC</h1>
+    <span class="status">In development, built and tested on Linux</span>
+    <h1>SurView DIC</h1>
     <p class="tagline">
-      SurView DIC is open-source software for digital image correlation. It
-      turns sequences of speckle images into displacement and strain fields,
-      keeping the provenance of every image and the reliability of every point
-      alongside the result, and writes them where ParaView and FreeCAD read
-      them directly.
+      Software for digital image correlation: full-field displacement and
+      strain measurement from speckle images.
     </p>
     <div class="cta-row">
-      <a class="btn btn-primary" href="#get">Build it and run it</a>
-      <a class="btn btn-secondary" href="https://github.com/katalystnord/SurView">★ Source on GitHub</a>
+      <a class="btn btn-primary" href="#get">Build from source</a>
+      <a class="btn btn-secondary" href="https://github.com/katalystnord/SurView">Source on GitHub</a>
     </div>
     <p class="free-note">Free and open source, LGPL-2.1-or-later &middot; Qt and VTK &middot; correlation by OpenCorr</p>
 
@@ -243,105 +265,130 @@
     </div>
   </section>
 
-  <section id="what">
+  <section id="capabilities">
+    <h2>Capabilities</h2>
+    <p class="section-sub">
+      SurView DIC measures how a speckled specimen moved and deformed between
+      photographs, over a whole loading sequence, and reports how far each
+      measured point can be trusted.
+    </p>
+    <ul class="bullets">
+      <li>Two-dimensional subset correlation over a regular grid of points</li>
+      <li>Region of interest drawn by hand or segmented automatically from speckle quality</li>
+      <li>Whole loading sequences measured against one reference, in frame order</li>
+      <li>Reference updating when correlation against the original frame degrades</li>
+      <li>Strain fitted from neighbouring displacements, in three measures</li>
+      <li>Per-point noise floor and match conditioning, computed on every run</li>
+      <li>Per-point readout of every measured channel, pinnable</li>
+      <li>Provenance recorded for every image, verified by SHA-256</li>
+      <li>Export to VTK unstructured grid and to comma-separated text</li>
+      <li>One numbered file per frame, which ParaView groups as a time series</li>
+    </ul>
+  </section>
+
+  <section id="specification">
+    <h2>Specification</h2>
+    <p class="section-sub">
+      What the correlation actually does, in the terms the literature uses.
+    </p>
+    <div class="spec">
+      <div class="spec-row">
+        <div class="spec-key">Solvers</div>
+        <div class="spec-val">Inverse-compositional Gauss-Newton (ICGN), Newton-Raphson, inverse-compositional Levenberg-Marquardt (IC-LM). Every offered combination is covered by a test.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Shape functions</div>
+        <div class="spec-val">First order (affine) and second order (quadratic), where the solver implements it.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Interpolation</div>
+        <div class="spec-val">Bicubic B-spline, over the whole dense image.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Subset and grid</div>
+        <div class="spec-val">Subset radius and grid step chosen per run; the grid is held one subset radius clear of every image edge.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Strain</div>
+        <div class="spec-val">Fitted by plane regression over a subregion of chosen radius. Cauchy (small strain), Green-Lagrange and Euler-Almansi. Points correlating below 0.9 are excluded from every fit.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Reliability</div>
+        <div class="spec-val">Displacement noise floor (DIC's sigma, in pixels) and match conditioning (DIC's beta, dimensionless), for every point of every run.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Reads</div>
+        <div class="spec-val">TIFF, PNG, JPEG and BMP, 8-bit and 16-bit, greyscale. Row order is normalised to the file's own; nothing is converted or rescaled.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Writes</div>
+        <div class="spec-val"><code>.vtu</code> VTK unstructured grid, and <code>.csv</code>. Both carry both images with their SHA-256, the solver and its settings, the region, the strain fit and the engine revision.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Coordinate frame</div>
+        <div class="spec-val">Image pixels throughout, x right and y down, origin at the top-left pixel centre. The viewport, the region, the engine and the exported file all use it, and the file states it.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Engine</div>
+        <div class="spec-val">OpenCorr, pinned to an exact revision recorded in the repository and compiled into every export.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Built with</div>
+        <div class="spec-val">Qt 6, VTK 9.5, OpenCV 4, Eigen 3.4, FFTW 3, nanoflann, OpenMP. C++20.</div>
+      </div>
+    </div>
+  </section>
+
+  <section>
     <h2>The record, and the measurement</h2>
     <p class="section-sub">
-      A measurement is worth what the record behind it is worth. SurView keeps
-      both in view at once.
+      A measurement is worth what the record behind it is worth, so SurView
+      keeps both in view.
     </p>
     <div class="pillars">
       <div class="pillar">
-        <h3>Record the evidence faithfully</h3>
+        <h3>What was recorded</h3>
         <p>
           Every image is recorded as it arrived: path, size, modification time,
-          SHA-256, which decoder read it, its pixel type and the range actually
-          used. Nothing is converted, resampled or quietly normalised on the way
-          in, and the panel says so in as many words.
+          SHA-256, the decoder that read it, its pixel type, and how much of
+          that type's range the data actually used. Nothing is converted,
+          resampled or normalised on the way in.
         </p>
       </div>
       <div class="pillar">
-        <h3>Correlate it into fields</h3>
+        <h3>What was measured</h3>
         <p>
-          ICGN, Newton-Raphson and IC-LM solvers over a region you choose, across
-          a whole loading sequence, with strain fitted from the displacements and
-          the reliability of every point reported alongside.
+          Nothing unmeasured is reported as a number. A rejected point, an
+          unfitted strain and an unestablished uncertainty are absent or
+          not-a-number, never zero, in the display and in every exported file.
+          Failures are counted by the engine's own reason.
         </p>
       </div>
     </div>
   </section>
 
-  <section id="features">
-    <h2>Features</h2>
+  <section id="screenshots">
+    <h2>Screenshots</h2>
     <p class="section-sub">
-      Everything here is on screen and reachable without knowing it is there.
-    </p>
-    <div class="features">
-      <div class="feature">
-        <div class="icon">◱</div>
-        <h3>Regions, drawn or found</h3>
-        <p>Click corners on the image to bound the specimen, or let SurView segment the speckled area for you. The mode carries its own controls and names every way to finish.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">≡</div>
-        <h3>Sequences, not pairs</h3>
-        <p>A loading series is measured in the order the frames were taken, sorted by number rather than by string, so frame 10 never lands between 1 and 2. Every frame is measured against the original reference.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">↻</div>
-        <h3>Reference updating</h3>
-        <p>When too little of the field still correlates, the run re-anchors to the current frame and keeps banking each point's displacement, while still reporting on the original grid against the original reference.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">∂</div>
-        <h3>Strain, and what the fit did</h3>
-        <p>Strain is fitted from neighbouring displacements, so SurView says how many points the subregion actually holds before you run, and reports where the fit declined instead of returning a zero.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">σ</div>
-        <h3>Reliability on every run</h3>
-        <p>Two different questions, never collapsed into one score: the noise floor this speckle could ever resolve, and how sharply the correlation cost rose around the match actually found.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">◎</div>
-        <h3>Read any point</h3>
-        <p>Move the pointer over the field for that point's own numbers, click to pin one while you write it down. Each channel says what it is not, right beside the value.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">↗</div>
-        <h3>Into ParaView and FreeCAD</h3>
-        <p>Results export as VTK <code>.vtu</code>, which ParaView opens and FreeCAD's FEM workbench consumes, or as a plain table for a spreadsheet. Both carry the full provenance of the run.</p>
-      </div>
-      <div class="feature">
-        <div class="icon">⌗</div>
-        <h3>Nothing unmeasured reads as zero</h3>
-        <p>A rejected point, an unfitted strain and an unestablished uncertainty are absent, not zero. A field of zeros is a perfectly good blue region in any viewer, and nobody downstream can tell it from a measurement.</p>
-      </div>
-    </div>
-  </section>
-
-  <section id="gallery">
-    <h2>The workspace</h2>
-    <p class="section-sub">
-      Straight from a running build, measuring the example data that ships with it.
+      From a running build, measuring the example data that ships with it.
     </p>
     <div class="gallery">
 
-      <div class="gallery-item tall">
+      <div class="gallery-item">
         <div class="shot">
-          <img src="assets/point-readout.png" alt="The point readout panel showing reference pixel, displacement, magnitude, correlation, noise floor sigma, match conditioning beta and fitted strain, each with a sentence saying what it cannot tell you.">
+          <img src="assets/paraview.png" alt="ParaView with the exported .vtu open: the pipeline browser shows gauge.vtu, the properties panel lists displacement, strain, correlation, solved and both reliability arrays, and the strain field is drawn on the specimen with unmeasured points left as visible holes.">
         </div>
         <div>
-          <h3>Every number, and what it is not</h3>
+          <h3>The exported field, in ParaView</h3>
           <p>
-            A colour map answers where, never how much. Point at the field and
-            SurView reports that point's own measurement: displacement,
-            correlation, the noise floor of its subset, how well conditioned the
-            match was, and the strain fitted around it.
+            SurView's own export, written from the File menu and opened with no
+            conversion step: the format is VTK's own. Every channel the run
+            measured is in the array list, and so are the provenance strings.
           </p>
           <p>
-            Each one carries a sentence saying what it does not cover, next to
-            the value rather than in documentation nobody has open. Click to pin
-            a reading so it stays while you look away.
+            The gaps are unmeasured points. They are not-a-number rather than
+            zero, so they arrive as holes rather than as a flat region no reader
+            could tell from a measurement.
           </p>
         </div>
       </div>
@@ -353,67 +400,48 @@
         <div>
           <h3>A rotation is not a strain</h3>
           <p>
-            This specimen was turned, not deformed. The strain map runs from
-            -0.000457 to 0.000116 across the whole field: zero, to within the
-            method's own noise, exactly as it should be.
+            A specimen turned, not deformed. Strain runs from -0.000457 to
+            0.000116 across the whole field: zero, to within the method's own
+            noise.
           </p>
           <p>
             The scale is centred on zero because strain's zero is a physical
-            state. Displacement's is not, so it gets a different scale.
+            state. Displacement's is not, so it is scaled differently.
           </p>
         </div>
       </div>
 
-      <div class="gallery-item">
+      <div class="gallery-item tall">
         <div class="shot">
-          <img src="assets/region.png" alt="Region drawing mode: a bounded quadrilateral over the speckle, with an on-screen bar reading four corners placed, the pointer position in image pixels, and buttons for undo, close and cancel.">
+          <img src="assets/point-readout.png" alt="The point readout panel showing reference pixel, displacement, magnitude, correlation, noise floor sigma, match conditioning beta and fitted strain, each with a sentence saying what it cannot tell you.">
         </div>
         <div>
-          <h3>A mode that explains itself</h3>
+          <h3>Every number, and what it is not</h3>
           <p>
-            Drawing a region puts a bar on screen carrying its own instructions,
-            a live corner count, the pointer's position in image pixels, and
-            every way to finish: a button, a double-click, a right-click, Enter,
-            or Esc to abandon it.
+            Point at the field for that point's own measurement: displacement,
+            correlation, the noise floor of its subset, how well conditioned the
+            match was, and the strain fitted around it. Click to pin a reading.
           </p>
           <p>
-            No capability in SurView is reachable only by knowing it is there.
-          </p>
-        </div>
-      </div>
-
-      <div class="gallery-item">
-        <div class="shot">
-          <img src="assets/paraview.png" alt="ParaView with the exported .vtu open: the pipeline browser shows gauge.vtu, the properties panel lists displacement, strain, correlation, solved and both reliability arrays, and the strain field is drawn on the specimen with unmeasured points left as visible holes.">
-        </div>
-        <div>
-          <h3>The same file, open in ParaView</h3>
-          <p>
-            This is SurView's own export, written from the File menu and opened
-            in ParaView with no conversion step: the format is VTK's own. Every
-            channel the run measured is in the array list, and so are the
-            provenance strings, so the file can still say which images it came
-            from and how they were correlated.
-          </p>
-          <p>
-            The gaps in the field are the point. Unmeasured points are
-            not-a-number rather than zero, so they arrive as holes instead of a
-            plausible flat region that no reader could tell from a measurement.
+            Each value carries one sentence on what it does not cover. The noise
+            floor is a lower bound on error, not a total error bar, and it never
+            examines the target image; the conditioning is comparable within a
+            run and meaningless across runs.
           </p>
         </div>
       </div>
 
       <div class="gallery-item flip">
         <div class="shot">
-          <img src="assets/channels.png" alt="The field channel selector open, listing displacement magnitude, displacement u and v, strain exx, eyy and shear exy, noise floor sigma and match conditioning beta.">
+          <img src="assets/region.png" alt="Region drawing mode: a bounded quadrilateral over the speckle, with an on-screen bar reading four corners placed, the pointer position in image pixels, and buttons for undo, close and cancel.">
         </div>
         <div>
-          <h3>Eight views of one measurement</h3>
+          <h3>Regions, drawn or detected</h3>
           <p>
-            Displacement as magnitude or by component, all three strain
-            components, and both reliability channels: the noise floor in pixels
-            and the match conditioning. Switch between them without re-running
-            anything.
+            Click corners to bound the specimen, or let SurView segment the
+            speckled area from an image-gradient quality map. The mode carries
+            its own instructions, a live corner count, the pointer's position in
+            image pixels, and every way to finish it.
           </p>
         </div>
       </div>
@@ -422,19 +450,20 @@
   </section>
 
   <section id="examples">
-    <h2>Example data included</h2>
+    <h2>Example data</h2>
     <p class="section-sub">
-      Two kinds of example, because they answer different questions, and neither
-      substitutes for the other.
+      Two kinds, because they answer different questions. Both ship with the
+      source.
     </p>
     <div class="split">
       <div class="card">
         <h3>Six synthetic sets, with the exact answer</h3>
         <p>
-          Generated from an analytic speckle pattern rather than warped from an
+          Rendered from an analytic speckle pattern rather than warped from an
           image, so no pixel is ever resampled and the displacement is exact by
-          construction. Each frame ships with its deformation gradient and its
-          displacement at the corners and centre.
+          construction. Each frame carries its deformation gradient, its
+          displacement at the corners and centre, and a noise floor measured
+          from its own pixels.
         </p>
         <ul>
           <li>Sub-pixel translation, 0.25 to 2.5 px</li>
@@ -448,25 +477,25 @@
       <div class="card">
         <h3>Three real experiments</h3>
         <p>
-          Photographs of actual specimens, with everything a real camera brings:
-          lighting, grips, out-of-plane motion, background that carries no
+          Photographs of actual specimens, with what a real camera brings:
+          lighting, grips, out-of-plane motion, and background carrying no
           speckle at all.
         </p>
         <ul>
           <li>Aluminium dog-bone in uniaxial tension</li>
-          <li>Perforated specimen, with stress concentration at the holes</li>
+          <li>Perforated specimen, stress concentration at the holes</li>
           <li>Speckled plate in rigid-body rotation</li>
         </ul>
         <p style="margin-top:12px">
-          Courtesy of the <a href="https://github.com/zachtong/pyALDIC">pyALDIC</a>
-          project, BSD-3-Clause, cited in full with the data.
+          From the <a href="https://github.com/zachtong/pyALDIC">pyALDIC</a>
+          project, BSD-3-Clause, cited with the data.
         </p>
       </div>
     </div>
   </section>
 
   <section id="get">
-    <h2>Get it</h2>
+    <h2>Download</h2>
     <p class="section-sub">
       SurView builds from source against a pinned engine revision, so a build is
       always traceable to one exact correlation library.
@@ -480,28 +509,9 @@ cmake --build build
 
 ./build/src/SurView examples/real/01_tension_without_holes/image_000*.png</code></pre>
     <p class="section-sub" style="margin-top:24px">
-      That last line opens a real tension sequence with the reference and four
+      The last line opens a real tension sequence with its reference and four
       loaded frames already imported. Press Run Correlation.
     </p>
-    <div class="split">
-      <div class="card">
-        <h3>What you need</h3>
-        <ul>
-          <li>Qt 6, VTK 9.5, OpenCV 4, Eigen 3.4, FFTW 3, nanoflann, OpenMP</li>
-          <li>A C++20 compiler and CMake</li>
-          <li>Linux today; Qt and VTK carry it to Windows and macOS</li>
-        </ul>
-      </div>
-      <div class="card">
-        <h3>How it is tested</h3>
-        <ul>
-          <li>One command runs SurView's suite and the engine's together</li>
-          <li>Walkthrough tests drive the real window the way a user does</li>
-          <li>Every test is checked by breaking the code and watching it fail</li>
-          <li>Fixtures are committed with independently verified properties</li>
-        </ul>
-      </div>
-    </div>
   </section>
 
   <section>
@@ -509,18 +519,20 @@ cmake --build build
     <div class="credit-box">
       <p>
         Correlation is by <a href="https://github.com/vincentjzy/OpenCorr">OpenCorr</a>
-        (Jiang, MPL-2.0), the most capable open DIC engine we found: 2D, stereo
-        and volumetric DVC in one library. SurView drives it and contributes
-        fixes back upstream.
+        (Jiang, MPL-2.0): 2D, stereo and volumetric DVC in one library. SurView
+        drives it and sends fixes back upstream.
       </p>
       <p>
-        The application shell is Qt and everything drawn or exported goes through
-        VTK, which is why results land natively in ParaView and FreeCAD rather
-        than through a converter.
+        The application shell is <a href="https://www.qt.io/">Qt</a> and
+        everything rendered or exported goes through
+        <a href="https://vtk.org/">VTK</a>, which is why results open natively
+        in <a href="https://www.paraview.org/">ParaView</a> and
+        <a href="https://www.freecad.org/">FreeCAD</a> rather than through a
+        converter.
       </p>
       <p>
-        SurView DIC is LGPL-2.1-or-later, the same choice FreeCAD made in the
-        same ecosystem. No paid tier, no open core.
+        SurView DIC is LGPL-2.1-or-later, the licence FreeCAD chose in the same
+        ecosystem. No paid tier and no open core.
       </p>
     </div>
   </section>
@@ -532,7 +544,6 @@ cmake --build build
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
     <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/katalystnord/OpenCorr">Engine fork</a>
-    <a href="https://github.com/vincentjzy/OpenCorr">OpenCorr</a>
     <a href="https://katalystnord.github.io/nmrium-desktop/">NMRium Desktop</a>
     <a href="https://plottracer.com/">PlotTracer</a>
   </div>
