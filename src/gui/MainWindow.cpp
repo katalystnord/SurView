@@ -356,6 +356,7 @@ void MainWindow::newProject()
     m_resultsItem->setText(0, tr("Results - none"));
     m_resultsItem->takeChildren();
     showRoiInProject();
+    updateSpeckleQuality();
     updateActionStates();
     log(tr("New project."));
 }
@@ -594,6 +595,16 @@ QWidget *MainWindow::createAnalysisPanel()
     m_gridStep->setSuffix(tr(" px"));
     form->addRow(tr("Grid step"), m_gridStep);
 
+    // ⚑ Beside the radius, not in the results. Subset radius and region are the
+    // two things that decide what a run can resolve, they are both chosen right
+    // here, and until now neither said anything until the correlation had been
+    // sat through.
+    m_speckleAdvice = new QLabel;
+    m_speckleAdvice->setWordWrap(true);
+    m_speckleAdvice->setStyleSheet(
+        QStringLiteral("color: #55616d; font-size: 11px;"));
+    form->addRow(QString(), m_speckleAdvice);
+
     m_maxIterations = new QSpinBox;
     m_maxIterations->setRange(1, 100);
     m_maxIterations->setValue(10);
@@ -748,6 +759,10 @@ QWidget *MainWindow::createAnalysisPanel()
     connect(m_gridStep, &QSpinBox::valueChanged, this,
             &MainWindow::updateStrainAdvice);
 
+    // The estimate depends on the radius and on the region, so it follows both.
+    connect(m_subsetRadius, &QSpinBox::valueChanged, this,
+            &MainWindow::updateSpeckleQuality);
+
     updateSolverConstraints();
     updateStrainAdvice();
     return panel;
@@ -767,6 +782,37 @@ void MainWindow::updateReferenceUpdateControls()
     const bool on = m_reanchorEnabled->isChecked();
     m_reanchorThreshold->setEnabled(on);
     m_reanchorShare->setEnabled(on);
+}
+
+void MainWindow::updateSpeckleQuality()
+{
+    if (!m_speckleAdvice)
+        return;
+
+    if (m_referenceRecord.filePath.isEmpty()) {
+        m_speckleAdvice->setText(tr("Import a reference image to see what its "
+                                    "speckle can resolve."));
+        return;
+    }
+
+    const SpeckleQuality quality =
+        speckleQualityIn(m_referenceRecord.filePath, m_roi, m_subsetRadius->value());
+
+    if (!quality.measured) {
+        m_speckleAdvice->setText(quality.note);
+        return;
+    }
+
+    // A resolution rather than a score, so it can be put against the movement
+    // being measured. A score would need a threshold, and any threshold here
+    // would have to be invented.
+    m_speckleAdvice->setText(
+        tr("This speckle should resolve about %1 px with a %2 px subset%3. %4")
+            .arg(quality.resolutionPx, 0, 'g', 2)
+            .arg(m_subsetRadius->value())
+            .arg(m_roi.isValid() ? tr(", inside the region")
+                                 : tr(", over the whole image"))
+            .arg(quality.note));
 }
 
 void MainWindow::updateStrainAdvice()
@@ -880,6 +926,7 @@ void MainWindow::openReferenceImage(const QString &path)
     m_referenceRecord = m_viewport->record();
     const ImageRecord &record = m_referenceRecord;
     m_record->setRecord(record);
+    updateSpeckleQuality();
 
     m_referenceItem->setText(0, tr("Reference image - %1 (%2×%3)")
                                     .arg(name)
@@ -1247,6 +1294,11 @@ void MainWindow::discardStaleResult()
 
 void MainWindow::showRoiInProject()
 {
+    // Every route that changes the region passes through here, so the estimate
+    // follows the region without each of those routes having to remember to
+    // refresh it.
+    updateSpeckleQuality();
+
     if (!m_roi.isValid()) {
         m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
         m_roiItem->setToolTip(0, QString());

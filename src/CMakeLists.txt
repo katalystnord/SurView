@@ -37,6 +37,7 @@ add_library(surview_core STATIC
     core/Roi.h
     core/RoiDetect.cpp
     core/RoiDetect.h
+    core/SpeckleQuality.h
     core/StrainFit.cpp
     core/StrainFit.h
 )

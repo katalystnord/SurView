@@ -3,6 +3,7 @@
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
 #include "core/Project.h"
+#include "core/SpeckleQuality.h"
 #include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
@@ -114,6 +115,12 @@ private slots:
     // second-order shape function is disabled while Newton-Raphson is chosen,
     // because the engine implements that solver for first order only.
     void updateSolverConstraints();
+
+    // Re-estimate what the speckle in the region can resolve, at the subset
+    // radius currently chosen. Live, because both of the things it depends on
+    // are being chosen right there and an answer that waited for the run would
+    // arrive after the decision it is about.
+    void updateSpeckleQuality();
 
     // Keeps the strain warning on screen honest about the numbers currently in
     // the panel. Live, not on Run: the settings that make the fit impossible
@@ -243,6 +250,7 @@ private:
     QSpinBox *m_strainMinPoints = nullptr;
     QComboBox *m_strainMeasure = nullptr;
     QLabel *m_strainAdvice = nullptr;
+    QLabel *m_speckleAdvice = nullptr;
     QGroupBox *m_strainGroup = nullptr;
 
     QCheckBox *m_reanchorEnabled = nullptr;

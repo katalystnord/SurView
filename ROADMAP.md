@@ -40,8 +40,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
-- **Live speckle-quality indicator**, from `SpeckleQualityMap`, while the
-  region is being drawn rather than after a run.
 
 ## Then
 
@@ -73,6 +71,13 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   Worked around by repeating the gesture and by taking readings from clicks.
 
 ## Fixed, kept here because the reason is worth remembering
+
+- **Choosing a subset radius and a region blind.** Both largely decide how
+  reliable a run will be, and neither said anything until a correlation had
+  been sat through. The Analysis panel now estimates what the speckle inside
+  the region can resolve, live, at the radius currently chosen - as a
+  displacement in pixels rather than a score, because a score would need a
+  threshold and any threshold for "good speckle" has to be invented.
 
 - **A menu that promised what it did not do.** New, Open and Save Project sat
   on the File menu from the first window and reported themselves unimplemented.
