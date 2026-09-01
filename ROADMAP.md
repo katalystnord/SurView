@@ -26,7 +26,8 @@ the idiom of the field, and these are what we do not have yet:
 - **Plots over the sequence.** Nothing charts a quantity against frame, and
   no virtual extensometer or line probe. Every commercial tool has this; it is
   how a loading curve gets read.
-- **Binaries.** Everyone else ships installers. We ship a build.
+- **Binaries.** Everyone else ships installers. We ship a build. `install()`
+  rules exist now, so this is packaging rather than plumbing.
 - **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
   can; the application has no path to it.
 - **Image acquisition.** iCorrVision has a frame grabber and drives the
@@ -42,11 +43,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
-- **Ship the examples.** They are in the repository and reachable from nothing:
-  there are no `install()` rules anywhere in the project, the README does not
-  mention them, and the GUI has no way to open one. A `File > Open Example`
-  entry and install rules, so a fresh install can measure something within a
-  minute of starting.
 - **Verify measured strain against `examples/synthetic/ground_truth.json`.**
   The synthetic sets state the exact answer and nothing yet checks a run
   against it. Solve counts have been checked; accuracy has not. The rotation
@@ -85,6 +81,14 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   Worked around by repeating the gesture and by taking readings from clicks.
 
 ## Fixed, kept here because the reason is worth remembering
+
+- **Examples that shipped with nothing to open them.** The example data was in
+  the repository, installed nowhere, and unreachable from the application.
+  `File > Open Example` and `install()` rules fixed it. Two findings came out
+  of building it: grouping by folder alone would have joined the six synthetic
+  sets into one bogus eight-frame sequence, and the menu showed "Rotation"
+  twice until it was headed by family. The second was found by installing it
+  and looking, not by a test.
 
 - **A headline number set by one bad point.** The noise-floor-against-movement
   statistic quoted the worst point in the run, and on a real photograph the
