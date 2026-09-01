@@ -1383,13 +1383,13 @@ void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
     // how well.
     if (result.noiseFloorMeasured > 0) {
         double lowest = 0.0;
-        double highest = 0.0;
-        fieldValueRange(result, FieldChannel::NoiseFloor, lowest, highest);
-        log(tr("  Noise floor %1 to %2 px across the field, against an estimated "
-               "%3 grey levels of noise in the reference image. A lower bound on "
-               "error, not a total error bar.")
+        double typical = 0.0;
+        noiseFloorSpread(result, lowest, typical);
+        log(tr("  Noise floor %1 to %2 px for 95 per cent of measured points, "
+               "against an estimated %3 grey levels of noise in the reference "
+               "image. A lower bound on error, not a total error bar.")
                 .arg(lowest, 0, 'g', 3)
-                .arg(highest, 0, 'g', 3)
+                .arg(typical, 0, 'g', 3)
                 .arg(result.referenceNoise, 0, 'g', 3));
         const QString context = noiseFloorAgainstMovement(result);
         if (!context.isEmpty())

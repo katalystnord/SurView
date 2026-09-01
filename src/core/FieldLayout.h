@@ -104,6 +104,20 @@ bool fieldValueRange(const CorrelationResult &result, FieldChannel channel,
 // measurement, too many is float noise dressed as precision.
 int fieldScaleSignificantDigits(double lowest, double highest);
 
+// The noise floor's spread across the field: the smallest, and the value 95
+// per cent of measured points beat.
+//
+// ⚑ Not the maximum. On a photograph the grid covers unspeckled background as
+// well as specimen, and a subset out there has almost no gradient energy, so
+// its noise floor is enormous while it correlates perfectly well. Reporting the
+// maximum made an excellent field read as "0.0052 to 2.31 px" -- and the very
+// next line of the same report already used a percentile, so the two disagreed
+// about the same quantity.
+//
+// False when no point of the run carries a measured noise floor.
+bool noiseFloorSpread(const CorrelationResult &result, double &lowest,
+                      double &typicalHighest);
+
 // The worst noise floor set against the largest displacement measured, as a
 // ratio, phrased for a reader. Empty when there is nothing to compare: no
 // reliability measured, or a specimen that did not move, where a ratio would be

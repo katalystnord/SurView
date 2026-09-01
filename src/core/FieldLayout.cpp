@@ -269,6 +269,45 @@ int fieldScaleSignificantDigits(double lowest, double highest)
     return std::clamp(needed, kFewest, kMost);
 }
 
+namespace
+{
+
+// Every measured noise floor in the run, sorted. Shared by the two functions
+// below so they cannot disagree about which points count.
+QVector<double> sortedNoiseFloors(const CorrelationResult &result)
+{
+    QVector<double> floors;
+    floors.reserve(result.points.size());
+    for (const CorrelationPoint &point : result.points) {
+        if (point.converged && point.noiseFloorMeasured && point.noiseFloor > 0.f)
+            floors.append(double(point.noiseFloor));
+    }
+    std::sort(floors.begin(), floors.end());
+    return floors;
+}
+
+// Nearest rank, so the answer is always a floor some point actually has rather
+// than an interpolation between two of them.
+double percentileOf(const QVector<double> &sorted, double fraction)
+{
+    const int rank = int(std::ceil(fraction * sorted.size())) - 1;
+    return sorted.at(std::clamp(rank, 0, int(sorted.size()) - 1));
+}
+
+}  // namespace
+
+bool noiseFloorSpread(const CorrelationResult &result, double &lowest,
+                      double &typicalHighest)
+{
+    const QVector<double> floors = sortedNoiseFloors(result);
+    if (floors.isEmpty())
+        return false;
+
+    lowest = floors.first();
+    typicalHighest = percentileOf(floors, 0.95);
+    return true;
+}
+
 QString noiseFloorAgainstMovement(const CorrelationResult &result)
 {
     // ⚑ A PERCENTILE, not the worst point. The worst point is not the field.
@@ -281,22 +320,13 @@ QString noiseFloorAgainstMovement(const CorrelationResult &result)
     // just 8 of 5401 solved points fell below 0.9, so no correlation threshold
     // would have excluded them, and one of them made an excellent measurement
     // report itself as "at worst one part in 3".
-    QVector<double> floors;
-    floors.reserve(result.points.size());
-    for (const CorrelationPoint &point : result.points) {
-        if (point.converged && point.noiseFloorMeasured && point.noiseFloor > 0.f)
-            floors.append(double(point.noiseFloor));
-    }
+    const QVector<double> floors = sortedNoiseFloors(result);
     if (floors.isEmpty())
         return QString();
 
-    std::sort(floors.begin(), floors.end());
-    // Nearest-rank, so the answer is always a floor some point actually has
-    // rather than an interpolation between two of them. With two points it is
-    // the poorer of the two, which is the honest reading of "95 per cent" on a
-    // sample that small.
-    const int rank = int(std::ceil(0.95 * floors.size())) - 1;
-    const double floor = floors.at(std::clamp(rank, 0, int(floors.size()) - 1));
+    // With two points the 95th percentile is the poorer of the two, which is
+    // the honest reading of "95 per cent" on a sample that small.
+    const double floor = percentileOf(floors, 0.95);
     if (!(floor > 0.0))
         return QString();
 

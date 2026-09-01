@@ -75,6 +75,7 @@ private slots:
     void a_reliability_channel_reads_the_opposite_way_from_the_rest();
     void the_noise_floor_is_put_against_the_movement_it_qualifies();
     void one_bad_point_does_not_set_the_number_that_speaks_for_the_field();
+    void the_reported_spread_of_the_noise_floor_is_the_fields_not_its_worst_points();
 };
 
 void TestFieldLayout::a_value_lands_in_the_cell_its_point_recorded()
@@ -498,6 +499,50 @@ void TestFieldLayout::one_bad_point_does_not_set_the_number_that_speaks_for_the_
     // 95th percentile reddens the case above, which pins the percentile from
     // the other side; dropping "95 per cent" from the sentence reddens this
     // one, because a number that speaks for most of the field has to say so.
+}
+
+void TestFieldLayout::the_reported_spread_of_the_noise_floor_is_the_fields_not_its_worst_points()
+{
+    // The run report gave the noise floor as a plain minimum to maximum, and
+    // then, on the very next line, put it against the movement using a 95th
+    // percentile. One line robust and the next not, about the same quantity:
+    // on a real photograph the maximum is a subset out on the unspeckled
+    // background, and it made an excellent field read as "0.0052 to 2.31 px".
+    CorrelationResult result;
+    result.gridColumns = 21;
+    result.gridRows = 1;
+
+    for (int i = 0; i < 20; i++) {
+        CorrelationPoint good = measured(i, 4.f, 0.f);
+        good.zncc = 0.99f;
+        good.noiseFloor = 0.002f + 0.0001f * float(i);
+        good.noiseFloorMeasured = true;
+        result.points << good;
+    }
+    CorrelationPoint background = measured(20, 4.f, 0.f);
+    background.zncc = 0.99f;
+    background.noiseFloor = 2.31f;
+    background.noiseFloorMeasured = true;
+    result.points << background;
+
+    double lowest = 0.0;
+    double typical = 0.0;
+    QVERIFY(noiseFloorSpread(result, lowest, typical));
+
+    QVERIFY2(qAbs(lowest - 0.002) < 1e-6,
+             qPrintable(QStringLiteral("lowest was %1").arg(lowest)));
+    // The 95th percentile of 21 values is the 20th by nearest rank, which here
+    // is the poorest of the twenty good points: 0.0039, not the background
+    // point's 2.31 and not the median's 0.003. Pinned from both sides, because
+    // "less than the outlier" passes for any percentile at all -- a negative
+    // check with the median substituted stayed green until this said which.
+    QVERIFY2(qAbs(typical - 0.0039) < 1e-6,
+             qPrintable(QStringLiteral("expected the 95th percentile 0.0039, "
+                                       "got %1").arg(typical)));
+
+    // And nothing is claimed for a run that measured no reliability at all.
+    double a = 0.0, b = 0.0;
+    QVERIFY(!noiseFloorSpread(CorrelationResult(), a, b));
 }
 
 QTEST_MAIN(TestFieldLayout)
