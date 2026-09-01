@@ -20,9 +20,6 @@ Measured against pyALDIC, iCorrVision-2D, Ncorr, and the commercial tools
 (VIC-2D, MatchID, GOM Correlate, LaVision DaVis). Our three-column shape is
 the idiom of the field, and these are what we do not have yet:
 
-- **Session save and restore.** New, Open and Save Project are on the File
-  menu and do nothing. pyALDIC saves a whole session to one file. This is the
-  most conspicuous gap because the menu already promises it.
 - **Plots over the sequence.** Nothing charts a quantity against frame, and
   no virtual extensometer or line probe. Every commercial tool has this; it is
   how a loading curve gets read.
@@ -77,6 +74,13 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   Worked around by repeating the gesture and by taking readings from clicks.
 
 ## Fixed, kept here because the reason is worth remembering
+
+- **A menu that promised what it did not do.** New, Open and Save Project sat
+  on the File menu from the first window and reported themselves unimplemented.
+  A project now saves where the images are, the region, every solver and strain
+  setting and the reference-update policy. It stores paths rather than pictures,
+  with each file's SHA-256, so a session that opens against images that have
+  moved or changed says so instead of measuring them quietly.
 
 - **Accuracy that nothing checked.** The synthetic sets stated the exact answer
   and the suite only ever counted how many points converged, never what they

@@ -23,6 +23,8 @@ add_library(surview_core STATIC
     core/ImageRecord.h
     core/PoiGrid.cpp
     core/PoiGrid.h
+    core/Project.cpp
+    core/Project.h
     core/PointReadout.cpp
     core/PointReadout.h
     core/SequenceRunner.cpp

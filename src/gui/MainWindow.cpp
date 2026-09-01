@@ -161,15 +161,12 @@ void MainWindow::createMenus()
 {
     QMenu *fileMenu = menuBar()->addMenu(tr("&File"));
 
-    QAction *newProject = fileMenu->addAction(tr("&New Project"));
-    connect(newProject, &QAction::triggered, this,
-            [this] { notImplemented(tr("Projects")); });
-    QAction *openProject = fileMenu->addAction(tr("&Open Project…"));
-    connect(openProject, &QAction::triggered, this,
-            [this] { notImplemented(tr("Projects")); });
-    QAction *saveProject = fileMenu->addAction(tr("&Save Project"));
-    connect(saveProject, &QAction::triggered, this,
-            [this] { notImplemented(tr("Projects")); });
+    QAction *actNew = fileMenu->addAction(tr("&New Project"));
+    connect(actNew, &QAction::triggered, this, &MainWindow::newProject);
+    QAction *actOpen = fileMenu->addAction(tr("&Open Project…"));
+    connect(actOpen, &QAction::triggered, this, &MainWindow::openProject);
+    QAction *actSave = fileMenu->addAction(tr("&Save Project…"));
+    connect(actSave, &QAction::triggered, this, &MainWindow::saveProjectAs);
 
     fileMenu->addSeparator();
 
@@ -291,6 +288,165 @@ void MainWindow::buildExampleMenu(QMenu *menu)
     // Tooltips on menu items are off by default in Qt, and the frame count is
     // the thing that says whether this is a pair or a sequence.
     menu->setToolTipsVisible(true);
+}
+
+Project MainWindow::currentProject() const
+{
+    Project project;
+    project.referencePath = m_referenceRecord.filePath;
+    for (const ImageRecord &target : m_targetRecords)
+        project.targetPaths << target.filePath;
+    project.roi = m_roi;
+    project.settings = currentSettings();
+    project.referenceUpdate = currentReferencePolicy();
+    return project;
+}
+
+void MainWindow::applySettings(const CorrelationSettings &settings,
+                               const ReferenceUpdatePolicy &policy)
+{
+    for (int i = 0; i < m_solver->count(); i++) {
+        if (m_solver->itemData(i).toInt() == int(settings.solver))
+            m_solver->setCurrentIndex(i);
+    }
+    for (int i = 0; i < m_shape->count(); i++) {
+        if (m_shape->itemData(i).toInt() == settings.shapeOrder)
+            m_shape->setCurrentIndex(i);
+    }
+    m_subsetRadius->setValue(settings.subsetRadius);
+    m_gridStep->setValue(settings.gridStep);
+    m_maxIterations->setValue(settings.maxIterations);
+    m_convergence->setValue(settings.convergence);
+
+    m_strainEnabled->setChecked(settings.strainEnabled);
+    m_strainRadius->setValue(settings.strainRadius);
+    m_strainMinPoints->setValue(settings.strainMinPoints);
+    for (int i = 0; i < m_strainMeasure->count(); i++) {
+        if (m_strainMeasure->itemData(i).toInt() == int(settings.strainMeasure))
+            m_strainMeasure->setCurrentIndex(i);
+    }
+
+    m_reanchorEnabled->setChecked(policy.enabled);
+    m_reanchorThreshold->setValue(policy.znccThreshold);
+    m_reanchorShare->setValue(int(qRound(policy.percentile * 100.0)));
+}
+
+void MainWindow::newProject()
+{
+    m_projectPath.clear();
+    m_referenceRecord = ImageRecord();
+    m_targetRecords.clear();
+    m_roi = RegionOfInterest();
+    m_frames.clear();
+    m_plannedFrames.clear();
+    m_displayedFrame = -1;
+    m_result = CorrelationResult();
+    m_hasResult = false;
+    m_pinnedPoint = -1;
+
+    m_viewport->clearField();
+    m_viewport->clearRoi();
+    m_viewport->showMessage(tr("No image loaded"));
+    m_record->clear();
+    m_point->clear();
+
+    m_referenceItem->setText(0, tr("Reference image - none"));
+    m_targetsItem->setText(0, tr("Target images - none"));
+    m_targetsItem->takeChildren();
+    m_resultsItem->setText(0, tr("Results - none"));
+    m_resultsItem->takeChildren();
+    showRoiInProject();
+    updateActionStates();
+    log(tr("New project."));
+}
+
+void MainWindow::openProject()
+{
+    const QString path = QFileDialog::getOpenFileName(
+        this, tr("Open project"), QString(),
+        tr("SurView project (*.svproj)"));
+    if (path.isEmpty())
+        return;
+
+    openProjectFrom(path);
+}
+
+bool MainWindow::openProjectFrom(const QString &path)
+{
+    const ProjectLoad loaded = loadProject(path);
+    if (!loaded.ok()) {
+        QMessageBox::warning(this, tr("Could not open project"), loaded.failure);
+        log(loaded.failure);
+        return false;
+    }
+
+    newProject();
+    m_projectPath = path;
+
+    applySettings(loaded.project.settings, loaded.project.referenceUpdate);
+    if (!loaded.project.referencePath.isEmpty())
+        openReferenceImage(loaded.project.referencePath);
+    if (!loaded.project.targetPaths.isEmpty())
+        addTargetImages(loaded.project.targetPaths);
+    if (loaded.project.roi.isValid())
+        onRoiDrawn(loaded.project.roi);
+
+    log(tr("Opened project %1.").arg(QFileInfo(path).fileName()));
+
+    // ⚑ Said out loud, both of them. An image that has gone missing makes the
+    // sequence shorter than the one that was saved, and an image that has
+    // CHANGED makes the session measure different pixels under the same name -
+    // which is the risk taken on by storing paths rather than pictures, and is
+    // only acceptable because it is reported.
+    for (const QString &gone : loaded.missing)
+        log(tr("  Missing since this project was saved: %1").arg(gone));
+    for (const QString &changed : loaded.changed)
+        log(tr("  Changed since this project was saved: %1").arg(changed));
+
+    if (!loaded.missing.isEmpty() || !loaded.changed.isEmpty()) {
+        QMessageBox::warning(
+            this, tr("The images are not as they were"),
+            tr("%1 image(s) are missing and %2 have changed since this project "
+               "was saved. The project has opened without them, or with the "
+               "files as they are now. See the log for which.")
+                .arg(loaded.missing.size())
+                .arg(loaded.changed.size()));
+    }
+    return true;
+}
+
+void MainWindow::saveProjectAs()
+{
+    const QString suggested =
+        m_projectPath.isEmpty()
+            ? (m_referenceRecord.filePath.isEmpty()
+                   ? QString()
+                   : QFileInfo(m_referenceRecord.filePath).absolutePath()
+                         + QLatin1Char('/')
+                         + QFileInfo(m_referenceRecord.fileName).completeBaseName()
+                         + QStringLiteral(".svproj"))
+            : m_projectPath;
+
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Save project"), suggested, tr("SurView project (*.svproj)"));
+    if (path.isEmpty())
+        return;
+
+    saveProjectTo(path);
+}
+
+bool MainWindow::saveProjectTo(const QString &path)
+{
+    const QString refusal = saveProject(path, currentProject());
+    if (!refusal.isEmpty()) {
+        QMessageBox::warning(this, tr("Could not save project"), refusal);
+        log(refusal);
+        return false;
+    }
+    m_projectPath = path;
+    log(tr("Saved project to %1.").arg(path));
+    statusBar()->showMessage(tr("Project saved"), 4000);
+    return true;
 }
 
 void MainWindow::openExample()

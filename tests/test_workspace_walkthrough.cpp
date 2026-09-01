@@ -255,6 +255,7 @@ private slots:
     void the_first_screen_shows_the_whole_path_not_only_its_first_step();
     void the_toolbar_carries_an_icon_beside_every_name();
     void the_shipped_examples_can_be_opened_from_the_menu();
+    void a_session_saved_and_reopened_is_the_session_that_was_saved();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
@@ -1476,6 +1477,66 @@ void TestWorkspaceWalkthrough::the_shipped_examples_can_be_opened_from_the_menu(
              qPrintable(projectLine(&window, QStringLiteral("Target images"))));
     QVERIFY2(actionLabelled(&window, QStringLiteral("Run Correlation"))->isEnabled(),
              "an opened example still cannot be run");
+}
+
+void TestWorkspaceWalkthrough::a_session_saved_and_reopened_is_the_session_that_was_saved()
+{
+    // New, Open and Save Project sat on the File menu from the first window and
+    // reported themselves unimplemented. A control that does nothing is worse
+    // than one that is not there: it is a promise the application makes and
+    // does not keep.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->setValue(19);
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(13);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
+                                QPoint(170, 110), QPoint(60, 110)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    const RegionOfInterest saved = window.roi();
+    QVERIFY(saved.isValid());
+
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("session.svproj"));
+    QVERIFY2(window.saveProjectTo(path), "saving the project reported failure");
+    QVERIFY(QFile::exists(path));
+
+    // A new project clears the session, so what comes back afterwards came from
+    // the file rather than from what happened to still be on screen.
+    QMenu *fileMenu = window.menuBar()->actions().first()->menu();
+    QAction *fresh = nullptr;
+    for (QAction *action : fileMenu->actions()) {
+        if (action->text().contains(QStringLiteral("New Project")))
+            fresh = action;
+    }
+    QVERIFY2(fresh, "there is no New Project");
+    fresh->trigger();
+    QVERIFY2(!window.roi().isValid(), "a new project kept the old region");
+    QVERIFY2(projectLine(&window, QStringLiteral("Reference image"))
+                 .contains(QStringLiteral("none")),
+             "a new project kept the old reference image");
+
+    QVERIFY2(window.openProjectFrom(path), "opening the project reported failure");
+
+    QCOMPARE(window.roi().vertices, saved.vertices);
+    QCOMPARE(controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->value(), 19);
+    QCOMPARE(controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->value(), 13);
+    QVERIFY2(!projectLine(&window, QStringLiteral("Reference image"))
+                  .contains(QStringLiteral("none")),
+             "the reopened project has no reference image");
+    QVERIFY2(actionLabelled(&window, QStringLiteral("Run Correlation"))->isEnabled(),
+             "the reopened session cannot be run");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

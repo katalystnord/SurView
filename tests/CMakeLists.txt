@@ -30,6 +30,7 @@ set(SURVIEW_UNIT_TESTS
     test_point_readout
     test_examples
     test_measured_accuracy
+    test_project
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

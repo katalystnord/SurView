@@ -2,6 +2,7 @@
 
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
+#include "core/Project.h"
 #include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
@@ -68,9 +69,18 @@ public:
     // which file it writes.
     bool exportFieldCsvTo(const QString &path);
 
+    // Save and open a session by path. The same route the File menu takes,
+    // exposed for the reason exportFieldTo() is: everything except choosing the
+    // file should be drivable without a modal dialog in the way.
+    bool saveProjectTo(const QString &path);
+    bool openProjectFrom(const QString &path);
+
 private slots:
     void importReferenceImage();
     void openExample();
+    void newProject();
+    void openProject();
+    void saveProjectAs();
     void importTargetImages();
     void runCorrelation();
     void exportField();
@@ -142,6 +152,16 @@ private:
     // Reads the Analysis panel. One place, so the run and the panel cannot
     // drift apart.
     CorrelationSettings currentSettings() const;
+
+    // Put a loaded project's settings back into the panel. The inverse of
+    // currentSettings(), and deliberately beside it: a field added to one and
+    // forgotten in the other is a session that opens looking right and measures
+    // something else.
+    void applySettings(const CorrelationSettings &settings,
+                       const ReferenceUpdatePolicy &policy);
+
+    // Everything the current session is, ready to be written.
+    Project currentProject() const;
 
     // Reads the reference-update controls. One place, as with currentSettings().
     ReferenceUpdatePolicy currentReferencePolicy() const;
@@ -253,6 +273,10 @@ private:
     QVector<FieldProvenance> m_plannedFrames;
 
     int m_displayedFrame = -1;
+
+    // Where this session was last saved or opened from, so Save can write back
+    // without asking again.
+    QString m_projectPath;
 
     // The frame on screen, held separately so everything that already reads it
     // keeps working whether the run measured one target or twelve.
