@@ -14,6 +14,32 @@ reference updating, fit strain, report per-point reliability, read any point off
 the field, and export the result as `.vtu` or `.csv` with full provenance.
 Six synthetic example sets with an exactly known answer and three real ones.
 
+## Gaps against other DIC GUIs (reviewed 2026-09-01)
+
+Measured against pyALDIC, iCorrVision-2D, Ncorr, and the commercial tools
+(VIC-2D, MatchID, GOM Correlate, LaVision DaVis). Our three-column shape is
+the idiom of the field, and these are what we do not have yet:
+
+- **Session save and restore.** New, Open and Save Project are on the File
+  menu and do nothing. pyALDIC saves a whole session to one file. This is the
+  most conspicuous gap because the menu already promises it.
+- **Plots over the sequence.** Nothing charts a quantity against frame, and
+  no virtual extensometer or line probe. Every commercial tool has this; it is
+  how a loading curve gets read.
+- **Binaries.** Everyone else ships installers. We ship a build.
+- **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
+  can; the application has no path to it.
+- **Image acquisition.** iCorrVision has a frame grabber and drives the
+  camera. Out of scope for now, noted because it is a real difference.
+- **Export styling.** pyALDIC has a preview tab for colour map, fonts and
+  colour bar before writing a figure.
+
+Where we already differ, and should keep differing: per-point reliability
+qualified in words on screen (VIC-2D reports a sigma, but no tool found
+states what its number cannot see); provenance recorded per image with a
+SHA-256 and carried into the exported file; nothing unmeasured written as
+zero anywhere; and native VTK export, which one of eleven tools reviewed had.
+
 ## Next
 
 - **Ship the examples.** They are in the repository and reachable from nothing:
