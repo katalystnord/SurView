@@ -29,6 +29,7 @@ set(SURVIEW_UNIT_TESTS
     test_uncertainty_measure
     test_point_readout
     test_examples
+    test_measured_accuracy
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})
@@ -38,7 +39,11 @@ foreach(test_name ${SURVIEW_UNIT_TESTS})
     # Fixtures are found by an absolute path compiled in, so a test binary runs
     # correctly from any working directory -- including ctest's.
     target_compile_definitions(${test_name} PRIVATE
-        SURVIEW_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures")
+        SURVIEW_TEST_FIXTURES="${CMAKE_CURRENT_SOURCE_DIR}/fixtures"
+        # The accuracy cases measure the example data that SHIPS, against the
+        # answer that ships beside it. Pointed at the source tree rather than a
+        # copy, so the thing under test is the thing a user gets.
+        SURVIEW_EXAMPLES="${CMAKE_SOURCE_DIR}/examples")
     # Unit tests must not need a display; offscreen makes that a fact rather
     # than a hope, and makes them run identically on a headless machine.
     set_tests_properties(${test_name} PROPERTIES

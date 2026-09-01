@@ -43,10 +43,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
-- **Verify measured strain against `examples/synthetic/ground_truth.json`.**
-  The synthetic sets state the exact answer and nothing yet checks a run
-  against it. Solve counts have been checked; accuracy has not. The rotation
-  set is the sharpest test, since the correct strain there is zero everywhere.
 - **Editing a committed region.** Today a region is redrawn, not adjusted.
 - **Live speckle-quality indicator**, from `SpeckleQualityMap`, while the
   region is being drawn rather than after a run.
@@ -81,6 +77,14 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   Worked around by repeating the gesture and by taking readings from clicks.
 
 ## Fixed, kept here because the reason is worth remembering
+
+- **Accuracy that nothing checked.** The synthetic sets stated the exact answer
+  and the suite only ever counted how many points converged, never what they
+  converged on. `test_measured_accuracy` now measures three of them against the
+  file that ships beside them: a 1 px translation to within 0.01 px, a uniaxial
+  tension to within a tenth of its own strain, and a one-degree rotation, where
+  the correct strain is zero and a fit that mistook rotation for strain would
+  read a thousand times the bound.
 
 - **Examples that shipped with nothing to open them.** The example data was in
   the repository, installed nowhere, and unreachable from the application.
