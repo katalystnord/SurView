@@ -252,6 +252,8 @@ private slots:
     void pointing_away_from_the_field_says_so_rather_than_going_blank();
 
     void a_measured_field_can_also_leave_as_a_table_anything_opens();
+    void the_first_screen_shows_the_whole_path_not_only_its_first_step();
+    void the_toolbar_carries_an_icon_beside_every_name();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
@@ -1353,6 +1355,69 @@ void TestWorkspaceWalkthrough::exporting_a_sequence_as_tables_numbers_them_and_k
     // And nothing of the other format was left in the folder.
     QVERIFY2(QDir(dir.path()).entryList({QStringLiteral("*.vtu")}, QDir::Files).isEmpty(),
              "exporting tables wrote VTK files as well");
+}
+
+// --- approachability -------------------------------------------------------
+//
+// The rules already forbid a capability that can only be reached by knowing it
+// is there. These two cases are the weaker cousin of that: a capability that is
+// reachable, and that a first-time reader has no reason to look for.
+
+void TestWorkspaceWalkthrough::the_first_screen_shows_the_whole_path_not_only_its_first_step()
+{
+    // An empty workspace used to say "No image loaded" and name one menu item.
+    // That is enough to take the first step and nothing else: a reader learns
+    // the shape of the work only by discovering it a step at a time. The whole
+    // path is four steps and it costs nothing to show all four.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    QVERIFY(viewport);
+
+    QStringList said;
+    for (QLabel *label : viewport->findChildren<QLabel *>()) {
+        if (label->isVisible())
+            said << label->text();
+    }
+    const QString all = said.join(QLatin1Char('\n'));
+
+    for (const QString &step : {QStringLiteral("reference"), QStringLiteral("target"),
+                                QStringLiteral("region"), QStringLiteral("correlation")}) {
+        QVERIFY2(all.contains(step, Qt::CaseInsensitive),
+                 qPrintable(QStringLiteral("the empty workspace never mentions "
+                                           "'%1':\n%2").arg(step, all)));
+    }
+
+    // And the first step is offered as something to press, not only described.
+    QVERIFY2(byVisibleText<QPushButton>(viewport, QStringLiteral("reference")),
+             "the first step is described but cannot be taken from where it is described");
+}
+
+void TestWorkspaceWalkthrough::the_toolbar_carries_an_icon_beside_every_name()
+{
+    // Half the toolbar had icons and half was bare words, which reads as two
+    // different toolbars and gives the eye nothing to aim at. Nothing here is
+    // icon-ONLY: the name stays, because an icon alone is a thing you have to
+    // already know.
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *bar = window.findChild<QToolBar *>();
+    QVERIFY(bar);
+
+    int actions = 0;
+    for (QAction *action : bar->actions()) {
+        if (action->isSeparator() || action->text().isEmpty())
+            continue;
+        actions++;
+        QVERIFY2(!action->icon().isNull(),
+                 qPrintable(QStringLiteral("'%1' has no icon").arg(action->text())));
+    }
+    QVERIFY2(actions >= 6, "the toolbar lost actions");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

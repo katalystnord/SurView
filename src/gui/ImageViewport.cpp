@@ -78,11 +78,39 @@ ImageViewport::ImageViewport(QWidget *parent)
     // On-screen guidance until the first image is loaded. QVTKOpenGLNativeWidget
     // composites regular Qt child widgets over its GL surface, so a plain QLabel
     // works as an overlay here.
-    m_hint = new QLabel(
-        tr("No image loaded\n\nFile ▸ Import Reference Image…"), this);
+    // ⚑ The WHOLE path, not only its first step. An empty workspace said "No
+    // image loaded" and named one menu item, which is enough to begin and
+    // nothing else: the shape of the work was discoverable only by doing it.
+    // All four steps cost nothing to show, and the first is a button rather
+    // than a description, so it can be taken from where it is explained.
+    m_hint = new QLabel(this);
+    m_hint->setTextFormat(Qt::RichText);
     m_hint->setAlignment(Qt::AlignCenter);
-    m_hint->setStyleSheet(
-        QStringLiteral("color: #9aa0a6; font-size: 15px; background: transparent;"));
+    // A table rather than centred lines: centred, the four numerals stagger
+    // down the card and the eye cannot follow them as a sequence.
+    m_hint->setText(tr(
+        "<div align='center' style='color:#e6e9ee; font-size:17px; font-weight:600;'>"
+        "Measure displacement and strain</div>"
+        "<table cellspacing='0' cellpadding='4' style='margin-top:12px;'>"
+        "<tr><td style='color:#4aa3e0; font-weight:bold;'>1</td>"
+        "<td style='color:#9aa0a6; font-size:13px;'>Import the reference image, before loading</td></tr>"
+        "<tr><td style='color:#4aa3e0; font-weight:bold;'>2</td>"
+        "<td style='color:#9aa0a6; font-size:13px;'>Add the target images, one per load step</td></tr>"
+        "<tr><td style='color:#4aa3e0; font-weight:bold;'>3</td>"
+        "<td style='color:#9aa0a6; font-size:13px;'>Draw or auto-detect the region to measure</td></tr>"
+        "<tr><td style='color:#4aa3e0; font-weight:bold;'>4</td>"
+        "<td style='color:#9aa0a6; font-size:13px;'>Run the correlation</td></tr>"
+        "</table>"));
+    m_hint->setStyleSheet(QStringLiteral("background: transparent;"));
+
+    m_hintAction = new QPushButton(tr("Import reference image…"), this);
+    m_hintAction->setCursor(Qt::PointingHandCursor);
+    m_hintAction->setStyleSheet(QStringLiteral(
+        "QPushButton { background: #1a6fb5; color: white; border: none;"
+        " padding: 9px 20px; border-radius: 7px; font-weight: 600; }"
+        "QPushButton:hover { background: #2585d4; }"));
+    connect(m_hintAction, &QPushButton::clicked, this,
+            [this] { emit importReferenceRequested(); });
 
     // Key events (Enter to close a boundary, Esc to abandon it) only reach a
     // widget that can take focus by clicking. They are accelerators throughout:
@@ -101,7 +129,11 @@ ImageViewport::ImageViewport(QWidget *parent)
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
+    layout->addStretch(1);
     layout->addWidget(m_hint, 0, Qt::AlignCenter);
+    layout->addSpacing(20);
+    layout->addWidget(m_hintAction, 0, Qt::AlignCenter);
+    layout->addStretch(1);
 }
 
 // ---------------------------------------------------------------------------
@@ -587,6 +619,7 @@ bool ImageViewport::loadImage(const QString &path)
 
     m_record = record;
     m_hint->hide();
+    m_hintAction->hide();
     return true;
 }
 
@@ -912,6 +945,8 @@ void ImageViewport::showMessage(const QString &text)
     m_record = ImageRecord();
     m_hint->setText(text);
     m_hint->show();
+    if (m_hintAction)
+        m_hintAction->hide();
 }
 
 void ImageViewport::applyDisplayMapping(ImageRecord &record)

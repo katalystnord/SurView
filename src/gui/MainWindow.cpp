@@ -63,6 +63,8 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_viewport);
 
     connect(m_viewport, &ImageViewport::roiDrawn, this, &MainWindow::onRoiDrawn);
+    connect(m_viewport, &ImageViewport::importReferenceRequested, this,
+            &MainWindow::importReferenceImage);
     connect(m_viewport, &ImageViewport::fieldPointHovered, this,
             &MainWindow::onFieldPointHovered);
     connect(m_viewport, &ImageViewport::fieldPointPicked, this,
@@ -105,18 +107,25 @@ void MainWindow::createActions()
 {
     // Placeholder actions (project I/O, export) report that they are not yet
     // wired rather than silently doing nothing -- an honest scaffold.
-    m_actDefineRoi = new QAction(tr("Define ROI"), this);
+    // ⚑ An icon beside every name, never instead of one. Half the toolbar had
+    // pictures and half was bare words, which reads as two toolbars and gives
+    // the eye nothing to aim at; an icon ALONE would be worse, because it is a
+    // thing you have to already know.
+    m_actDefineRoi = new QAction(
+        style()->standardIcon(QStyle::SP_FileDialogDetailedView), tr("Define ROI"), this);
     m_actDefineRoi->setStatusTip(
         tr("Draw the region of interest by clicking corners on the image"));
     connect(m_actDefineRoi, &QAction::triggered, this,
             [this] { m_viewport->beginRoiDrawing(); });
 
-    m_actAutoRoi = new QAction(tr("Auto-detect ROI"), this);
+    m_actAutoRoi = new QAction(
+        style()->standardIcon(QStyle::SP_FileDialogContentsView), tr("Auto-detect ROI"), this);
     m_actAutoRoi->setStatusTip(
         tr("Propose a region by segmenting the speckled area of the image"));
     connect(m_actAutoRoi, &QAction::triggered, this, &MainWindow::detectRoi);
 
-    m_actClearRoi = new QAction(tr("Clear ROI"), this);
+    m_actClearRoi = new QAction(
+        style()->standardIcon(QStyle::SP_DialogResetButton), tr("Clear ROI"), this);
     m_actClearRoi->setStatusTip(
         tr("Discard the region, so the next run measures the whole image"));
     connect(m_actClearRoi, &QAction::triggered, this, &MainWindow::clearRoi);
@@ -130,12 +139,16 @@ void MainWindow::createActions()
     m_actStop->setEnabled(false);
     connect(m_actStop, &QAction::triggered, this, &MainWindow::stopCorrelation);
 
-    m_actExport = new QAction(tr("Export Results (.vtu)…"), this);
+    m_actExport = new QAction(
+        style()->standardIcon(QStyle::SP_DialogSaveButton),
+        tr("Export Results (.vtu)…"), this);
     m_actExport->setStatusTip(
         tr("Write displacement/strain fields as VTK data for ParaView / FreeCAD"));
     connect(m_actExport, &QAction::triggered, this, &MainWindow::exportField);
 
-    m_actExportCsv = new QAction(tr("Export Results as Table (.csv)…"), this);
+    m_actExportCsv = new QAction(
+        style()->standardIcon(QStyle::SP_FileIcon),
+        tr("Export Results as Table (.csv)…"), this);
     m_actExportCsv->setStatusTip(
         tr("Write the same fields as a plain table any spreadsheet opens"));
     connect(m_actExportCsv, &QAction::triggered, this, &MainWindow::exportFieldCsv);

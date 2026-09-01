@@ -121,14 +121,24 @@ RecordPanel::RecordPanel(QWidget *parent)
 void RecordPanel::addSection(QVBoxLayout *layout, const QString &title,
                              QFormLayout **form)
 {
-    auto *header = new QLabel(title);
-    header->setStyleSheet(QStringLiteral("font-weight: bold;"));
-    layout->addSpacing(layout->count() ? 10 : 0);
+    // A heading the eye can find. Bold text over a hairline read as one more
+    // paragraph in a panel that is already thirty rows of text; the accent
+    // colour and a solid rule give each section a visible start.
+    auto *header = new QLabel(title.toUpper());
+    QFont headerFont = header->font();
+    headerFont.setBold(true);
+    headerFont.setPointSizeF(headerFont.pointSizeF() * 0.86);
+    header->setFont(headerFont);
+    header->setStyleSheet(
+        QStringLiteral("color: #1a6fb5; letter-spacing: 0.8px;"));
+    layout->addSpacing(layout->count() ? 14 : 0);
     layout->addWidget(header);
 
     auto *line = new QFrame;
     line->setFrameShape(QFrame::HLine);
     line->setFrameShadow(QFrame::Plain);
+    line->setFixedHeight(2);
+    line->setStyleSheet(QStringLiteral("background: #1a6fb5; border: none;"));
     layout->addWidget(line);
 
     *form = new QFormLayout;

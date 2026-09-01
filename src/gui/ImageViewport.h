@@ -89,6 +89,11 @@ public:
     const ImageRecord &record() const { return m_record; }
 
 signals:
+    // The empty workspace's own first step was pressed. The viewport does not
+    // import anything itself; it only offers the step where the step is
+    // explained, which is the whole point of offering it there.
+    void importReferenceRequested();
+
     // Where the pointer is over the picture, in image pixels, and whether it is
     // over the picture at all. Emitted continuously, which is why this widget
     // tracks the mouse: a readout that only followed a drag would be a gesture
@@ -171,6 +176,7 @@ private:
     vtkNew<vtkActor> m_roiActor;
 
     QLabel *m_hint = nullptr;
+    QPushButton *m_hintAction = nullptr;
     bool m_hasImage = false;
     bool m_hasField = false;
     ImageRecord m_record;

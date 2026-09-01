@@ -1,5 +1,6 @@
 #include "gui/PointPanel.h"
 
+#include <QFont>
 #include <QFrame>
 #include <QLabel>
 #include <QVBoxLayout>
@@ -12,7 +13,7 @@ namespace
 // sentence, so the caution survives being read in greyscale or by someone who
 // does not see the colour difference.
 constexpr const char *kNoteStyle = "color: #9aa0a8;";
-constexpr const char *kWarningStyle = "color: #d08540; font-weight: bold;";
+constexpr const char *kWarningStyle = "color: #c06a2a; font-weight: bold;";
 
 QLabel *wrapped(const QString &text, const char *style)
 {
@@ -95,10 +96,27 @@ void PointPanel::showReadout(const PointReadout &readout, bool pinned)
         rowLayout->setContentsMargins(0, 0, 0, 0);
         rowLayout->setSpacing(1);
 
-        auto *value = wrapped(QStringLiteral("<b>%1</b><br>%2")
-                                  .arg(line.label.toHtmlEscaped(),
-                                       line.value.toHtmlEscaped()),
-                              line.warning ? kWarningStyle : nullptr);
+        // ⚑ The VALUE is what a reader came for, so it is the largest thing in
+        // the row. Before this, label and value were the same size with the
+        // label in bold, which made the panel read as prose: the eye had to
+        // parse a sentence to find a number. Label small and dim, value large,
+        // note small and dim underneath.
+        auto *label = wrapped(line.label.toUpper(), nullptr);
+        QFont labelFont = label->font();
+        labelFont.setPointSizeF(labelFont.pointSizeF() * 0.82);
+        labelFont.setBold(true);
+        label->setFont(labelFont);
+        label->setStyleSheet(QString::fromLatin1(
+            line.warning ? "color: #c06a2a; letter-spacing: 0.6px;"
+                         : "color: #8a9099; letter-spacing: 0.6px;"));
+        rowLayout->addWidget(label);
+
+        auto *value = wrapped(line.value, line.warning ? kWarningStyle : nullptr);
+        QFont valueFont = value->font();
+        valueFont.setPointSizeF(valueFont.pointSizeF() * 1.22);
+        if (!line.warning)
+            valueFont.setBold(true);
+        value->setFont(valueFont);
         rowLayout->addWidget(value);
 
         // The note is where a channel says what it is NOT. Kept beside the
