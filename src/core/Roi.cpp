@@ -31,3 +31,39 @@ QString RegionOfInterest::originText() const
                : QCoreApplication::translate("RegionOfInterest",
                                              "detected from the speckle pattern");
 }
+
+int cornerNear(const RegionOfInterest &roi, const QPoint &at, double reach)
+{
+    int nearest = -1;
+    double nearestDistance = reach * reach;
+
+    for (int i = 0; i < roi.vertices.size(); i++) {
+        const QPoint &vertex = roi.vertices.at(i);
+        const double dx = vertex.x() - at.x();
+        const double dy = vertex.y() - at.y();
+        const double distance = dx * dx + dy * dy;
+        // Strictly nearer, so the first of two equally close corners wins and
+        // the answer does not depend on the order they happen to be stored in.
+        if (distance <= nearestDistance && (nearest < 0 || distance < nearestDistance)) {
+            nearest = i;
+            nearestDistance = distance;
+        }
+    }
+    return nearest;
+}
+
+RegionOfInterest withCornerMoved(const RegionOfInterest &roi, int corner,
+                                 const QPoint &to)
+{
+    if (corner < 0 || corner >= roi.vertices.size())
+        return roi;
+
+    RegionOfInterest moved = roi;
+    moved.vertices[corner] = to;
+
+    // No longer the boundary the detector proposed, so it stops saying it is,
+    // and drops the caveat that described the detector's own output.
+    moved.origin = RegionOfInterest::Drawn;
+    moved.limitation.clear();
+    return moved;
+}

@@ -256,6 +256,7 @@ private slots:
     void the_toolbar_carries_an_icon_beside_every_name();
     void the_shipped_examples_can_be_opened_from_the_menu();
     void a_session_saved_and_reopened_is_the_session_that_was_saved();
+    void a_committed_region_can_be_adjusted_without_drawing_it_again();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
@@ -1537,6 +1538,58 @@ void TestWorkspaceWalkthrough::a_session_saved_and_reopened_is_the_session_that_
              "the reopened project has no reference image");
     QVERIFY2(actionLabelled(&window, QStringLiteral("Run Correlation"))->isEnabled(),
              "the reopened session cannot be run");
+}
+
+void TestWorkspaceWalkthrough::a_committed_region_can_be_adjusted_without_drawing_it_again()
+{
+    // A region could only be redrawn from scratch: one corner slightly wrong
+    // meant placing every corner again.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
+                                QPoint(170, 110), QPoint(60, 110)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    QCOMPARE(window.roi().vertices.size(), 4);
+    QCOMPARE(window.roi().vertices.at(1), QPoint(170, 50));
+
+    // The screen has to say this is possible before a test may do it.
+    QVERIFY2(projectLine(&window, QStringLiteral("Region of interest"))
+                 .contains(QStringLiteral("drag"), Qt::CaseInsensitive),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
+
+    // Drag the second corner to a new place.
+    const QPoint from = widgetPointForPixel(viewport, 170, 50);
+    const QPoint to = widgetPointForPixel(viewport, 190, 40);
+    QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(viewport, to);
+    QTest::qWait(30);
+    QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, to);
+    QTest::qWait(50);
+
+    const RegionOfInterest adjusted = window.roi();
+    QCOMPARE(adjusted.vertices.size(), 4);
+    QVERIFY2(adjusted.vertices.at(1) != QPoint(170, 50),
+             "the corner did not move");
+    QVERIFY2(qAbs(adjusted.vertices.at(1).x() - 190) <= 2
+                 && qAbs(adjusted.vertices.at(1).y() - 40) <= 2,
+             qPrintable(QStringLiteral("corner landed at %1,%2")
+                            .arg(adjusted.vertices.at(1).x())
+                            .arg(adjusted.vertices.at(1).y())));
+
+    // And the corners nobody touched stayed exactly where they were.
+    QCOMPARE(adjusted.vertices.at(0), QPoint(60, 50));
+    QCOMPARE(adjusted.vertices.at(2), QPoint(170, 110));
+    QCOMPARE(adjusted.vertices.at(3), QPoint(60, 110));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

@@ -394,16 +394,38 @@ void ImageViewport::refreshRoiGeometry()
 
     // Being placed and being committed look different on purpose: an unfinished
     // boundary should not be mistaken for the region a run will use.
-    if (drawing)
+    if (drawing) {
         m_roiActor->GetProperty()->SetColor(1.0, 0.78, 0.25);   // amber: in progress
-    else
+        m_roiActor->GetProperty()->SetPointSize(7.0);
+    } else {
         m_roiActor->GetProperty()->SetColor(0.28, 0.95, 0.62);  // green: in force
+        // Larger than the line is wide, so a committed region's corners read as
+        // handles rather than as decoration. They can be dragged, and something
+        // that can be dragged has to look like it.
+        m_roiActor->GetProperty()->SetPointSize(11.0);
+    }
 
     if (!m_roiActorAdded) {
         m_renderer->AddActor(m_roiActor);
         m_roiActorAdded = true;
     }
     m_renderWindow->Render();
+}
+
+double ImageViewport::grabReachInPixels(const QPointF &position) const
+{
+    constexpr double kScreenReach = 11.0;
+
+    QPoint here;
+    QPoint away;
+    if (!widgetToImagePixel(position, here)
+        || !widgetToImagePixel(position + QPointF(kScreenReach, 0.0), away)) {
+        return kScreenReach;
+    }
+    const double reach = std::abs(double(away.x() - here.x()));
+    // Never zero: at a deep zoom, eleven screen pixels can map to less than one
+    // image pixel, and a reach of zero would make the handles ungrabbable.
+    return std::max(reach, 1.5);
 }
 
 bool ImageViewport::widgetPositionForImagePixel(const QPointF &pixel,
@@ -496,6 +518,20 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+    if (event->button() == Qt::LeftButton && m_roiShown.isValid()) {
+        QPoint pixel;
+        if (widgetToImagePixel(event->position(), pixel)) {
+            const int corner =
+                cornerNear(m_roiShown, pixel, grabReachInPixels(event->position()));
+            if (corner >= 0) {
+                m_draggingCorner = corner;
+                setCursor(Qt::ClosedHandCursor);
+                event->accept();
+                return;
+            }
+        }
+    }
+
     if (event->button() == Qt::LeftButton) {
         QPoint pixel;
         bool inside = false;
@@ -511,6 +547,29 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
 
 void ImageViewport::mouseMoveEvent(QMouseEvent *event)
 {
+    if (m_draggingCorner >= 0) {
+        QPoint pixel;
+        if (widgetToImagePixel(event->position(), pixel)) {
+            m_roiShown = withCornerMoved(m_roiShown, m_draggingCorner, pixel);
+            refreshRoiGeometry();
+        }
+        event->accept();
+        return;
+    }
+
+    // The cursor is the affordance: a handle that can be picked up says so
+    // before it is pressed, which is the only warning a reader gets that these
+    // corners are not just decoration.
+    if (!m_roiDrawing && m_roiShown.isValid()) {
+        QPoint pixel;
+        if (widgetToImagePixel(event->position(), pixel)
+            && cornerNear(m_roiShown, pixel, grabReachInPixels(event->position())) >= 0) {
+            setCursor(Qt::OpenHandCursor);
+        } else {
+            unsetCursor();
+        }
+    }
+
     if (!m_roiDrawing) {
         // Reported whether or not it lands on the picture: "off the field" is
         // an answer a readout has to be able to give, and going silent instead
@@ -536,6 +595,21 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
         return;
     }
     QVTKOpenGLNativeWidget::mouseMoveEvent(event);
+}
+
+void ImageViewport::mouseReleaseEvent(QMouseEvent *event)
+{
+    if (m_draggingCorner >= 0 && event->button() == Qt::LeftButton) {
+        m_draggingCorner = -1;
+        unsetCursor();
+        // Announced like any other boundary change, so the project, the log and
+        // any measured field that no longer matches all react the same way they
+        // do to a region drawn from scratch.
+        emit roiDrawn(m_roiShown);
+        event->accept();
+        return;
+    }
+    QVTKOpenGLNativeWidget::mouseReleaseEvent(event);
 }
 
 void ImageViewport::mouseDoubleClickEvent(QMouseEvent *event)

@@ -121,6 +121,7 @@ protected:
     void resizeEvent(QResizeEvent *event) override;
     void mousePressEvent(QMouseEvent *event) override;
     void mouseMoveEvent(QMouseEvent *event) override;
+    void mouseReleaseEvent(QMouseEvent *event) override;
     void mouseDoubleClickEvent(QMouseEvent *event) override;
     void keyPressEvent(QKeyEvent *event) override;
 
@@ -196,6 +197,16 @@ private:
     QLabel *m_roiBarText = nullptr;
     QPushButton *m_roiUndo = nullptr;
     QPushButton *m_roiFinish = nullptr;
+
+    // Which corner of the committed region is being dragged, or -1. A region
+    // could only be redrawn from scratch before this: one corner slightly wrong
+    // meant placing all of them again.
+    int m_draggingCorner = -1;
+
+    // How far from a corner, in IMAGE pixels, still counts as grabbing it. Kept
+    // as a screen distance and converted, so a handle is the same size under
+    // the pointer however far the view is zoomed in or out.
+    double grabReachInPixels(const QPointF &position) const;
 
     bool m_roiDrawing = false;
     bool m_roiActorAdded = false;

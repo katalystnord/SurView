@@ -40,7 +40,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
-- **Editing a committed region.** Today a region is redrawn, not adjusted.
 - **Live speckle-quality indicator**, from `SpeckleQualityMap`, while the
   region is being drawn rather than after a run.
 

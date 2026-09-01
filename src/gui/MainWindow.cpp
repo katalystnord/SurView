@@ -1255,7 +1255,12 @@ void MainWindow::showRoiInProject()
     }
 
     const QRect box = m_roi.bounds();
-    const QString summary = tr("Region of interest - %1, %2 corners, %3×%4 px box")
+    // ⚑ The tree says the corners can be dragged, because nothing else does.
+    // The handles look grabbable and the cursor changes over one, but a reader
+    // has to be over a corner already to learn that, and a capability nobody
+    // has a reason to look for is one this project treats as absent.
+    const QString summary = tr("Region of interest - %1, %2 corners, %3×%4 px box "
+                               "(drag a corner to adjust it)")
                                 .arg(m_roi.originText())
                                 .arg(m_roi.vertices.size())
                                 .arg(box.width())

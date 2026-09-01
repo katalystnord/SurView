@@ -49,5 +49,21 @@ struct RegionOfInterest
     QString originText() const;
 };
 
+// Which corner of `roi` is within `reach` pixels of `at`, nearest first, or -1
+// when none is. Used to decide whether a press on the picture grabs a corner or
+// belongs to whatever else the pointer does there, so returning the nearest
+// corner regardless of distance would mean a click anywhere inside a boundary
+// silently moved a corner the user was nowhere near.
+int cornerNear(const RegionOfInterest &roi, const QPoint &at, double reach);
+
+// `roi` with one corner moved. Out-of-range indices return it untouched.
+//
+// ⚑ The result is always Drawn, whatever it was before. A region a person has
+// adjusted is no longer the one the detector proposed: the origin is what the
+// project states and what an exported file records, and the detector's own
+// caveat about holes stops describing a shape somebody has since altered.
+RegionOfInterest withCornerMoved(const RegionOfInterest &roi, int corner,
+                                 const QPoint &to);
+
 // Carried as a signal argument from the viewport to the window.
 Q_DECLARE_METATYPE(RegionOfInterest)
