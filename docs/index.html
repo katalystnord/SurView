@@ -210,10 +210,10 @@
   .bullets li { margin-bottom: 9px; break-inside: avoid; }
   @media (max-width: 700px) { .bullets { columns: 1; } }
 
-  /* Sister tools: three cards, the current one marked so a reader always
+  /* The sister tool: two cards, the current one marked so a reader always
      knows which page they are standing on. */
   .sisters { display: grid; grid-template-columns: 1fr; gap: 22px; }
-  @media (min-width: 820px) { .sisters { grid-template-columns: repeat(3, 1fr); } }
+  @media (min-width: 820px) { .sisters { grid-template-columns: repeat(2, 1fr); } }
   .sister { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
             padding: 22px; }
   .sister h3 { margin: 0 0 6px; font-size: 1.02rem; }
@@ -247,7 +247,7 @@
     <a href="#screenshots">Screenshots</a>
     <a href="#examples">Example data</a>
     <a href="#get">Download</a>
-    <a href="#sisters">Sister tools</a>
+    <a href="#sisters">Sister tool</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </nav>
 </header>
@@ -521,10 +521,10 @@ cmake --build build
   </section>
 
   <section id="sisters">
-    <h2>Sister tools</h2>
+    <h2>Sister tool</h2>
     <p class="section-sub">
-      Three tools on the same bench, in the same ecosystem, under open
-      licences.
+      SurView DIC and PatternFab are two ends of one workflow: the speckle
+      pattern PatternFab makes is the pattern SurView measures.
     </p>
     <div class="sisters">
       <div class="sister this">
@@ -545,16 +545,7 @@ cmake --build build
           stencil, a decal or a direct-write file, with the manufacturing
           constraints applied before anything is made.
         </p>
-        <a href="https://github.com/katalystnord/patternfab">PatternFab</a>
-      </div>
-      <div class="sister">
-        <div class="role">Digitise the figure</div>
-        <h3>PlotTracer</h3>
-        <p>
-          Data back out of the charts in a paper. Free, offline and
-          cross-platform.
-        </p>
-        <a href="https://plottracer.com">plottracer.com</a>
+        <a href="https://katalystnord.github.io/patternfab/">katalystnord.github.io/patternfab</a>
       </div>
     </div>
   </section>
