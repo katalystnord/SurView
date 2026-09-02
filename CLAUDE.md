@@ -490,6 +490,92 @@ caught it:
   user has not clicked into and passes it to the scroll area instead. It gets
   worse with every group added to the panel, which is why it surfaced now.
 
+### Reading a sequence as a curve (2026-09-02)
+
+A DIC test is a loading series, and what an experimentalist wants out of one is
+a CURVE. Every frame's field could already be looked at one at a time; nothing
+put them on the same axes, which was the single largest thing every commercial
+tool had that we did not. `core/Series.h` produces the curves and `PlotPanel`
+draws them, with **VTK's own charting, not Qt Charts** -- Qt Charts is
+GPL-3.0-only and using it would force SurView's licence to GPL, per the build
+constraint above.
+
+A **virtual extensometer** is the digital form of the clip gauge it is named
+after: two points placed on the specimen with two clicks, and the change in the
+distance between them. Verified against the answer the examples ship with: on
+the synthetic tension set the gauge reads 0.005, 0.010, 0.020 and 0.036 against
+stated strains of 0.005, 0.010, 0.020 and 0.035, pinned by
+`a_virtual_extensometer_reads_the_strain_the_sequence_was_given`.
+
+Four rules, each with its own case and negative check:
+
+- ⚑ **It measures the change in the DISTANCE BETWEEN the anchors, never the
+  movement of either.** A specimen carried bodily across the frame has strained
+  by nothing at all, and reading one anchor's displacement turns a rigid-body
+  motion into a large and entirely plausible strain. The case that names this is
+  `a_uniform_translation_moves_an_extensometer_without_straining_it`, and it
+  exists because a stretch test alone would NOT catch it: under a pure stretch
+  about the origin the two happen to agree.
+- ⚑ **An anchor reads only where all four grid points around it were measured.**
+  An anchor sits between grid points, so its value is always borrowed, and when
+  one neighbour is a hole every obvious repair is a lie: three corners quietly
+  changes what is averaged, reaching further out reports a displacement from
+  somewhere the anchor is not, and a zero drags the reading toward no movement.
+  So the reading is refused and the anchor can be moved.
+- ⚑ **A gap in a curve is drawn as a gap.** Dropping an unreadable frame joins
+  the frames either side into a straight segment through territory nobody
+  measured, and that segment is indistinguishable from data. One line plot per
+  unbroken run, and the panel says in words that the breaks are missing frames
+  rather than smoothing. The CSV export leaves the value cell EMPTY for the same
+  reason.
+- **A frame that measured nothing has no reading**, not a zero, and a whole-field
+  mean averages only measured points -- a rejected point holds the solver's
+  leftover guess.
+
+Frames are numbered **one-based** in a Series, because that is what the project
+tree and the run log call the same frame; left as the zero-based index a chart
+would put the first target at "frame 0" while the rest of the window called it
+Frame 1.
+
+Four defects found by looking at the screen, none of them by a test:
+
+- **The explanation was drawn underneath the chart.** `QVTKOpenGLNativeWidget`
+  is a native window, and below a stretching one it painted straight over the
+  word-wrapped note: a wrapped QLabel reports one line as its minimum, so the
+  layout gave the chart the space. The note goes ABOVE the chart now. Same fault
+  as the Analysis panel's, one panel along.
+- **The field's own explanation bar covered the specimen.** Beside the channel
+  selector the note had about 130 px of a 455 px viewport, so it wrapped to
+  eight lines and the bar grew over the picture it was explaining. It has its
+  own row now. The region bar already carried this exact lesson in a comment;
+  the field bar had not learned it.
+- **An axis invented readings the data cannot produce**, labelling a four-frame
+  series 0, 0.2, 0.4 ... 3 -- a frame 0 that does not exist and no frame 1. Tick
+  positions are stated outright now, thinned by a whole number of frames so
+  every tick still lands on one. The same fault as a five-tick colour scale over
+  a two-state flag, which was fixed in the same session.
+- **The curve was drawn black on a dark chart.** `vtkPlot::SetColor` also takes
+  unsigned chars, and 0.36 chosen against that overload is 0. `SetColorF` is the
+  one that means what it says.
+
+### The repair map, and flag channels (2026-09-02)
+
+`RecoveredOnSecondPass` puts the second pass's work on the colour map. The run
+report says HOW MANY points were repaired; a reader's next question is WHERE,
+because repaired points clustered along one edge mean a specimen problem and
+repaired points scattered evenly mean a settings one.
+
+⚑ **A flag is not a measurement, and every rule written for a continuous
+quantity is wrong for it.** Five evenly spaced ticks over a 0-to-1 channel read
+0, 0.25, 0.5, 0.75, 1, and three of those cannot occur -- the same fault as
+centring a displacement scale on zero, one channel along. `fieldChannelIsFlag()`
+exists so the scale bar draws two labels, the colour range spans both states
+whatever the data holds (a run that repaired nothing would otherwise paint every
+point in "repaired"), and the prose states a COUNT rather than a range. A point
+that was never measured is blank here, not zero: drawn as a zero it would take
+the same colour as a point the first solve got right, so every hole in the field
+would fill in with the most reassuring reading available.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

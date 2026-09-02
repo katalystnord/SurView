@@ -1,6 +1,7 @@
 #include "MainWindow.h"
 
 #include "ImageViewport.h"
+#include "PlotPanel.h"
 #include "PointPanel.h"
 #include "RecordPanel.h"
 #include "core/Correlation.h"
@@ -16,6 +17,7 @@
 
 #include <QApplication>
 #include <QCoreApplication>
+#include <QPainter>
 #include <QMenu>
 #include <QEventLoop>
 #include <QCheckBox>
@@ -126,6 +128,10 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_viewport);
 
     connect(m_viewport, &ImageViewport::roiDrawn, this, &MainWindow::onRoiDrawn);
+    connect(m_viewport, &ImageViewport::extensometerPlaced, this,
+            &MainWindow::onExtensometerPlaced);
+    connect(m_viewport, &ImageViewport::extensometerPlacingChanged, this,
+            [this](bool) { updateActionStates(); });
     connect(m_viewport, &ImageViewport::importReferenceRequested, this,
             &MainWindow::importReferenceImage);
     connect(m_viewport, &ImageViewport::fieldPointHovered, this,
@@ -174,6 +180,30 @@ void MainWindow::createActions()
     // pictures and half was bare words, which reads as two toolbars and gives
     // the eye nothing to aim at; an icon ALONE would be worse, because it is a
     // thing you have to already know.
+    // ⚑ Drawn rather than borrowed. Every arrow in the standard set is already
+    // the Run button's triangle at a different angle, and two toolbar entries
+    // wearing the same picture is worse than one wearing none. A gauge IS two
+    // anchors and the span between them, so the icon can simply be that.
+    QPixmap gaugeIcon(20, 20);
+    gaugeIcon.fill(Qt::transparent);
+    {
+        QPainter paint(&gaugeIcon);
+        paint.setRenderHint(QPainter::Antialiasing);
+        const QColor ink = palette().color(QPalette::WindowText);
+        paint.setPen(QPen(ink, 1.6));
+        paint.drawLine(4, 10, 16, 10);
+        paint.setBrush(ink);
+        paint.drawEllipse(QPointF(4, 10), 2.6, 2.6);
+        paint.drawEllipse(QPointF(16, 10), 2.6, 2.6);
+    }
+
+    m_actExtensometer = new QAction(QIcon(gaugeIcon), tr("Extensometer"), this);
+    m_actExtensometer->setStatusTip(
+        tr("Place a virtual extensometer: two points whose changing distance "
+           "is plotted against frame"));
+    connect(m_actExtensometer, &QAction::triggered, this,
+            [this] { m_viewport->beginExtensometerPlacement(); });
+
     m_actDefineRoi = new QAction(
         style()->standardIcon(QStyle::SP_FileDialogDetailedView), tr("Define ROI"), this);
     m_actDefineRoi->setStatusTip(
@@ -302,6 +332,8 @@ void MainWindow::createToolBar()
     toolbar->addSeparator();
     toolbar->addAction(m_actRun);
     toolbar->addAction(m_actStop);
+    toolbar->addSeparator();
+    toolbar->addAction(m_actExtensometer);
 }
 
 // ---------------------------------------------------------------------------
@@ -359,6 +391,7 @@ Project MainWindow::currentProject() const
     project.roi = m_roi;
     project.settings = currentSettings();
     project.referenceUpdate = currentReferencePolicy();
+    project.extensometers = m_gauges;
     return project;
 }
 
@@ -405,6 +438,7 @@ void MainWindow::newProject()
     m_roi = RegionOfInterest();
     m_frames.clear();
     m_plannedFrames.clear();
+    m_gauges.clear();
     m_displayedFrame = -1;
     m_result = CorrelationResult();
     m_hasResult = false;
@@ -451,6 +485,9 @@ bool MainWindow::openProjectFrom(const QString &path)
     m_projectPath = path;
 
     applySettings(loaded.project.settings, loaded.project.referenceUpdate);
+    m_gauges = loaded.project.extensometers;
+    m_viewport->showExtensometers(m_gauges);
+    updatePlot();
     if (!loaded.project.referencePath.isEmpty())
         openReferenceImage(loaded.project.referencePath);
     if (!loaded.project.targetPaths.isEmpty())
@@ -586,7 +623,17 @@ void MainWindow::createDockPanels()
     QDockWidget *pointDock = addDock(tr("Point"), pointScroll,
                                      Qt::RightDockWidgetArea);
     splitDockWidget(analysisDock, pointDock, Qt::Vertical);
-    addDock(tr("Log"), createLogPanel(), Qt::BottomDockWidgetArea);
+    // The plot sits along the bottom beside the log, where it is WIDE. A curve
+    // against frame is a wide, short picture, and in a right-hand dock it would
+    // be a tall narrow one with a dozen frames crammed into 300 px.
+    m_plot = new PlotPanel;
+    connect(m_plot, &PlotPanel::exportRequested, this,
+            &MainWindow::exportPlotData);
+    QDockWidget *logDock = addDock(tr("Log"), createLogPanel(),
+                                   Qt::BottomDockWidgetArea);
+    QDockWidget *plotDock = addDock(tr("Plot"), m_plot, Qt::BottomDockWidgetArea);
+    splitDockWidget(logDock, plotDock, Qt::Horizontal);
+    resizeDocks({logDock, plotDock}, {420, 700}, Qt::Horizontal);
 }
 
 QWidget *MainWindow::createProjectPanel()
@@ -1007,6 +1054,120 @@ void MainWindow::updateRecoveryControls()
     m_recoveryNeighbourhood->setEnabled(on);
     m_recoveryNeighbourhood->setText(
         recoveryNeighbourhoodDerivation(m_gridStep->value()));
+}
+
+void MainWindow::updatePlot()
+{
+    if (!m_plot)
+        return;
+    QVector<CorrelationResult> fields;
+    fields.reserve(m_frames.size());
+    for (const MeasuredFrame &frame : m_frames)
+        fields.append(frame.result);
+    m_plot->setFrames(fields);
+    m_plot->setExtensometers(m_gauges);
+}
+
+void MainWindow::onExtensometerPlaced(double ax, double ay, double bx, double by)
+{
+    Extensometer gauge;
+    // Named on placement rather than left to be identified by its coordinates:
+    // a legend reading "E1, Engineering strain" can be talked about, and one
+    // reading "(412, 88) to (655, 91)" cannot.
+    gauge.name = tr("E%1").arg(m_gauges.size() + 1);
+    gauge.ax = ax;
+    gauge.ay = ay;
+    gauge.bx = bx;
+    gauge.by = by;
+
+    if (!gauge.isValid()) {
+        log(tr("An extensometer needs two different points; that one had no "
+               "length and was discarded."));
+        return;
+    }
+
+    m_gauges.append(gauge);
+    m_viewport->showExtensometers(m_gauges);
+    updatePlot();
+    updateActionStates();
+
+    log(tr("Placed extensometer %1: (%2, %3) to (%4, %5), %6 px long in the "
+           "reference image.")
+            .arg(gauge.name)
+            .arg(ax, 0, 'f', 0)
+            .arg(ay, 0, 'f', 0)
+            .arg(bx, 0, 'f', 0)
+            .arg(by, 0, 'f', 0)
+            .arg(gauge.referenceLength(), 0, 'f', 1));
+
+    if (m_frames.isEmpty()) {
+        log(tr("  It will read once a sequence has been measured."));
+    }
+}
+
+void MainWindow::clearExtensometers()
+{
+    if (m_gauges.isEmpty())
+        return;
+    m_gauges.clear();
+    m_viewport->showExtensometers(m_gauges);
+    updatePlot();
+    updateActionStates();
+    log(tr("Removed every extensometer."));
+}
+
+void MainWindow::exportPlotData()
+{
+    const Series series = m_plot->currentSeries();
+    if (series.measuredCount() == 0) {
+        QMessageBox::information(
+            this, tr("Nothing to write"),
+            tr("The plotted curve has no readable frame in it."));
+        return;
+    }
+
+    const QString path = QFileDialog::getSaveFileName(
+        this, tr("Save plot data"),
+        QStringLiteral("%1.csv").arg(series.name).replace(QLatin1Char(' '),
+                                                          QLatin1Char('_')),
+        tr("Comma-separated values (*.csv)"));
+    if (path.isEmpty())
+        return;
+
+    QFile file(path);
+    if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
+        QMessageBox::warning(this, tr("Could not write"), file.errorString());
+        return;
+    }
+
+    QTextStream out(&file);
+    out << "# " << series.name << '\n';
+    out << "# unit: " << series.unit << '\n';
+    // ⚑ Every frame gets a row, including the ones with no reading, whose value
+    // cell is EMPTY rather than zero. A curve exported with its gaps closed up
+    // is a curve whose missing frames become invisible the moment it leaves
+    // this application, and a zero on a loading curve reads as the specimen
+    // springing back.
+    out << "# a blank value is a frame that could not be read, not a zero\n";
+    out << "frame,value\n";
+    for (const SeriesPoint &point : series.points) {
+        out << point.frame << ',';
+        if (point.measured)
+            out << QString::number(point.value, 'g', 9);
+        out << '\n';
+    }
+    out.flush();
+    if (file.error() != QFileDevice::NoError) {
+        QMessageBox::warning(this, tr("Could not finish writing"),
+                             file.errorString());
+        return;
+    }
+    file.close();
+
+    log(tr("Wrote %1 to %2 (%3 of %4 frames readable).")
+            .arg(series.name, path)
+            .arg(series.measuredCount())
+            .arg(series.points.size()));
 }
 
 CorrelationSettings MainWindow::currentSettings() const
@@ -1889,6 +2050,12 @@ void MainWindow::onFrameFinished(int frame, const CorrelationResult &result)
     arrived.provenance = m_plannedFrames.at(frame);
     m_frames.append(arrived);
     logFrameResult(frame, result);
+
+    // Fed as each frame lands rather than at the end of the run: a twelve-frame
+    // sequence is minutes long, and a curve nobody can watch building is a
+    // curve withheld for no reason. This is the same rule the results list and
+    // the field display already keep.
+    updatePlot();
 
     // Listed as it arrives, so a long sequence fills in rather than staying
     // empty until the end. Each entry carries the frame it measured and enough

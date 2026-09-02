@@ -32,6 +32,7 @@
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
+#include "core/Series.h"
 #include "core/StrainFit.h"
 
 #include <QFile>
@@ -153,6 +154,7 @@ private slots:
     void a_known_rigid_rotation_is_measured_as_no_strain_at_all();
     void points_recovered_by_the_second_pass_measure_the_right_displacement();
     void the_second_pass_measures_far_more_of_a_hard_frame();
+    void a_virtual_extensometer_reads_the_strain_the_sequence_was_given();
 };
 
 void TestMeasuredAccuracy::the_examples_state_an_answer_this_suite_can_read()
@@ -366,6 +368,57 @@ void TestMeasuredAccuracy::the_second_pass_measures_far_more_of_a_hard_frame()
                             .arg(with.converged).arg(without.converged)));
     QVERIFY2(!without.recoveryRequested && with.recoveryRequested,
              "the result must say whether the pass was asked for");
+}
+
+void TestMeasuredAccuracy::a_virtual_extensometer_reads_the_strain_the_sequence_was_given()
+{
+    // ⚑ The whole point of a loading curve is the NUMBER on its y axis, and
+    // nothing else in the suite checks that a gauge reads the right one. An
+    // extensometer is a derived quantity twice over -- interpolated between
+    // grid points, then differenced -- so there is plenty of room for it to
+    // produce a smooth, plausible, wrong curve.
+    //
+    // The tension set states an exact strain per frame, so the answer is known
+    // rather than estimated. The gauge is laid along x, which is the direction
+    // the specimen is stretched in.
+    QVector<CorrelationResult> frames;
+    QVector<double> stated;
+    for (int frame = 1; frame <= 4; frame++) {
+        frames.append(measure(QStringLiteral("tension_00.tif"),
+                              QStringLiteral("tension_0%1.tif").arg(frame)));
+        const QJsonObject answer = statedAnswer(QStringLiteral("tension"), frame);
+        stated.append(
+            answer[QStringLiteral("deformation_gradient")].toArray()
+                .at(0).toArray().at(0).toDouble() - 1.0);
+    }
+
+    Extensometer gauge;
+    gauge.name = QStringLiteral("E1");
+    gauge.ax = 160.0;
+    gauge.ay = 240.0;
+    gauge.bx = 480.0;
+    gauge.by = 240.0;
+
+    const Series series =
+        extensometerSeries(gauge, frames, ExtensometerQuantity::Strain);
+    QCOMPARE(series.points.size(), 4);
+    QCOMPARE(series.measuredCount(), 4);
+
+    for (int i = 0; i < 4; i++) {
+        const double read = series.points.at(i).value;
+        QVERIFY2(std::abs(read - stated.at(i)) < 5e-4,
+                 qPrintable(QStringLiteral("frame %1: gauge read %2, the set "
+                                           "states %3")
+                                .arg(i + 1).arg(read).arg(stated.at(i))));
+    }
+
+    // And it RISES, monotonically, because the specimen was loaded
+    // monotonically. A curve that happens to hit four right values while
+    // wandering between them is not a loading curve.
+    for (int i = 1; i < 4; i++) {
+        QVERIFY2(series.points.at(i).value > series.points.at(i - 1).value,
+                 "the loading curve is not monotonic on a monotonic load");
+    }
 }
 
 QTEST_MAIN(TestMeasuredAccuracy)

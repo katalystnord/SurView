@@ -24,6 +24,7 @@ set(SURVIEW_UNIT_TESTS
     test_sequence
     test_reference_update
     test_recovery
+    test_series
     test_sequence_runner
     test_strain_fit
     test_strain_measure

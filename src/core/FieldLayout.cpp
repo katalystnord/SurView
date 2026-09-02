@@ -46,6 +46,15 @@ float valueAt(const CorrelationPoint &point, FieldChannel channel)
         break;
     }
 
+    if (channel == FieldChannel::RecoveredOnSecondPass) {
+        // ⚑ Reached only past the converged guard above, and that is the whole
+        // point. A point that was never measured is not "not recovered", it is
+        // nothing: drawn as a zero it would take the same colour as a point the
+        // first solve got right, so every hole in the field would fill in with
+        // the most reassuring reading available.
+        return point.recovered ? 1.f : 0.f;
+    }
+
     switch (channel) {
     case FieldChannel::DisplacementMagnitude:
         return float(std::hypot(point.u, point.v));
@@ -70,7 +79,8 @@ QVector<FieldChannelInfo> offeredFieldChannels()
                                  FieldChannel::StrainYY,
                                  FieldChannel::StrainXY,
                                  FieldChannel::NoiseFloor,
-                                 FieldChannel::MatchConditioning}) {
+                                 FieldChannel::MatchConditioning,
+                                 FieldChannel::RecoveredOnSecondPass}) {
         // Asked of the same functions everything else asks, so this list
         // cannot drift from how a channel actually behaves.
         channels.append(FieldChannelInfo{
@@ -108,12 +118,20 @@ QString fieldChannelName(FieldChannel channel)
         return QObject::tr("Noise floor, sigma");
     case FieldChannel::MatchConditioning:
         return QObject::tr("Match conditioning, beta");
+    case FieldChannel::RecoveredOnSecondPass:
+        return QObject::tr("Measured on the second pass");
     }
     return QString();
 }
 
 QString fieldChannelUnit(FieldChannel channel)
 {
+    // A flag names its two states instead of naming a unit, so the bar's title
+    // carries the whole legend and a reader never has to guess which end of a
+    // two-colour scale means which.
+    if (channel == FieldChannel::RecoveredOnSecondPass)
+        return QObject::tr("0 = first solve, 1 = second pass");
+
     // Strain is a ratio and conditioning is a reciprocal slope carrying
     // arbitrary per-axis factors; neither has a unit. Saying so beats leaving
     // it blank, which reads as an oversight, and beats inventing one. The noise
@@ -128,7 +146,13 @@ bool fieldChannelIsDimensionless(FieldChannel channel)
     // per-axis factors. The noise floor is a displacement and is in pixels like
     // the rest.
     return fieldChannelIsStrain(channel)
-           || channel == FieldChannel::MatchConditioning;
+           || channel == FieldChannel::MatchConditioning
+           || channel == FieldChannel::RecoveredOnSecondPass;
+}
+
+bool fieldChannelIsFlag(FieldChannel channel)
+{
+    return channel == FieldChannel::RecoveredOnSecondPass;
 }
 
 bool fieldChannelIsReliability(FieldChannel channel)
@@ -171,6 +195,13 @@ QString fieldChannelNote(FieldChannel channel)
             "particular match, but it is a relative score with no absolute "
             "meaning - compare points within one run, never across runs. "
             "Larger is worse.");
+    case FieldChannel::RecoveredOnSecondPass:
+        return QObject::tr(
+            "Which points the first solve could not measure well and the second "
+            "pass repaired. Not a measure of quality: a repaired point was "
+            "solved in full and carries its own correlation, which is the "
+            "channel to read for how good it is. This one says only how it was "
+            "reached. Points that were never measured are blank here, not zero.");
     }
     return QString();
 }
@@ -187,6 +218,7 @@ bool fieldChannelIsStrain(FieldChannel channel)
     case FieldChannel::DisplacementY:
     case FieldChannel::NoiseFloor:
     case FieldChannel::MatchConditioning:
+    case FieldChannel::RecoveredOnSecondPass:
         return false;
     }
     return false;
@@ -354,6 +386,16 @@ bool fieldColourRange(const CorrelationResult &result, FieldChannel channel,
 {
     if (!fieldValueRange(result, channel, lowest, highest))
         return false;
+
+    // ⚑ A flag spans its two states whatever the data happens to hold. Left on
+    // the observed range, a run that repaired nothing gives lowest == highest
+    // == 0, and every measured point takes the extreme colour: a field painted
+    // entirely in "repaired" on a run where nothing was.
+    if (fieldChannelIsFlag(channel)) {
+        lowest = 0.0;
+        highest = 1.0;
+        return true;
+    }
 
     // Tension and compression are opposite states, not two ends of one
     // continuum. Left on the range the data happens to occupy, a field that

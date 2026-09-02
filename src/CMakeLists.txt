@@ -35,6 +35,8 @@ add_library(surview_core STATIC
     core/ReferenceUpdate.h
     core/Recovery.cpp
     core/Recovery.h
+    core/Series.cpp
+    core/Series.h
     core/Roi.cpp
     core/Roi.h
     core/RoiDetect.cpp
@@ -59,6 +61,8 @@ add_library(surview_gui STATIC
     gui/MainWindow.h
     gui/ImageViewport.cpp
     gui/ImageViewport.h
+    gui/PlotPanel.cpp
+    gui/PlotPanel.h
     gui/PointPanel.cpp
     gui/PointPanel.h
     gui/RecordPanel.cpp

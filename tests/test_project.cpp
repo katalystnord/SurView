@@ -72,6 +72,17 @@ Project sampleProject(const QString &dir)
     project.settings.recovery.reliableZncc = 0.85;
     project.settings.recovery.maxRounds = 6;
 
+    // Gauges are part of the session: a user who placed three of them on a
+    // specimen and reopened the file to find them gone has lost work that took
+    // careful clicking to produce.
+    Extensometer gauge;
+    gauge.name = QStringLiteral("E1");
+    gauge.ax = 40.0;
+    gauge.ay = 60.5;
+    gauge.bx = 160.0;
+    gauge.by = 61.5;
+    project.extensometers.append(gauge);
+
     project.referenceUpdate.enabled = true;
     project.referenceUpdate.znccThreshold = 0.85;
     project.referenceUpdate.percentile = 0.8;
@@ -127,6 +138,19 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
     QCOMPARE(loaded.project.settings.strainMinPoints, saved.settings.strainMinPoints);
     QCOMPARE(int(loaded.project.settings.strainMeasure),
              int(saved.settings.strainMeasure));
+
+    QCOMPARE(loaded.project.extensometers.size(), saved.extensometers.size());
+    QVERIFY(!loaded.project.extensometers.isEmpty());
+    QCOMPARE(loaded.project.extensometers.first().name,
+             saved.extensometers.first().name);
+    QCOMPARE(loaded.project.extensometers.first().ax,
+             saved.extensometers.first().ax);
+    QCOMPARE(loaded.project.extensometers.first().ay,
+             saved.extensometers.first().ay);
+    QCOMPARE(loaded.project.extensometers.first().bx,
+             saved.extensometers.first().bx);
+    QCOMPARE(loaded.project.extensometers.first().by,
+             saved.extensometers.first().by);
 
     QCOMPARE(loaded.project.settings.recovery.enabled,
              saved.settings.recovery.enabled);

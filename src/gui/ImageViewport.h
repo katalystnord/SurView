@@ -4,6 +4,7 @@
 #include "core/FieldLayout.h"
 #include "core/ImageRecord.h"
 #include "core/Roi.h"
+#include "core/Series.h"
 
 #include <QSize>
 #include <QVTKOpenGLNativeWidget.h>
@@ -76,6 +77,19 @@ public:
     void showRoi(const RegionOfInterest &roi);
     void clearRoi();
 
+    // --- Virtual extensometers ---------------------------------------------
+    // Two clicks on the specimen place a gauge. The same shape as region
+    // drawing, and for the same reason: a mode the user can see they are in,
+    // announced by a bar carrying its own way out, so nothing here needs a
+    // shortcut to be discovered.
+    void beginExtensometerPlacement();
+    void cancelExtensometerPlacement();
+    bool isPlacingExtensometer() const { return m_gaugePlacing; }
+
+    // Draw the gauges that exist, so a placed extensometer stays visible on
+    // the picture it measures rather than only in the plot's legend.
+    void showExtensometers(const QVector<Extensometer> &gauges);
+
     // Where an image pixel currently sits in this widget's own coordinates.
     // The inverse of the mapping a click takes, exposed because anything that
     // has to point AT the picture from outside the renderer needs it -- and
@@ -116,6 +130,11 @@ signals:
     // own controls consistent with a mode the user can see they are in.
     void roiDrawingChanged(bool drawing);
 
+    // Both anchors of a gauge have been placed, in image pixels. The viewport
+    // draws it; the project owns it and gives it a name.
+    void extensometerPlaced(double ax, double ay, double bx, double by);
+    void extensometerPlacingChanged(bool placing);
+
 protected:
     void showEvent(QShowEvent *event) override;
     void resizeEvent(QResizeEvent *event) override;
@@ -145,6 +164,10 @@ private:
 
     // --- ROI drawing internals ---------------------------------------------
     void buildRoiBar();
+    void buildGaugeBar();
+    void positionGaugeBar();
+    void updateGaugeBar();
+    void refreshGaugeGeometry();
     void positionRoiBar();
     void finishRoiDrawing();
     void undoLastRoiVertex();
@@ -176,6 +199,10 @@ private:
     vtkNew<vtkPolyDataMapper> m_roiMapper;
     vtkNew<vtkActor> m_roiActor;
 
+    vtkNew<vtkPolyData> m_gaugeGeometry;
+    vtkNew<vtkPolyDataMapper> m_gaugeMapper;
+    vtkNew<vtkActor> m_gaugeActor;
+
     QLabel *m_hint = nullptr;
     QPushButton *m_hintAction = nullptr;
     bool m_hasImage = false;
@@ -194,6 +221,9 @@ private:
     FieldChannel m_fieldChannel = FieldChannel::DisplacementMagnitude;
 
     QFrame *m_roiBar = nullptr;
+    QFrame *m_gaugeBar = nullptr;
+    QLabel *m_gaugeBarText = nullptr;
+    QPushButton *m_gaugeUndo = nullptr;
     QLabel *m_roiBarText = nullptr;
     QPushButton *m_roiUndo = nullptr;
     QPushButton *m_roiFinish = nullptr;
@@ -214,4 +244,11 @@ private:
     QPoint m_roiCursor;            // where the rubber band currently reaches
     bool m_roiCursorValid = false;
     RegionOfInterest m_roiShown;   // the committed boundary on display
+
+    bool m_gaugePlacing = false;
+    bool m_gaugeActorAdded = false;
+    QVector<QPoint> m_gaugeAnchors;   // anchors placed so far, while placing
+    QPoint m_gaugeCursor;
+    bool m_gaugeCursorValid = false;
+    QVector<Extensometer> m_gaugesShown;
 };

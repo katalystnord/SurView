@@ -412,6 +412,190 @@ void ImageViewport::refreshRoiGeometry()
     m_renderWindow->Render();
 }
 
+// --- virtual extensometers --------------------------------------------------
+//
+// The same shape as region drawing, deliberately: a mode the user can see they
+// are in, announced by a bar carrying its own way out. Two clicks and it is
+// placed, which is the whole gesture -- a gauge is two points and nothing else.
+
+void ImageViewport::buildGaugeBar()
+{
+    m_gaugeBar = new QFrame(this);
+    m_gaugeBar->setStyleSheet(m_roiBar->styleSheet());
+
+    auto *row = new QHBoxLayout(m_gaugeBar);
+    row->setContentsMargins(12, 8, 12, 8);
+    row->setSpacing(10);
+
+    m_gaugeBarText = new QLabel(m_gaugeBar);
+    m_gaugeBarText->setWordWrap(true);
+    row->addWidget(m_gaugeBarText, 1);
+    row->addSpacing(6);
+
+    m_gaugeUndo = new QPushButton(tr("Undo anchor"), m_gaugeBar);
+    connect(m_gaugeUndo, &QPushButton::clicked, this, [this] {
+        if (m_gaugeAnchors.isEmpty())
+            return;
+        m_gaugeAnchors.removeLast();
+        refreshGaugeGeometry();
+        updateGaugeBar();
+    });
+    row->addWidget(m_gaugeUndo);
+
+    auto *cancel = new QPushButton(tr("Cancel"), m_gaugeBar);
+    connect(cancel, &QPushButton::clicked, this,
+            &ImageViewport::cancelExtensometerPlacement);
+    row->addWidget(cancel);
+
+    m_gaugeBar->hide();
+}
+
+void ImageViewport::positionGaugeBar()
+{
+    if (!m_gaugeBar || m_gaugeBar->isHidden())
+        return;
+
+    constexpr int kMargin = 10;
+    const int barWidth = std::max(200, width() - 2 * kMargin);
+    int barHeight = m_gaugeBar->heightForWidth(barWidth);
+    if (barHeight <= 0)
+        barHeight = m_gaugeBar->sizeHint().height();
+
+    m_gaugeBar->setGeometry(kMargin, height() - barHeight - kMargin,
+                            barWidth, barHeight);
+}
+
+void ImageViewport::updateGaugeBar()
+{
+    if (!m_gaugeBar)
+        return;
+
+    m_gaugeUndo->setEnabled(!m_gaugeAnchors.isEmpty());
+    m_gaugeBarText->setText(
+        m_gaugeAnchors.isEmpty()
+            ? tr("Virtual extensometer: click the FIRST point on the specimen. "
+                 "It measures how the distance between two points changes over "
+                 "the sequence, which is how a loading curve is read.")
+            : tr("Now click the SECOND point. Put both on well-correlated "
+                 "speckle: a gauge reads nothing on a frame where the field has "
+                 "a gap under either anchor."));
+    positionGaugeBar();
+}
+
+void ImageViewport::beginExtensometerPlacement()
+{
+    if (!m_hasImage || m_gaugePlacing)
+        return;
+    if (m_roiDrawing)
+        cancelRoiDrawing();
+
+    m_gaugePlacing = true;
+    m_gaugeAnchors.clear();
+    m_gaugeCursorValid = false;
+    if (!m_gaugeBar)
+        buildGaugeBar();
+    updateGaugeBar();
+    m_gaugeBar->show();
+    m_gaugeBar->raise();
+    positionGaugeBar();
+    setCursor(Qt::CrossCursor);
+    refreshGaugeGeometry();
+    emit extensometerPlacingChanged(true);
+}
+
+void ImageViewport::cancelExtensometerPlacement()
+{
+    if (!m_gaugePlacing)
+        return;
+    m_gaugePlacing = false;
+    m_gaugeAnchors.clear();
+    m_gaugeCursorValid = false;
+    if (m_gaugeBar)
+        m_gaugeBar->hide();
+    unsetCursor();
+    refreshGaugeGeometry();
+    emit extensometerPlacingChanged(false);
+}
+
+void ImageViewport::showExtensometers(const QVector<Extensometer> &gauges)
+{
+    m_gaugesShown = gauges;
+    refreshGaugeGeometry();
+}
+
+void ImageViewport::refreshGaugeGeometry()
+{
+    // Nearer the camera than the region, so a gauge drawn across a boundary
+    // stays readable.
+    constexpr double kGaugeDepth = -0.25;
+
+    vtkNew<vtkPoints> points;
+    vtkNew<vtkCellArray> lines;
+    vtkNew<vtkCellArray> markers;
+
+    auto anchor = [&](double x, double y) {
+        const vtkIdType id = points->InsertNextPoint(x, y, kGaugeDepth);
+        markers->InsertNextCell(1, &id);
+        return id;
+    };
+    auto segment = [&lines](vtkIdType from, vtkIdType to) {
+        const vtkIdType ends[2] = {from, to};
+        lines->InsertNextCell(2, ends);
+    };
+
+    for (const Extensometer &gauge : m_gaugesShown) {
+        const vtkIdType a = anchor(gauge.ax, gauge.ay);
+        const vtkIdType b = anchor(gauge.bx, gauge.by);
+        segment(a, b);
+    }
+
+    if (m_gaugePlacing) {
+        vtkIdType previous = -1;
+        for (const QPoint &placed : m_gaugeAnchors)
+            previous = anchor(placed.x(), placed.y());
+        // The gauge that WOULD be placed, drawn to the pointer. Seeing the span
+        // before committing to it is the whole point of a rubber band, and a
+        // gauge's length is the one thing that matters about where it sits.
+        if (previous >= 0 && m_gaugeCursorValid) {
+            const vtkIdType cursor =
+                points->InsertNextPoint(m_gaugeCursor.x(), m_gaugeCursor.y(),
+                                        kGaugeDepth);
+            segment(previous, cursor);
+        }
+    }
+
+    if (points->GetNumberOfPoints() == 0) {
+        if (m_gaugeActorAdded) {
+            m_renderer->RemoveActor(m_gaugeActor);
+            m_gaugeActorAdded = false;
+        }
+        m_renderWindow->Render();
+        return;
+    }
+
+    m_gaugeGeometry->SetPoints(points);
+    m_gaugeGeometry->SetLines(lines);
+    m_gaugeGeometry->SetVerts(markers);
+    m_gaugeGeometry->Modified();
+
+    m_gaugeMapper->SetInputData(m_gaugeGeometry);
+    m_gaugeActor->SetMapper(m_gaugeMapper);
+    m_gaugeActor->GetProperty()->SetLineWidth(2.0);
+    m_gaugeActor->GetProperty()->SetPointSize(10.0);
+    // Amber while placing, as the region uses, and a distinct cyan once placed:
+    // a gauge is not a region, and the two are drawn over the same picture.
+    if (m_gaugePlacing)
+        m_gaugeActor->GetProperty()->SetColor(1.0, 0.78, 0.25);
+    else
+        m_gaugeActor->GetProperty()->SetColor(0.36, 0.85, 0.95);
+
+    if (!m_gaugeActorAdded) {
+        m_renderer->AddActor(m_gaugeActor);
+        m_gaugeActorAdded = true;
+    }
+    m_renderWindow->Render();
+}
+
 double ImageViewport::grabReachInPixels(const QPointF &position) const
 {
     constexpr double kScreenReach = 11.0;
@@ -496,6 +680,50 @@ bool ImageViewport::widgetToImagePixel(const QPointF &position, QPoint &pixel,
 
 void ImageViewport::mousePressEvent(QMouseEvent *event)
 {
+    if (m_gaugePlacing) {
+        QPoint pixel;
+        if (event->button() == Qt::LeftButton
+            && widgetToImagePixel(event->position(), pixel)) {
+            m_gaugeAnchors.append(pixel);
+            m_gaugeCursor = pixel;
+            m_gaugeCursorValid = true;
+
+            if (m_gaugeAnchors.size() == 2) {
+                const QPoint a = m_gaugeAnchors.at(0);
+                const QPoint b = m_gaugeAnchors.at(1);
+                // Two clicks in the same place would make a gauge of no length,
+                // which divides by zero computing strain. Refused here, where
+                // the bar can say so, rather than silently accepted and dropped
+                // later where nothing explains the missing curve.
+                if (a == b) {
+                    m_gaugeAnchors.removeLast();
+                    m_gaugeBarText->setText(
+                        tr("Both anchors landed on the same pixel, so the gauge "
+                           "would have no length. Click a second point further "
+                           "away."));
+                    refreshGaugeGeometry();
+                    event->accept();
+                    return;
+                }
+                m_gaugePlacing = false;
+                m_gaugeAnchors.clear();
+                m_gaugeCursorValid = false;
+                m_gaugeBar->hide();
+                unsetCursor();
+                emit extensometerPlaced(a.x(), a.y(), b.x(), b.y());
+                emit extensometerPlacingChanged(false);
+                event->accept();
+                return;
+            }
+
+            refreshGaugeGeometry();
+            updateGaugeBar();
+            event->accept();
+            return;
+        }
+        event->accept();
+        return;
+    }
     if (m_roiDrawing) {
         QPoint pixel;
         if (event->button() == Qt::LeftButton
@@ -547,6 +775,17 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
 
 void ImageViewport::mouseMoveEvent(QMouseEvent *event)
 {
+    if (m_gaugePlacing) {
+        QPoint pixel;
+        m_gaugeCursorValid = widgetToImagePixel(event->position(), pixel);
+        if (m_gaugeCursorValid) {
+            m_gaugeCursor = pixel;
+            refreshGaugeGeometry();
+        }
+        // Falls through, so the readout still follows the pointer while a gauge
+        // is being placed.
+    }
+
     if (m_draggingCorner >= 0) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
@@ -653,6 +892,7 @@ void ImageViewport::resizeEvent(QResizeEvent *event)
 {
     QVTKOpenGLNativeWidget::resizeEvent(event);
     positionRoiBar();
+    positionGaugeBar();
     positionFieldBar();
 }
 
@@ -770,13 +1010,24 @@ void ImageViewport::drawField()
         QStringLiteral("%1 (%2)")
             .arg(fieldChannelName(m_fieldChannel))
             .arg(fieldChannelUnit(m_fieldChannel))));
-    m_scalarBar->SetNumberOfLabels(5);
-    // Enough figures that the five labels differ from one another, and %g so
-    // that a strain scale reads as 8.3e-08 rather than as 0.000000083. Worked
-    // out and tested in core/FieldLayout.h.
-    const QByteArray labelFormat =
-        "%." + QByteArray::number(fieldScaleSignificantDigits(lowest, highest)) + "g";
-    m_scalarBar->SetLabelFormat(labelFormat.constData());
+    if (fieldChannelIsFlag(m_fieldChannel)) {
+        // ⚑ Two labels and no decimals, because the channel takes two values
+        // and no others. Five evenly spaced ticks over a flag read 0, 0.25,
+        // 0.5, 0.75, 1 and three of those cannot occur -- a scale offering
+        // readings the data can never produce, which is the same fault as
+        // centring a displacement scale on zero.
+        m_scalarBar->SetNumberOfLabels(2);
+        m_scalarBar->SetLabelFormat("%.0f");
+    } else {
+        m_scalarBar->SetNumberOfLabels(5);
+        // Enough figures that the five labels differ from one another, and %g
+        // so that a strain scale reads as 8.3e-08 rather than as 0.000000083.
+        // Worked out and tested in core/FieldLayout.h.
+        const QByteArray labelFormat =
+            "%." + QByteArray::number(fieldScaleSignificantDigits(lowest, highest))
+            + "g";
+        m_scalarBar->SetLabelFormat(labelFormat.constData());
+    }
     m_scalarBar->SetWidth(0.08);
     m_scalarBar->SetHeight(0.42);
     m_scalarBar->SetPosition(0.90, 0.06);
@@ -850,9 +1101,20 @@ void ImageViewport::buildFieldBar()
         "QComboBox QAbstractItemView { color: #e8eaed; background: #2f333c;"
         " selection-background-color: #3a4250; }"));
 
-    auto *row = new QHBoxLayout(m_fieldBar);
-    row->setContentsMargins(12, 8, 12, 8);
+    // ⚑ TWO ROWS, not one. Beside the selector the note had whatever width the
+    // combo box left it -- about 130 px in a viewport 455 px wide -- so it
+    // wrapped to eight lines and the bar grew until it covered the specimen
+    // being measured. The same lesson the region bar already records one method
+    // down: an overlay must not eat the picture it is overlaying. On its own
+    // row the note has the full width and wraps to two lines.
+    auto *stack = new QVBoxLayout(m_fieldBar);
+    stack->setContentsMargins(12, 8, 12, 8);
+    stack->setSpacing(6);
+
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(8);
+    stack->addLayout(row);
 
     row->addWidget(new QLabel(tr("Showing"), m_fieldBar));
 
@@ -878,9 +1140,11 @@ void ImageViewport::buildFieldBar()
     // Says why the strain entries are unselectable, when they are. A disabled
     // control with no stated reason is a dead end -- the reader cannot tell
     // whether it is broken, not yet reached, or not applicable.
+    row->addStretch(1);
+
     m_fieldNote = new QLabel(m_fieldBar);
     m_fieldNote->setWordWrap(true);
-    row->addWidget(m_fieldNote, 1);
+    stack->addWidget(m_fieldNote);
 
     m_fieldBar->hide();
 }
@@ -891,11 +1155,20 @@ void ImageViewport::updateFieldBar()
         buildFieldBar();
 
     const bool strainAvailable = m_fieldResult.hasStrain();
+    // A recovery map over a run that never ran the pass would be a field of
+    // solid "first solve" -- true, and indistinguishable from a bug. Offered
+    // and disabled, with the reason said, exactly as the strain entries are.
+    const bool recoveryAvailable = m_fieldResult.recoveryRequested;
 
     QSignalBlocker blocked(m_fieldChoice);
     for (int i = 0; i < m_fieldChoice->count(); i++) {
         const auto channel = FieldChannel(m_fieldChoice->itemData(i).toInt());
-        const bool usable = strainAvailable || !fieldChannelIsStrain(channel);
+        const bool usable =
+            fieldChannelIsStrain(channel)
+                ? strainAvailable
+                : (channel == FieldChannel::RecoveredOnSecondPass
+                       ? recoveryAvailable
+                       : true);
         auto *model = qobject_cast<QStandardItemModel *>(m_fieldChoice->model());
         if (model && model->item(i))
             model->item(i)->setEnabled(usable);
@@ -911,7 +1184,26 @@ void ImageViewport::updateFieldBar()
     QString range;
     double lowest = 0.0;
     double highest = 0.0;
-    if (fieldValueRange(m_fieldResult, m_fieldChannel, lowest, highest)) {
+    if (fieldChannelIsFlag(m_fieldChannel)) {
+        // A flag has no range worth stating -- "runs from 0 to 1" says nothing
+        // a reader did not already know from the legend. What they want is how
+        // many, so that the map's scattering of colour has a number beside it.
+        int flagged = 0;
+        int measured = 0;
+        for (const CorrelationPoint &point : m_fieldResult.points) {
+            if (!point.converged)
+                continue;
+            measured++;
+            if (point.recovered)
+                flagged++;
+        }
+        range = flagged > 0
+                    ? tr("%1 of the %2 measured points were repaired by the "
+                         "second pass. ")
+                          .arg(flagged)
+                          .arg(measured)
+                    : tr("No point needed the second pass. ");
+    } else if (fieldValueRange(m_fieldResult, m_fieldChannel, lowest, highest)) {
         const int digits = fieldScaleSignificantDigits(lowest, highest);
         // Bare in prose, and only when there is a unit to name: "runs from
         // 0.004 to 0.006 dimensionless" is not a sentence anyone writes, and
@@ -965,6 +1257,16 @@ void ImageViewport::updateFieldBar()
     } else {
         note += tr("Strain was not fitted for this run. Turn it on in the "
                    "Analysis panel and run again.");
+    }
+
+    // Why the recovery map is unselectable, when it is. A disabled entry with
+    // no stated reason is a dead end: the reader cannot tell whether it is
+    // broken, not yet reached, or not applicable.
+    if (!recoveryAvailable) {
+        note += QLatin1Char(' ')
+                + tr("The second pass at poorly correlated points did not run, "
+                     "so there is no repair map. Turn it on in the Analysis "
+                     "panel and run again.");
     }
 
     m_fieldNote->setText(note);

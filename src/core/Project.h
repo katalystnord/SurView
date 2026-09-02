@@ -3,6 +3,7 @@
 #include "core/Correlation.h"
 #include "core/ReferenceUpdate.h"
 #include "core/Roi.h"
+#include "core/Series.h"
 
 #include <QString>
 #include <QStringList>
@@ -32,6 +33,11 @@ struct Project
     RegionOfInterest roi;
     CorrelationSettings settings;
     ReferenceUpdatePolicy referenceUpdate;
+
+    // The virtual extensometers placed on the reference image. Part of the
+    // session, not of a run: placing one takes careful clicking, and a session
+    // that reopened without them would have lost work.
+    QVector<Extensometer> extensometers;
 };
 
 // What opening a project produced, and what was wrong with it.

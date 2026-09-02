@@ -18,6 +18,7 @@
 #include "core/Sequence.h"
 #include "core/Roi.h"
 #include "gui/ImageViewport.h"
+#include "gui/PlotPanel.h"
 #include "gui/PointPanel.h"
 #include "gui/MainWindow.h"
 
@@ -311,6 +312,9 @@ private slots:
     void a_committed_region_can_be_adjusted_without_drawing_it_again();
     void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
+    void the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it();
+    void the_plot_panel_says_what_it_is_for_before_a_sequence_exists();
+    void an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
@@ -1806,6 +1810,156 @@ void TestWorkspaceWalkthrough::scrolling_the_analysis_panel_does_not_change_what
     QVERIFY2(!qFuzzyCompare(strainRadius->value(), strainBefore),
              "a control the user has clicked into no longer takes the wheel, "
              "so the fix removed a way of setting it rather than protecting it");
+}
+
+void TestWorkspaceWalkthrough::the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it()
+{
+    // The run report says HOW MANY points the second pass repaired. A reader's
+    // next question is WHERE: repaired points clustered along one edge mean a
+    // specimen problem, and repaired points scattered evenly mean a settings
+    // one. Only a map answers that.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    auto *choice = viewport->findChild<QComboBox *>();
+    QVERIFY(choice);
+
+    const int index =
+        choice->findText(fieldChannelName(FieldChannel::RecoveredOnSecondPass));
+    QVERIFY2(index >= 0,
+             "the selector does not offer the map of repaired points, so a "
+             "reader can be told how many there were but never shown where");
+    choice->setCurrentIndex(index);
+    QCOMPARE(viewport->fieldChannel(), FieldChannel::RecoveredOnSecondPass);
+    QVERIFY(viewport->hasField());
+
+    // ⚑ And a count beside it, because the map alone cannot be read. On a pair
+    // this easy almost nothing is repaired, so the map is very nearly uniform
+    // -- and a uniform two-colour map is exactly as consistent with "nothing
+    // needed repair" as with "the channel is broken". The number settles it,
+    // which is the same reasoning as stating a field's range beside its colours.
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("second pass")),
+             "the repair map is on screen with no count beside it, so a nearly "
+             "uniform map cannot be told from a broken one");
+}
+
+void TestWorkspaceWalkthrough::the_plot_panel_says_what_it_is_for_before_a_sequence_exists()
+{
+    // An empty chart is the least informative thing a panel can show. Before
+    // anything has been measured this one has to say what would appear in it
+    // and how to make that happen, or a reader meets a blank rectangle with no
+    // way to tell whether it is broken, unimplemented, or waiting for them.
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QVERIFY2(window.findChild<PlotPanel *>(),
+             "there is no plot panel, so a sequence cannot be read as a curve");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("against frame")),
+             "the empty plot does not say what it would plot");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("extensometer")),
+             "the empty plot does not say an extensometer can be placed, so "
+             "the feature exists only for somebody who already knows it does");
+
+    // And the way to place one is on the toolbar, in words, not behind a
+    // gesture nobody would guess.
+    QVERIFY2(actionLabelled(&window, QStringLiteral("Extensometer")),
+             "nothing on the toolbar places an extensometer");
+}
+
+void TestWorkspaceWalkthrough::an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence()
+{
+    // ⚑ Driven only by what the screen offers: press the toolbar action, read
+    // the bar that appears, click the two points it asks for. If any step here
+    // needed a coordinate or an order that nothing on screen describes, that
+    // would be a UI defect found at the moment this was written.
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    // Place the gauge the way the toolbar offers it.
+    actionLabelled(&window, QStringLiteral("Extensometer"))->trigger();
+    QVERIFY2(viewport->isPlacingExtensometer(),
+             "pressing the toolbar action did not enter placement");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("FIRST point")),
+             "placement mode does not say what to click, so the mode is a "
+             "dead end for anyone who has not done it before");
+
+    // Two clicks, well inside the picture so both anchors have measured points
+    // all around them.
+    const QVector<QPointF> anchors{QPointF(40, 60), QPointF(160, 60)};
+    for (const QPointF &anchor : anchors) {
+        QPointF at;
+        QVERIFY2(viewport->widgetPositionForImagePixel(anchor, at),
+                 "the anchor does not map onto the widget");
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+    }
+
+    QVERIFY2(!viewport->isPlacingExtensometer(),
+             "the second click did not finish the gauge, so placement never ends");
+
+    auto *plot = window.findChild<PlotPanel *>();
+    QVERIFY(plot);
+
+    // The gauge is on the plot's selector by name, and picking it produces a
+    // curve with a reading in it.
+    auto *choice = plot->findChild<QComboBox *>();
+    QVERIFY2(choice, "the plot panel offers no way to choose what it plots");
+    const int index = choice->findText(QStringLiteral("E1"), Qt::MatchContains);
+    QVERIFY2(index >= 0,
+             qPrintable(QStringLiteral("the placed gauge is not on the plot's "
+                                       "selector; it offers: %1")
+                            .arg([choice] {
+                                QStringList all;
+                                for (int i = 0; i < choice->count(); i++)
+                                    all << choice->itemText(i);
+                                return all.join(QStringLiteral(", "));
+                            }())));
+    choice->setCurrentIndex(index);
+
+    const Series series = plot->currentSeries();
+    QVERIFY2(series.measuredCount() > 0,
+             "the gauge read no frame at all, so placing it did nothing");
+    QCOMPARE(series.points.size(), 1);   // one target was measured
+
+    // ⚑ And the answer is RIGHT, not merely present. The fixture's target is
+    // the reference shifted by a known +3 px in x, which is a rigid translation
+    // - so a gauge across it must read a strain of ZERO. A gauge that reported
+    // one anchor's displacement instead of the change in distance would read a
+    // large strain here, and it would look entirely plausible on a curve.
+    QVERIFY2(std::abs(series.points.first().value) < 1e-3,
+             qPrintable(QStringLiteral("a rigid 3 px shift read as strain %1")
+                            .arg(series.points.first().value)));
+
+    // Whole-field curves are offered alongside, so a sequence can be read
+    // without placing anything at all.
+    QVERIFY2(choice->findText(QStringLiteral("Mean"), Qt::MatchContains) >= 0,
+             "the plot offers no whole-field curve, so reading a sequence "
+             "always requires placing a gauge first");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

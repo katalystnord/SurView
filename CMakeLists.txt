@@ -34,6 +34,13 @@ find_package(VTK REQUIRED COMPONENTS
     IOImage               # vtkImageReader2Factory (TIFF/PNG/JPEG speckle images)
     IOXML                 # vtkXMLUnstructuredGridWriter (.vtu field export)
     GUISupportQt          # QVTKOpenGLNativeWidget (VTK inside a Qt widget)
+    # Charting for the plot panel. VTK's own, not Qt Charts: Qt Charts is
+    # GPL-3.0-only and using it would force SurView's own licence to GPL, which
+    # the build constraint in CLAUDE.md rules out. vtkChartXY is BSD-3-Clause
+    # and imposes nothing.
+    ChartsCore            # vtkChartXY, vtkPlotLine, vtkPlotPoints
+    ViewsContext2D        # vtkContextView (a chart inside a render window)
+    RenderingContextOpenGL2  # the 2D context's OpenGL backend
 )
 
 # Coverage instrumentation. Off by default and built into a separate directory

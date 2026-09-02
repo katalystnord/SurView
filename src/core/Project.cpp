@@ -125,6 +125,18 @@ QString saveProject(const QString &path, const Project &project)
     policy[QStringLiteral("percentile")] = p.percentile;
     root[QStringLiteral("referenceUpdate")] = policy;
 
+    QJsonArray gauges;
+    for (const Extensometer &gauge : project.extensometers) {
+        QJsonObject entry;
+        entry[QStringLiteral("name")] = gauge.name;
+        entry[QStringLiteral("ax")] = gauge.ax;
+        entry[QStringLiteral("ay")] = gauge.ay;
+        entry[QStringLiteral("bx")] = gauge.bx;
+        entry[QStringLiteral("by")] = gauge.by;
+        gauges.append(entry);
+    }
+    root[QStringLiteral("extensometers")] = gauges;
+
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return QObject::tr("Could not write %1: %2.").arg(name, file.errorString());
@@ -225,6 +237,22 @@ ProjectLoad loadProject(const QString &path)
     ReferenceUpdatePolicy &p = out.project.referenceUpdate;
     p.enabled = policy[QStringLiteral("enabled")].toBool(p.enabled);
     p.znccThreshold = policy[QStringLiteral("znccThreshold")].toDouble(p.znccThreshold);
+
+    const QJsonArray gauges = root[QStringLiteral("extensometers")].toArray();
+    for (const QJsonValue &value : gauges) {
+        const QJsonObject entry = value.toObject();
+        Extensometer gauge;
+        gauge.name = entry[QStringLiteral("name")].toString();
+        gauge.ax = entry[QStringLiteral("ax")].toDouble();
+        gauge.ay = entry[QStringLiteral("ay")].toDouble();
+        gauge.bx = entry[QStringLiteral("bx")].toDouble();
+        gauge.by = entry[QStringLiteral("by")].toDouble();
+        // A gauge of no length divides by zero computing strain. One cannot be
+        // placed through the interface, but a file can be edited, and a bad
+        // value should cost the gauge rather than the session.
+        if (gauge.isValid())
+            out.project.extensometers.append(gauge);
+    }
     p.percentile = policy[QStringLiteral("percentile")].toDouble(p.percentile);
 
     return out;

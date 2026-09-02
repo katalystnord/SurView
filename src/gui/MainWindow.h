@@ -3,6 +3,7 @@
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
 #include "core/Project.h"
+#include "core/Series.h"
 #include "core/SpeckleQuality.h"
 #include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
@@ -26,6 +27,7 @@ class QThread;
 class QTreeWidget;
 class QTreeWidgetItem;
 class ImageViewport;
+class PlotPanel;
 class PointPanel;
 class RecordPanel;
 
@@ -133,6 +135,13 @@ private slots:
     void updateReferenceUpdateControls();
     void updateRecoveryControls();
 
+    // A gauge was placed on the image, or the plotted curve is to be written
+    // out. Both are the window's business rather than the viewport's or the
+    // plot's, for the same reason every other export is.
+    void onExtensometerPlaced(double ax, double ay, double bx, double by);
+    void exportPlotData();
+    void clearExtensometers();
+
 private:
     void createActions();
     void createMenus();
@@ -159,6 +168,8 @@ private:
 
     // Reads the Analysis panel. One place, so the run and the panel cannot
     // drift apart.
+    void updatePlot();
+
     CorrelationSettings currentSettings() const;
 
     // Put a loaded project's settings back into the panel. The inverse of
@@ -283,6 +294,12 @@ private:
     // answer before it started.
     QVector<MeasuredFrame> m_frames;
 
+    // The gauges placed on the reference image. Owned here, not by the viewport
+    // that draws them or the panel that plots them, because they are part of
+    // the session.
+    QVector<Extensometer> m_gauges;
+    PlotPanel *m_plot = nullptr;
+
     // How each planned frame will be attributed, captured when the run starts
     // and paired with its result as that arrives.
     QVector<FieldProvenance> m_plannedFrames;
@@ -307,6 +324,7 @@ private:
     // Actions whose enabled state depends on project progress.
     QAction *m_actRun = nullptr;
     QAction *m_actStop = nullptr;
+    QAction *m_actExtensometer = nullptr;
     QAction *m_actDefineRoi = nullptr;
     QAction *m_actAutoRoi = nullptr;
     QAction *m_actClearRoi = nullptr;

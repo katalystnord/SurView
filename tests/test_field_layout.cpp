@@ -73,6 +73,8 @@ private slots:
     void a_scale_shows_enough_figures_to_tell_its_own_ticks_apart();
     void every_channel_carries_the_sentence_that_stops_it_being_misread();
     void a_reliability_channel_reads_the_opposite_way_from_the_rest();
+    void the_recovered_channel_separates_a_repaired_point_from_a_first_solve_one();
+    void a_flag_channel_is_not_drawn_or_described_like_a_measurement();
     void the_noise_floor_is_put_against_the_movement_it_qualifies();
     void one_bad_point_does_not_set_the_number_that_speaks_for_the_field();
     void the_reported_spread_of_the_noise_floor_is_the_fields_not_its_worst_points();
@@ -380,6 +382,65 @@ void TestFieldLayout::every_channel_carries_the_sentence_that_stops_it_being_mis
     const QString conditioning = fieldChannelNote(FieldChannel::MatchConditioning);
     QVERIFY2(conditioning.contains(QStringLiteral("no absolute"), Qt::CaseInsensitive),
              "match conditioning does not say its scale is relative");
+}
+
+void TestFieldLayout::the_recovered_channel_separates_a_repaired_point_from_a_first_solve_one()
+{
+    // Provenance as a map. The run report says HOW MANY points the second pass
+    // repaired; this says WHERE they are, which is the question a reader
+    // actually has -- recovered points clustered in one corner mean something
+    // quite different from recovered points scattered evenly.
+    CorrelationResult result;
+    result.gridColumns = 3;
+    result.gridRows = 1;
+    result.recoveryRequested = true;
+
+    CorrelationPoint first = measured(0, 1.f, 0.f);
+    CorrelationPoint repaired = measured(1, 1.f, 0.f);
+    repaired.recovered = true;
+
+    result.points << first << repaired << rejected(2);
+
+    const QVector<float> values =
+        layoutField(result, FieldChannel::RecoveredOnSecondPass);
+    QCOMPARE(values.size(), 3);
+    QCOMPARE(values[0], 0.f);
+    QCOMPARE(values[1], 1.f);
+
+    // ⚑ A point that was never measured is not "not recovered", it is nothing.
+    // Drawing it as a zero would colour it identically to a point the first
+    // solve got right, so the holes in the field would fill in with the most
+    // reassuring reading available.
+    QVERIFY2(std::isnan(values[2]),
+             "a point that was never measured was drawn as a first-solve point");
+}
+
+void TestFieldLayout::a_flag_channel_is_not_drawn_or_described_like_a_measurement()
+{
+    // ⚑ It takes two values and no others, so every rule written for a
+    // continuous quantity is wrong for it. Five evenly spaced tick labels on a
+    // 0-to-1 scale read 0, 0.25, 0.5, 0.75, 1, and three of those cannot occur
+    // -- the same flaw already recorded as the reason a displacement scale is
+    // not centred on zero, one channel further along. The screen asks this
+    // before it decides how to label the bar.
+    QVERIFY(fieldChannelIsFlag(FieldChannel::RecoveredOnSecondPass));
+
+    // And nothing else is one, or the bar would start labelling real
+    // measurements with two ticks.
+    for (const FieldChannelInfo &channel : offeredFieldChannels()) {
+        if (channel.channel == FieldChannel::RecoveredOnSecondPass)
+            continue;
+        QVERIFY2(!fieldChannelIsFlag(channel.channel),
+                 qPrintable(QStringLiteral("%1 claims to be a flag")
+                                .arg(channel.name)));
+    }
+
+    // It is provenance, not a measurement, so it is none of the other kinds
+    // either: not strain, not reliability, and not centred on zero -- zero here
+    // is one of two states, not a physical middle.
+    QVERIFY(!fieldChannelIsStrain(FieldChannel::RecoveredOnSecondPass));
+    QVERIFY(!fieldChannelIsReliability(FieldChannel::RecoveredOnSecondPass));
+    QVERIFY(!fieldChannelIsCentredOnZero(FieldChannel::RecoveredOnSecondPass));
 }
 
 void TestFieldLayout::a_reliability_channel_reads_the_opposite_way_from_the_rest()

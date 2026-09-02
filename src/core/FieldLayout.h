@@ -32,6 +32,13 @@ enum class FieldChannel
     // one score. See CorrelationPoint for what each of them can and cannot see.
     NoiseFloor,
     MatchConditioning,
+
+    // Not a measurement at all, but provenance: whether this point was measured
+    // on the first solve or repaired by the second pass. On the map rather than
+    // only in the run report because the count answers "how many" and a reader's
+    // actual question is WHERE -- repaired points clustered along one edge mean
+    // something quite different from repaired points scattered evenly.
+    RecoveredOnSecondPass,
 };
 
 // One channel the viewport offers, as its selector shows it.
@@ -74,6 +81,16 @@ QString fieldChannelNote(FieldChannel channel);
 // dimensionless" is not a sentence anyone writes.
 bool fieldChannelIsDimensionless(FieldChannel channel);
 bool fieldChannelIsStrain(FieldChannel channel);
+
+// True where the channel takes two values and no others, so every rule written
+// for a continuous quantity is wrong for it.
+//
+// ⚑ A colour scale's five evenly spaced ticks read 0, 0.25, 0.5, 0.75, 1 over a
+// flag, and three of those cannot occur -- the same flaw already recorded as
+// the reason a displacement scale is not centred on zero, one channel along.
+// The scale bar asks this before deciding how many labels to draw, and the
+// prose asks it before trying to describe a range.
+bool fieldChannelIsFlag(FieldChannel channel);
 
 // True where the channel says how far a measurement can be trusted rather than
 // what it measured. Larger is worse in both, which is the opposite reading from

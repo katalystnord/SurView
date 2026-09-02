@@ -11,8 +11,9 @@ Ordered within each section by what unblocks the most.
 The whole 2D loop, end to end: import and record images with provenance, define
 a region by hand or by auto-detection, correlate a sequence with optional
 reference updating, repair the points the first solve could not measure, fit
-strain, report per-point reliability, read any point off the field, and export
-the result as `.vtu` or `.csv` with full provenance. Six synthetic example sets
+strain, report per-point reliability, read any point off the field, plot a
+quantity against frame with virtual extensometers, and export the result as
+`.vtu` or `.csv` with full provenance. Six synthetic example sets
 with an exactly known answer and three real ones.
 
 ## Gaps against other DIC GUIs (reviewed 2026-09-01)
@@ -25,6 +26,8 @@ the idiom of the field, and these are what we do not have yet:
   rules exist now, so this is packaging rather than plumbing.
 - **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
   can; the application has no path to it.
+- **A line probe.** We plot against frame and have virtual extensometers;
+  reading a quantity along a line at one frame is still missing.
 - **Image acquisition.** iCorrVision has a frame grabber and drives the
   camera. Out of scope for now, noted because it is a real difference.
 - **Export styling.** pyALDIC has a preview tab for colour map, fonts and
@@ -38,9 +41,13 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
-- **Plots over the sequence.** Nothing charts a quantity against frame, and no
-  virtual extensometer or line probe. Every commercial tool has this; it is how
-  a loading curve gets read, and it is now the largest gap in the 2D loop.
+- **A line probe.** Plots over the sequence and virtual extensometers exist now;
+  what is still missing is reading a quantity ALONG a line at one frame, which
+  is the other half of what commercial tools offer. The sampling it needs is
+  already built (`sampleFieldAt()` in `core/Series.h`), so this is a chart and a
+  placement mode rather than new arithmetic.
+- **Stereo and 3D.** The engine has the capability; the application has no path
+  to it. Now the largest gap in the tool.
 
 ## Then
 
@@ -48,8 +55,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   (checkerboard, dot target, stereo epipolar). The screen is not designed:
   live numeric pose coaching, a coverage heat map, and drag-to-exclude on a
   live reprojection-error chart.
-- **Stereo and 3D.** The engine has the capability; the application has no
-  path to it.
 - **Packaging.** No installer, no `install()` rules, no release artifacts.
   This is the same item as shipping the examples, one layer out.
 
