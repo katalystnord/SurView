@@ -209,6 +209,18 @@
   .bullets { columns: 2; column-gap: 34px; margin: 0; padding-left: 20px; color: var(--text-dim); font-size: 0.96rem; }
   .bullets li { margin-bottom: 9px; break-inside: avoid; }
   @media (max-width: 700px) { .bullets { columns: 1; } }
+
+  /* Sister tools: three cards, the current one marked so a reader always
+     knows which page they are standing on. */
+  .sisters { display: grid; grid-template-columns: 1fr; gap: 22px; }
+  @media (min-width: 820px) { .sisters { grid-template-columns: repeat(3, 1fr); } }
+  .sister { background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
+            padding: 22px; }
+  .sister h3 { margin: 0 0 6px; font-size: 1.02rem; }
+  .sister .role { font-size: 0.82rem; text-transform: uppercase; letter-spacing: 0.06em;
+                  color: var(--accent-strong); font-weight: 600; margin-bottom: 10px; }
+  .sister p { margin: 0 0 10px; color: var(--text-dim); font-size: 0.93rem; }
+  .sister.this { border-color: var(--accent); background: var(--accent-soft); }
 </style>
 </head>
 <body>
@@ -235,6 +247,7 @@
     <a href="#screenshots">Screenshots</a>
     <a href="#examples">Example data</a>
     <a href="#get">Download</a>
+    <a href="#sisters">Sister tools</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </nav>
 </header>
@@ -507,6 +520,45 @@ cmake --build build
     </p>
   </section>
 
+  <section id="sisters">
+    <h2>Sister tools</h2>
+    <p class="section-sub">
+      Three tools on the same bench, in the same ecosystem, under open
+      licences.
+    </p>
+    <div class="sisters">
+      <div class="sister this">
+        <div class="role">Measure the pattern</div>
+        <h3>SurView DIC</h3>
+        <p>
+          Speckle images in, displacement and strain fields out, with every
+          point's reliability reported and full provenance carried into
+          ParaView and FreeCAD.
+        </p>
+        <p style="margin:0"><strong>This tool.</strong></p>
+      </div>
+      <div class="sister">
+        <div class="role">Fabricate the pattern</div>
+        <h3>PatternFab</h3>
+        <p>
+          An optimized speckle pattern into a 3D-printed stamp, a laser-cut
+          stencil, a decal or a direct-write file, with the manufacturing
+          constraints applied before anything is made.
+        </p>
+        <a href="https://github.com/katalystnord/patternfab">PatternFab</a>
+      </div>
+      <div class="sister">
+        <div class="role">Digitise the figure</div>
+        <h3>PlotTracer</h3>
+        <p>
+          Data back out of the charts in a paper. Free, offline and
+          cross-platform.
+        </p>
+        <a href="https://plottracer.com">plottracer.com</a>
+      </div>
+    </div>
+  </section>
+
   <section>
     <h2>Licence and credits</h2>
     <div class="credit-box">
@@ -537,6 +589,7 @@ cmake --build build
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
     <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/katalystnord/OpenCorr">Engine fork</a>
+    <a href="https://github.com/katalystnord/patternfab">PatternFab</a>
     <a href="https://katalystnord.github.io/nmrium-desktop/">NMRium Desktop</a>
     <a href="https://plottracer.com/">PlotTracer</a>
   </div>
