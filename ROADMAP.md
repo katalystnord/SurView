@@ -76,6 +76,30 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   one recovers points lost to a bad guess, the other points lost to a stale
   reference.
 
+  **Three decisions still open, put to David 2026-09-02 and not yet answered.**
+  A recommendation is recorded against each, so the work can proceed under a
+  stated assumption rather than stall; each is cheap to reverse if the answer
+  differs, and none of them should be decided silently in code.
+
+  1. **Does the pass run by default?** Reference updating is off by default
+     because it ABANDONS points it cannot carry across. This pass does not: it
+     only attempts points that already failed, so nothing that solved can
+     change. *Recommendation: on by default, stated in the run report.* The
+     opposite case is that it changes how a run is conducted, and this project
+     switches those on deliberately.
+  2. **Is a recovered point marked as one?** It was genuinely re-solved, so it
+     is a real measurement and needs no apology. But it reached its answer by a
+     different route, and this code base marks that kind of thing everywhere
+     else. *Recommendation: a per-point flag, carried into the readout, the run
+     report and both export formats, beside `solved`.*
+  3. **Where do the neighbourhood radius and minimum neighbour count come
+     from?** `RegionFit2D` needs both. *Recommendation: derived from the grid
+     step the run already uses, stated on screen, not editable, and exposed as
+     controls only if a real case shows the derived values failing.* Two more
+     spin boxes are two more numbers a user has no basis to choose, which is
+     the reasoning already recorded for not colouring the noise floor against
+     an invented threshold.
+
 ## Then
 
 - **Calibration UX.** Engine-side detection and quality metrics are done
