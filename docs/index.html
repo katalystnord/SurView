@@ -336,7 +336,16 @@
       </div>
       <div class="spec-row">
         <div class="spec-key">Engine</div>
-        <div class="spec-val">OpenCorr, pinned to an exact revision recorded in the repository and compiled into every export.</div>
+        <div class="spec-val">
+          <a href="https://github.com/katalystnord/OpenCorr">katalystnord/OpenCorr</a>,
+          branch <code>surview-dev</code>: our working fork of
+          <a href="https://github.com/vincentjzy/OpenCorr">OpenCorr</a> (Jiang,
+          MPL-2.0). Required, and not interchangeable with upstream today -
+          auto-detected regions, per-point reliability and per-point failure
+          reasons are all capability work that lives in the fork. Pinned to an
+          exact commit, recorded in the repository and compiled into every
+          export.
+        </div>
       </div>
       <div class="spec-row">
         <div class="spec-key">Built with</div>
@@ -504,7 +513,9 @@
     <h2>Download</h2>
     <p class="section-sub">
       SurView builds from source against a pinned engine revision, so a build is
-      always traceable to one exact correlation library.
+      always traceable to one exact correlation library. Both clones are
+      required: the second is the correlation engine, and SurView will not
+      configure without it.
     </p>
     <pre><code>git clone https://github.com/katalystnord/SurView.git
 git clone -b surview-dev https://github.com/katalystnord/OpenCorr.git
@@ -517,6 +528,15 @@ cmake --build build
     <p class="section-sub" style="margin-top:24px">
       The last line opens a real tension sequence with its reference and four
       loaded frames already imported. Press Run Correlation.
+    </p>
+    <p class="section-sub" style="margin-top:18px">
+      The engine clone is <a href="https://github.com/katalystnord/OpenCorr">katalystnord/OpenCorr</a>
+      rather than upstream on purpose. It is our working fork of Jiang's
+      OpenCorr, and several things SurView shows on screen are implemented
+      there. Upstream will not build this application as it stands. Fixes that are generally useful go upstream as pull requests
+      rather than staying in the fork, and a script in the repository checks
+      all three links - upstream to fork, our upstreamed fixes by content, and
+      fork to the pinned commit.
     </p>
   </section>
 
@@ -555,8 +575,15 @@ cmake --build build
     <div class="credit-box">
       <p>
         Correlation is by <a href="https://github.com/vincentjzy/OpenCorr">OpenCorr</a>
-        (Jiang, MPL-2.0): 2D, stereo and volumetric DVC in one library. SurView
-        drives it and sends fixes back upstream.
+        (Jiang, MPL-2.0): 2D, stereo and volumetric DVC in one library, and the
+        work to cite for the method.
+      </p>
+      <p>
+        SurView builds against
+        <a href="https://github.com/katalystnord/OpenCorr">our working fork</a>
+        of it, which carries the capability work this application needs. It is a
+        staging area for that work and for fixes on their way upstream, not an
+        attempt to run a competing version of OpenCorr.
       </p>
       <p>
         The application shell is <a href="https://www.qt.io/">Qt</a> and
