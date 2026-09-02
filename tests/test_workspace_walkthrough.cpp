@@ -198,6 +198,26 @@ QString pointPanelText(QWidget *root)
     return parts.join(QLatin1Char('\n'));
 }
 
+// Wait for an action to become enabled, rather than asserting the instant the
+// field appears.
+//
+// ⚑ The field is rendered as soon as the measured frame lands; what a run
+// ENABLES follows separately. Asserting immediately after hasField() therefore
+// asserts an ordering nothing guarantees, and it holds on a fast machine and
+// fails on a loaded CI runner -- which is exactly how it was found, with "a
+// measured field still could not be exported as a table" against an
+// application that exports it perfectly well a moment later.
+//
+// This waits for the state the case is actually about, so a slow machine
+// reports the same result as a fast one. It is not a sleep: it returns as soon
+// as the condition holds.
+bool waitForEnabled(QAction *action, int timeoutMs = 5000)
+{
+    if (!action)
+        return false;
+    return QTest::qWaitFor([action] { return action->isEnabled(); }, timeoutMs);
+}
+
 // The two numbers on the panel's displacement line, as numbers.
 //
 // Returns nothing when the panel is not showing a measured displacement at all
@@ -791,7 +811,7 @@ void TestWorkspaceWalkthrough::a_measured_field_leaves_the_application_and_says_
              "the correlation produced no field within two minutes");
 
     QAction *exportAction = actionLabelled(&window, QStringLiteral("Export"));
-    QVERIFY2(exportAction->isEnabled(),
+    QVERIFY2(waitForEnabled(exportAction),
              "a measured field still could not be exported");
     QVERIFY2(!exportAction->toolTip().contains(QStringLiteral("not implemented"),
                                                Qt::CaseInsensitive),
@@ -1369,7 +1389,8 @@ void TestWorkspaceWalkthrough::a_measured_field_can_also_leave_as_a_table_anythi
     // action that exists but sits in no menu is a capability nobody can reach.
     QAction *csv = menuActionLabelled(&window, QStringLiteral(".csv"));
     QVERIFY2(csv, "no menu offers the field as a table");
-    QVERIFY2(csv->isEnabled(), "a measured field still could not be exported as a table");
+    QVERIFY2(waitForEnabled(csv),
+             "a measured field still could not be exported as a table");
     QVERIFY2(!csv->toolTip().isEmpty(), "the action does not say what it does");
 
     QTemporaryDir dir;
