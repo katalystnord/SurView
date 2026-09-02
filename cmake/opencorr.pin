@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=b9fd4485a48b4f69606d2a6907067a26edfc27ad
+SURVIEW_OPENCORR_PIN=dd9bc296ad544bca93dfa0ef3a59d7af47a7a855
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=fork-readme-says-what-the-branch-is-for
+SURVIEW_OPENCORR_PIN_NOTE=region-fit-exported-through-opencorr-h

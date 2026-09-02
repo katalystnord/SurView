@@ -40,6 +40,41 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
+- **A second pass at the points that failed.** Every run reports points the
+  solver rejected: 439 of 8700 on the OHT-CFRP pair, and the synthetic tension
+  sequence falls to 47 per cent solved before re-anchoring rescues it. Most of
+  those failures are a poor initial guess rather than an unmeasurable place on
+  the specimen, and the engine now has the remedy: `RegionFit2D` fits an affine
+  displacement field to the reliable POIs around a failed one, which is a far
+  better starting point than the one that failed.
+
+  The design decision this hangs on, and it has to be made before any code:
+  **a fitted point is not a measured point.** Regional fitting produces an
+  estimate borrowed from the neighbours, and the engine says so by resetting
+  that point's correlation to zero. The honest use is therefore as an initial
+  guess that is then RE-SOLVED by ICGN, so what is reported is a real
+  correlation at that point, and a point that still fails stays failed. Using
+  the fitted value directly as a displacement would put an interpolation into
+  the field wearing the same colour as a measurement, which is the trap already
+  ruled out for unmeasured points at export and for strain fitted onto rejected
+  points.
+
+  Two properties of the module to design around, both established by
+  `region_fit_smoke_test.cpp` in the engine fork:
+
+  - **It declines silently.** Given too few reliable neighbours it returns
+    having touched nothing, so a declined point and an untried one are the
+    same state. SurView must track the attempt itself rather than reading it
+    back off the point.
+  - **It has never been through our own audit.** It landed upstream on
+    2026-08-14, after both full-branch audits, and upstream's own history
+    around it is unsettled: a `knn_search` fix beside it was reverted within
+    two commits. The smoke test is its first coverage in this fork.
+
+  Worth doing because it attacks the number a user actually looks at, and
+  because it composes with reference updating rather than competing with it:
+  one recovers points lost to a bad guess, the other points lost to a stale
+  reference.
 
 ## Then
 
