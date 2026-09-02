@@ -81,9 +81,10 @@ CorrelationSettings settings()
     return s;
 }
 
-CorrelationResult measure(const QString &reference, const QString &target)
+CorrelationResult measure(const QString &reference, const QString &target,
+                          CorrelationSettings use = settings())
 {
-    CorrelationRunner runner(settings(), RegionOfInterest(),
+    CorrelationRunner runner(use, RegionOfInterest(),
                              example(reference), example(target));
     CorrelationResult result;
     QString failure;
@@ -150,6 +151,8 @@ private slots:
     void a_known_sub_pixel_translation_is_measured_to_a_hundredth_of_a_pixel();
     void a_known_uniaxial_tension_is_measured_as_the_strain_it_was_given();
     void a_known_rigid_rotation_is_measured_as_no_strain_at_all();
+    void points_recovered_by_the_second_pass_measure_the_right_displacement();
+    void the_second_pass_measures_far_more_of_a_hard_frame();
 };
 
 void TestMeasuredAccuracy::the_examples_state_an_answer_this_suite_can_read()
@@ -225,6 +228,24 @@ void TestMeasuredAccuracy::a_known_uniaxial_tension_is_measured_as_the_strain_it
                                        "none").arg(mean.exy)));
 }
 
+// The displacement the stated deformation puts at one reference pixel. Derived
+// from the frame's own deformation gradient and rigid shift rather than
+// restated, for the reason statedAnswer() is read rather than copied.
+void statedDisplacementAt(const QJsonObject &stated, double x, double y,
+                          double &u, double &v)
+{
+    const QJsonArray f = stated[QStringLiteral("deformation_gradient")].toArray();
+    const QJsonArray shift = stated[QStringLiteral("rigid_shift_px")].toArray();
+
+    const double f00 = f.at(0).toArray().at(0).toDouble();
+    const double f01 = f.at(0).toArray().at(1).toDouble();
+    const double f10 = f.at(1).toArray().at(0).toDouble();
+    const double f11 = f.at(1).toArray().at(1).toDouble();
+
+    u = f00 * x + f01 * y + shift.at(0).toDouble() - x;
+    v = f10 * x + f11 * y + shift.at(1).toDouble() - y;
+}
+
 void TestMeasuredAccuracy::a_known_rigid_rotation_is_measured_as_no_strain_at_all()
 {
     // ⚑ The case worth having most. The specimen is turned, not deformed, so
@@ -257,6 +278,94 @@ void TestMeasuredAccuracy::a_known_rigid_rotation_is_measured_as_no_strain_at_al
                                 .arg(QString::fromLatin1(named.first))
                                 .arg(named.second)));
     }
+}
+
+void TestMeasuredAccuracy::points_recovered_by_the_second_pass_measure_the_right_displacement()
+{
+    // ⚑ THE CASE THIS FEATURE MOST NEEDS. A recovered point starts from a
+    // displacement BORROWED FROM ITS NEIGHBOURS, so the failure that matters is
+    // not that it fails -- a failure is honest and stays in the report -- but
+    // that it converges confidently on a plausible wrong answer inherited from
+    // the fit. Nothing in a correlation coefficient can see that. Only an
+    // exactly known answer can, which is what these fixtures are for.
+    //
+    // 7 degrees of rotation is far enough that the first pass loses most of the
+    // field, so the great majority of what is measured here was recovered.
+    const QJsonObject stated = statedAnswer(QStringLiteral("rotation"), 3);
+    QCOMPARE(stated[QStringLiteral("amount")].toDouble(), 7.0);
+
+    const CorrelationResult result =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"));
+
+    int recovered = 0;
+    double worst = 0.0;
+    double worstAt = 0.0;
+    for (const CorrelationPoint &point : result.points) {
+        if (!point.recovered || !point.converged)
+            continue;
+        recovered++;
+
+        double u = 0.0;
+        double v = 0.0;
+        statedDisplacementAt(stated, double(point.x), double(point.y), u, v);
+        const double error = std::hypot(double(point.u) - u, double(point.v) - v);
+        if (error > worst) {
+            worst = error;
+            worstAt = double(point.x);
+        }
+    }
+
+    QVERIFY2(recovered > 100,
+             qPrintable(QStringLiteral("only %1 points were recovered, too few "
+                                       "for this case to mean anything")
+                            .arg(recovered)));
+
+    // A tenth of a pixel over displacements reaching 48 px.
+    //
+    // ⚑ WHAT THIS BOUND DOES NOT CATCH, said plainly because it looks like it
+    // should. It does NOT catch a fitted value reported without being
+    // re-solved: on a smoothly rotating field the affine fit is itself accurate
+    // to well inside this bound, so displacement error cannot tell an
+    // interpolation from a measurement here. Verified by negative check, which
+    // deleted the re-solve and left every case in this file green. What catches
+    // that is a_fitted_value_that_was_never_re_solved_is_never_accepted in
+    // tests/test_recovery.cpp, which asks about the correlation instead --
+    // RegionFit2D zeroes it on purpose to say the answer was borrowed.
+    //
+    // What this bound DOES catch is the other half, and the half no unit test
+    // can reach: a point that genuinely re-solved but converged on the wrong
+    // answer, plausibly and confidently, having been walked there by its
+    // neighbours.
+    QVERIFY2(worst < 0.1,
+             qPrintable(QStringLiteral("a recovered point was %1 px from the "
+                                       "stated displacement (near x = %2). A "
+                                       "recovered point must be MEASURED, not "
+                                       "inherited.")
+                            .arg(worst).arg(worstAt)));
+}
+
+void TestMeasuredAccuracy::the_second_pass_measures_far_more_of_a_hard_frame()
+{
+    // The claim the feature is for, pinned against the same frame both ways, so
+    // a change that quietly makes the pass inert is caught. Reference updating
+    // had exactly that failure and nothing noticed until a sequence was run by
+    // hand.
+    CorrelationSettings off = settings();
+    off.recovery.enabled = false;
+
+    const CorrelationResult without =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"),
+                off);
+    const CorrelationResult with =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"));
+
+    QVERIFY2(with.converged > without.converged * 2,
+             qPrintable(QStringLiteral("the pass measured %1 points where the "
+                                       "solver alone measured %2; it is barely "
+                                       "doing anything")
+                            .arg(with.converged).arg(without.converged)));
+    QVERIFY2(!without.recoveryRequested && with.recoveryRequested,
+             "the result must say whether the pass was asked for");
 }
 
 QTEST_MAIN(TestMeasuredAccuracy)

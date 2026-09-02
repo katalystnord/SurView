@@ -65,6 +65,13 @@ Project sampleProject(const QString &dir)
     project.settings.strainMinPoints = 8;
     project.settings.strainMeasure = StrainMeasure::GreenLagrange;
 
+    // Deliberately every field different from its default, so a field the
+    // writer forgot cannot pass by coming back as the default it never left.
+    project.settings.recovery.enabled = false;
+    project.settings.recovery.retryBelowZncc = 0.55;
+    project.settings.recovery.reliableZncc = 0.85;
+    project.settings.recovery.maxRounds = 6;
+
     project.referenceUpdate.enabled = true;
     project.referenceUpdate.znccThreshold = 0.85;
     project.referenceUpdate.percentile = 0.8;
@@ -120,6 +127,15 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
     QCOMPARE(loaded.project.settings.strainMinPoints, saved.settings.strainMinPoints);
     QCOMPARE(int(loaded.project.settings.strainMeasure),
              int(saved.settings.strainMeasure));
+
+    QCOMPARE(loaded.project.settings.recovery.enabled,
+             saved.settings.recovery.enabled);
+    QCOMPARE(loaded.project.settings.recovery.retryBelowZncc,
+             saved.settings.recovery.retryBelowZncc);
+    QCOMPARE(loaded.project.settings.recovery.reliableZncc,
+             saved.settings.recovery.reliableZncc);
+    QCOMPARE(loaded.project.settings.recovery.maxRounds,
+             saved.settings.recovery.maxRounds);
 
     QCOMPARE(loaded.project.referenceUpdate.enabled, saved.referenceUpdate.enabled);
     QCOMPARE(loaded.project.referenceUpdate.znccThreshold,

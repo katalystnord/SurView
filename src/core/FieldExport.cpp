@@ -137,6 +137,14 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     solved->SetNumberOfComponents(1);
     solved->SetNumberOfTuples(count);
 
+    // Beside `solved`, and for the same reason: a downstream reader should not
+    // have to infer how a point reached its answer. A recovered point is a real
+    // measurement with its own correlation, and this says which route it took.
+    vtkNew<vtkUnsignedCharArray> recovered;
+    recovered->SetName("recovered_on_second_pass");
+    recovered->SetNumberOfComponents(1);
+    recovered->SetNumberOfTuples(count);
+
     auto noiseFloor = namedArray("displacement_noise_floor", 1, count);
     auto conditioning = namedArray("match_conditioning", 1, count);
 
@@ -159,6 +167,7 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
         // so a rejected point's zncc is a status rather than a correlation.
         zncc->SetTuple1(i, has ? point.zncc : nothing);
         solved->SetTuple1(i, has ? 1 : 0);
+        recovered->SetTuple1(i, point.recovered ? 1 : 0);
 
         // Zero is the flattering reading for both of these -- a perfect
         // measurement, a perfectly sharp cost -- so an unestablished one is
@@ -179,6 +188,7 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     grid->GetPointData()->AddArray(magnitude);
     grid->GetPointData()->AddArray(zncc);
     grid->GetPointData()->AddArray(solved);
+    grid->GetPointData()->AddArray(recovered);
     grid->GetPointData()->AddArray(noiseFloor);
     grid->GetPointData()->AddArray(conditioning);
     grid->GetPointData()->SetVectors(displacement);
@@ -403,6 +413,7 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                         QStringLiteral("magnitude_px"),
                         QStringLiteral("zncc"),
                         QStringLiteral("solved"),
+                        QStringLiteral("recovered_on_second_pass"),
                         QStringLiteral("rejection"),
                         QStringLiteral("noise_floor_px"),
                         QStringLiteral("match_conditioning")};
@@ -432,6 +443,7 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
             // correlation and must not land in a column anyone will average.
             << csvValue(has, double(point.zncc))
             << (has ? QStringLiteral("1") : QStringLiteral("0"))
+            << (point.recovered ? QStringLiteral("1") : QStringLiteral("0"))
             // Stated outright rather than inferred from the holes: a row of
             // empty cells could as easily be a bug in this writer as a point
             // the solver refused.

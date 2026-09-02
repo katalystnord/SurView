@@ -131,6 +131,7 @@ private slots:
     // The re-anchor rule's own numbers mean nothing while it is off, so they
     // follow the switch that turns it on.
     void updateReferenceUpdateControls();
+    void updateRecoveryControls();
 
 private:
     void createActions();
@@ -256,6 +257,12 @@ private:
     QCheckBox *m_reanchorEnabled = nullptr;
     QDoubleSpinBox *m_reanchorThreshold = nullptr;
     QSpinBox *m_reanchorShare = nullptr;
+
+    QCheckBox *m_recoveryEnabled = nullptr;
+    QDoubleSpinBox *m_recoveryRetryBelow = nullptr;
+    QDoubleSpinBox *m_recoveryReliable = nullptr;
+    QSpinBox *m_recoveryRounds = nullptr;
+    QLabel *m_recoveryNeighbourhood = nullptr;
 
     QProgressBar *m_progress = nullptr;
 

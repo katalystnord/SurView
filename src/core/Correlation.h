@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Recovery.h"
 #include "core/Roi.h"
 #include "core/StrainFit.h"
 
@@ -40,6 +41,12 @@ struct CorrelationSettings
     double strainRadius      = 25.0;   // px, the subregion the fit spans
     int    strainMinPoints   = 5;      // fewest points the fit will accept
     StrainMeasure strainMeasure = StrainMeasure::Cauchy;
+
+    // --- the second pass at points that failed ------------------------------
+    // How forgiving the run is about repairing points the first solve could not
+    // measure well. On by default; see core/Recovery.h for why, and for why
+    // being permissive here is safe.
+    RecoveryPolicy recovery;
 
     // Empty when the strain fit will use the subregion as asked. Restated from
     // strainSubregionWarning() so a caller has one thing to ask.
@@ -95,6 +102,17 @@ struct CorrelationPoint
     // point of reading: statusDescription() is the engine's, and core/
     // Correlation.cpp is one of only two files allowed to know that.
     QString failureReason;
+
+    // Measured on the second pass, from an initial guess fitted to the reliable
+    // points around it, rather than on the first solve's own initialisation.
+    //
+    // It is a real measurement -- ICGN re-solved here and this correlation is
+    // its own -- and it needs no apology. It is marked because it reached its
+    // answer by a different route, and this code base marks that everywhere
+    // else. Marking is also what makes a forgiving pass honest: we can afford
+    // to keep more points precisely because a reader can see which ones were
+    // hard won. See core/Recovery.h.
+    bool recovered = false;
 
     // Strain, FITTED from this point's neighbours rather than measured here.
     // Meaningless unless strainFitted: the fit declines wherever too few
@@ -179,6 +197,14 @@ struct CorrelationResult
     int  belowStrainFloor = 0;   // points too poorly correlated to feed a fit
     StrainMeasure strainMeasure = StrainMeasure::Cauchy;
     double strainRadius = 0.0;
+
+    // What the recovery pass did. Reported rather than inferred: a run where
+    // recovery was switched off and a run where it was on and recovered nothing
+    // produce identical fields, and they mean different things.
+    bool recoveryRequested = false;
+    int  recoveredPoints = 0;
+    int  recoveryRounds = 0;
+    int  stillUnrecovered = 0;   // attempted, and still below the retry bar
 
     double secondsElapsed = 0.0;
     bool   cancelled      = false;

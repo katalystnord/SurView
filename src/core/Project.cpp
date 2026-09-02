@@ -112,6 +112,10 @@ QString saveProject(const QString &path, const Project &project)
     settings[QStringLiteral("strainRadius")] = s.strainRadius;
     settings[QStringLiteral("strainMinPoints")] = s.strainMinPoints;
     settings[QStringLiteral("strainMeasure")] = int(s.strainMeasure);
+    settings[QStringLiteral("recoveryEnabled")] = s.recovery.enabled;
+    settings[QStringLiteral("recoveryRetryBelow")] = s.recovery.retryBelowZncc;
+    settings[QStringLiteral("recoveryReliable")] = s.recovery.reliableZncc;
+    settings[QStringLiteral("recoveryMaxRounds")] = s.recovery.maxRounds;
     root[QStringLiteral("settings")] = settings;
 
     const ReferenceUpdatePolicy &p = project.referenceUpdate;
@@ -208,6 +212,14 @@ ProjectLoad loadProject(const QString &path)
         settings[QStringLiteral("strainMinPoints")].toInt(s.strainMinPoints);
     s.strainMeasure =
         StrainMeasure(settings[QStringLiteral("strainMeasure")].toInt(int(s.strainMeasure)));
+    s.recovery.enabled =
+        settings[QStringLiteral("recoveryEnabled")].toBool(s.recovery.enabled);
+    s.recovery.retryBelowZncc =
+        settings[QStringLiteral("recoveryRetryBelow")].toDouble(s.recovery.retryBelowZncc);
+    s.recovery.reliableZncc =
+        settings[QStringLiteral("recoveryReliable")].toDouble(s.recovery.reliableZncc);
+    s.recovery.maxRounds =
+        settings[QStringLiteral("recoveryMaxRounds")].toInt(s.recovery.maxRounds);
 
     const QJsonObject policy = root[QStringLiteral("referenceUpdate")].toObject();
     ReferenceUpdatePolicy &p = out.project.referenceUpdate;

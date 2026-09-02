@@ -6,6 +6,7 @@
 #include <QFileInfo>
 #include <QThread>
 
+#include <algorithm>
 #include <cmath>
 #include <limits>
 #include <memory>
@@ -296,6 +297,149 @@ void CorrelationRunner::run()
         if (m_cancelled)
             result.cancelled = true;
 
+        // --- a second pass at the points that were not measured well ----------
+        //
+        // Most points a solve loses are not unmeasurable places on the specimen;
+        // they are places where the initial guess was poor. RegionFit2D fits an
+        // affine displacement field to the reliable points around a bad one, and
+        // that fit is a far better starting point than the one that failed.
+        //
+        // ⚑ THE FIT IS AN INITIAL GUESS, NEVER AN ANSWER. The engine resets a
+        // fitted point's correlation to zero precisely because the value is
+        // borrowed from the neighbours. So every fitted point goes straight back
+        // through the same solver, and what is reported is a real correlation
+        // measured at that point. The rules for which points are attempted,
+        // which are trusted to seed, and which answers are kept all live in
+        // core/Recovery.h, where they are engine-free and tested exhaustively.
+        //
+        // Rounds, not one pass: each round's recoveries become the next round's
+        // seeds, so repair spreads inward from good ground. The middle of a
+        // large failed patch has no reliable neighbour at all on the first
+        // round.
+        std::vector<bool> recovered(size_t(total), false);
+        result.recoveryRequested = m_settings.recovery.enabled;
+
+        if (m_settings.recovery.enabled && !m_cancelled) {
+            const RecoveryNeighbourhood hood =
+                recoveryNeighbourhood(m_settings.recovery, result.step);
+            RegionFit2D region_fit(hood.searchRadius, hood.minNeighbours,
+                                   threads);
+
+            // A view of the queue in the terms core/Recovery.h reasons about.
+            // The judgement of what counts as a failure stays the engine's, via
+            // isFailureStatus(), exactly as it does in the final conversion.
+            auto viewOfQueue = [&]() {
+                CorrelationResult view;
+                view.step = result.step;
+                view.points.reserve(total);
+                for (int i = 0; i < total; i++) {
+                    const POI2D &poi = queue[size_t(i)];
+                    CorrelationPoint point;
+                    point.gridIndex = gridIndex[size_t(i)];
+                    point.x = poi.x;
+                    point.y = poi.y;
+                    point.zncc = poi.result.zncc;
+                    point.converged = !isFailureStatus(poi.result.zncc);
+                    point.recovered = recovered[size_t(i)];
+                    view.points.append(point);
+                }
+                return view;
+            };
+
+            CorrelationResult view = viewOfQueue();
+            result.stillUnrecovered =
+                int(pointsNeedingRecovery(view, m_settings.recovery).size());
+
+            const QString stageName = tr("repairing points that failed");
+            int accepted = 1;   // enough to enter the loop
+            int round = 0;
+
+            while (!m_cancelled && recoveryShouldContinue(round, accepted,
+                                                          m_settings.recovery)
+                   && recoveryCanRun(view, m_settings.recovery)) {
+                const QVector<int> attempted =
+                    pointsNeedingRecovery(view, m_settings.recovery);
+                const QVector<int> seedIndices =
+                    recoverySeeds(view, m_settings.recovery);
+
+                emit progress(0, attempted.size(), stageName);
+
+                std::vector<POI2D> seeds;
+                seeds.reserve(size_t(seedIndices.size()));
+                for (int index : seedIndices)
+                    seeds.push_back(queue[size_t(index)]);
+
+                std::vector<POI2D> trial;
+                trial.reserve(size_t(attempted.size()));
+                for (int index : attempted)
+                    trial.push_back(queue[size_t(index)]);
+
+                region_fit.setNeighbor(seeds);
+                region_fit.prepare();
+
+                // Chunked for the reason every other engine call here is: the
+                // whole-queue call blocks with no progress and no way to stop.
+                const int trialCount = int(trial.size());
+                for (int start = 0; start < trialCount; start += kChunkPoints) {
+                    if (m_cancelled)
+                        break;
+                    const int count = std::min(kChunkPoints, trialCount - start);
+                    std::vector<POI2D> chunk(trial.begin() + start,
+                                             trial.begin() + start + count);
+                    region_fit.compute(chunk);
+                    solver->compute(chunk);
+                    std::copy(chunk.begin(), chunk.end(), trial.begin() + start);
+                    emit progress(start + count, trialCount, stageName);
+                }
+                if (m_cancelled)
+                    break;
+
+                QVector<CorrelationPoint> resolved;
+                resolved.reserve(trialCount);
+                for (const POI2D &poi : trial) {
+                    CorrelationPoint point;
+                    point.x = poi.x;
+                    point.y = poi.y;
+                    point.u = poi.deformation.u;
+                    point.v = poi.deformation.v;
+                    point.zncc = poi.result.zncc;
+                    point.converged = !isFailureStatus(poi.result.zncc);
+                    resolved.append(point);
+                }
+
+                const QVector<int> kept =
+                    acceptRecoveryRound(view, attempted, resolved);
+
+                // The same answers, written back to the engine's own points, so
+                // the reliability pass and the strain fit that follow see the
+                // repaired field rather than the one before it.
+                for (int i = 0; i < attempted.size(); i++) {
+                    if (!kept.contains(attempted[i]))
+                        continue;
+                    queue[size_t(attempted[i])] = trial[size_t(i)];
+                    recovered[size_t(attempted[i])] = true;
+                }
+
+                accepted = int(kept.size());
+                round++;
+            }
+
+            result.recoveryRounds = round;
+
+            // ⚑ Counted from the marks, not summed over the rounds. A point
+            // can improve in one round and improve again in a later one, and
+            // summing each round's acceptances counts it twice -- so a run
+            // reported 42 points recovered while 41 points carried the mark,
+            // and the field and the report disagreed by one. What a reader is
+            // owed is how many POINTS were recovered, which is what the marks
+            // say.
+            result.recoveredPoints =
+                int(std::count(recovered.begin(), recovered.end(), true));
+            result.stillUnrecovered =
+                int(pointsNeedingRecovery(viewOfQueue(),
+                                          m_settings.recovery).size());
+        }
+
         // --- how far each point can be trusted --------------------------------
         // Always run, with no setting to turn it off: under tenet 9 the account
         // of how far a measurement can be trusted is not an optional extra, and
@@ -468,6 +612,7 @@ void CorrelationRunner::run()
                     result.failuresByReason[point.failureReason]++;
                 }
             }
+            point.recovered = recovered[size_t(i)];
             result.points.append(point);
         }
 

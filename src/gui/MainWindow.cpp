@@ -19,6 +19,8 @@
 #include <QMenu>
 #include <QEventLoop>
 #include <QCheckBox>
+#include <QAbstractSpinBox>
+#include <QEvent>
 #include <QComboBox>
 #include <QDockWidget>
 #include <QDoubleSpinBox>
@@ -48,6 +50,64 @@
 namespace {
 
 // Which record a project-tree item stands for, and which one of them, so a
+// ⚑ Keeps the mouse wheel from editing a setting while a panel is being
+// scrolled. A Qt spin box or combo box takes the wheel whether or not it has
+// focus, so on a panel taller than its dock -- which the Analysis panel is --
+// scrolling down to READ it silently changes whatever control the pointer
+// passes over. Found by screenshot on 2026-09-02: scrolling once moved the
+// strain subregion from 25.0 px to 11.0 px, and the subset radius from 16 px to
+// 11 px, with nothing on screen to say a setting had moved.
+//
+// The wheel is not taken away, it is made deliberate: a control the user has
+// clicked into has focus and keeps it. What is refused is the wheel arriving at
+// a control the user was only scrolling past, which is then passed to the
+// scroll area, so the panel scrolls as intended.
+class WheelGuard : public QObject
+{
+public:
+    using QObject::QObject;
+
+    // Refuse the wheel on every scrollable control under `root`, now and for
+    // any control added to it later.
+    static void protect(QWidget *root)
+    {
+        auto *guard = new WheelGuard(root);
+        const auto spins = root->findChildren<QAbstractSpinBox *>();
+        for (QAbstractSpinBox *spin : spins) {
+            spin->setFocusPolicy(Qt::StrongFocus);
+            spin->installEventFilter(guard);
+        }
+        const auto combos = root->findChildren<QComboBox *>();
+        for (QComboBox *combo : combos) {
+            combo->setFocusPolicy(Qt::StrongFocus);
+            combo->installEventFilter(guard);
+        }
+    }
+
+protected:
+    bool eventFilter(QObject *watched, QEvent *event) override
+    {
+        if (event->type() != QEvent::Wheel)
+            return QObject::eventFilter(watched, event);
+
+        // ⚑ Asks whether the user put focus HERE, not whether this window is
+        // the active one. hasFocus() is false for a focused control in an
+        // inactive window, which would make a control stop taking the wheel the
+        // moment the application lost focus -- and made the walkthrough case
+        // fail, since a window shown under a bare X server is never activated.
+        auto *widget = qobject_cast<QWidget *>(watched);
+        const bool userFocusedThis =
+            widget && widget->window() && widget->window()->focusWidget() == widget;
+        if (widget && !userFocusedThis) {
+            // Ignored rather than accepted, so it travels on to the scroll area
+            // and the panel moves, which is what the user was asking for.
+            event->ignore();
+            return true;
+        }
+        return QObject::eventFilter(watched, event);
+    }
+};
+
 // selection can be resolved back to the record it names.
 constexpr int kRecordKindRole  = Qt::UserRole;
 constexpr int kRecordIndexRole = Qt::UserRole + 1;
@@ -329,6 +389,12 @@ void MainWindow::applySettings(const CorrelationSettings &settings,
     m_reanchorEnabled->setChecked(policy.enabled);
     m_reanchorThreshold->setValue(policy.znccThreshold);
     m_reanchorShare->setValue(int(qRound(policy.percentile * 100.0)));
+
+    m_recoveryEnabled->setChecked(settings.recovery.enabled);
+    m_recoveryRetryBelow->setValue(settings.recovery.retryBelowZncc);
+    m_recoveryReliable->setValue(settings.recovery.reliableZncc);
+    m_recoveryRounds->setValue(settings.recovery.maxRounds);
+    updateRecoveryControls();
 }
 
 void MainWindow::newProject()
@@ -499,7 +565,9 @@ void MainWindow::createDockPanels()
     // minimum, so nothing about that is loud -- the panel simply looks broken,
     // and only at the sizes where it is.
     auto *analysis = new QScrollArea;
-    analysis->setWidget(createAnalysisPanel());
+    QWidget *analysisPanel = createAnalysisPanel();
+    WheelGuard::protect(analysisPanel);
+    analysis->setWidget(analysisPanel);
     analysis->setWidgetResizable(true);
     analysis->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     analysis->setFrameShape(QFrame::NoFrame);
@@ -744,7 +812,78 @@ QWidget *MainWindow::createAnalysisPanel()
     referenceColumn->addWidget(reanchorCost);
 
     column->addWidget(referenceGroup);
+
+    // --- the second pass at points that failed ------------------------------
+    // On by default, and on screen anyway. It changes how a run is conducted,
+    // so a user who never opens this group still has to be able to find out
+    // why their field is fuller than the solver alone would have made it -- and
+    // the run report says how many points it repaired.
+    auto *recoveryGroup = new QGroupBox(tr("Points that failed"), panel);
+    auto *recoveryColumn = new QVBoxLayout(recoveryGroup);
+
+    auto *recoveryNote = new QLabel(
+        tr("Most points a solve loses were given a poor starting guess rather "
+           "than being unmeasurable. A second pass fits the displacement of the "
+           "reliable points around each poor one and solves it again from "
+           "there, in rounds, so repair spreads inward from ground that "
+           "correlated well."));
+    recoveryNote->setWordWrap(true);
+    recoveryColumn->addWidget(recoveryNote);
+
+    m_recoveryEnabled =
+        new QCheckBox(tr("Try again at points that correlated poorly"));
+    m_recoveryEnabled->setChecked(true);
+    recoveryColumn->addWidget(m_recoveryEnabled);
+
+    auto *recoveryForm = new QFormLayout;
+    recoveryForm->setContentsMargins(0, 6, 0, 0);
+
+    m_recoveryRetryBelow = new QDoubleSpinBox;
+    m_recoveryRetryBelow->setDecimals(2);
+    m_recoveryRetryBelow->setRange(0.05, 0.99);
+    m_recoveryRetryBelow->setSingleStep(0.05);
+    m_recoveryRetryBelow->setValue(RecoveryPolicy{}.retryBelowZncc);
+    recoveryForm->addRow(tr("Try again below this correlation"),
+                         m_recoveryRetryBelow);
+
+    m_recoveryReliable = new QDoubleSpinBox;
+    m_recoveryReliable->setDecimals(2);
+    m_recoveryReliable->setRange(0.05, 0.99);
+    m_recoveryReliable->setSingleStep(0.05);
+    m_recoveryReliable->setValue(RecoveryPolicy{}.reliableZncc);
+    recoveryForm->addRow(tr("Fit from points at or above"), m_recoveryReliable);
+
+    m_recoveryRounds = new QSpinBox;
+    m_recoveryRounds->setRange(1, 100);
+    m_recoveryRounds->setValue(RecoveryPolicy{}.maxRounds);
+    recoveryForm->addRow(tr("Most rounds to try"), m_recoveryRounds);
+
+    recoveryColumn->addLayout(recoveryForm);
+
+    // Where the neighbourhood comes from, live, so a derived number is never a
+    // magic one. Restated whenever the grid step changes.
+    m_recoveryNeighbourhood = new QLabel;
+    m_recoveryNeighbourhood->setWordWrap(true);
+    recoveryColumn->addWidget(m_recoveryNeighbourhood);
+
+    auto *recoveryCost = new QLabel(
+        tr("A repaired point is solved again in full, so it carries its own "
+           "correlation and is marked as recovered wherever it is reported. An "
+           "answer is kept only if it is better than the one it replaces, so "
+           "the pass can add points but never spoil them. It costs time in "
+           "proportion to how many points need repair."));
+    recoveryCost->setWordWrap(true);
+    recoveryCost->setFont(costFont);
+    recoveryColumn->addWidget(recoveryCost);
+
+    column->addWidget(recoveryGroup);
     column->addStretch(1);
+
+    connect(m_recoveryEnabled, &QCheckBox::toggled, this,
+            &MainWindow::updateRecoveryControls);
+    connect(m_gridStep, &QSpinBox::valueChanged, this,
+            &MainWindow::updateRecoveryControls);
+    updateRecoveryControls();
 
     connect(m_reanchorEnabled, &QCheckBox::toggled, this,
             &MainWindow::updateReferenceUpdateControls);
@@ -859,6 +998,17 @@ void MainWindow::updateSolverConstraints()
         m_shape->setCurrentIndex(0);
 }
 
+void MainWindow::updateRecoveryControls()
+{
+    const bool on = m_recoveryEnabled->isChecked();
+    m_recoveryRetryBelow->setEnabled(on);
+    m_recoveryReliable->setEnabled(on);
+    m_recoveryRounds->setEnabled(on);
+    m_recoveryNeighbourhood->setEnabled(on);
+    m_recoveryNeighbourhood->setText(
+        recoveryNeighbourhoodDerivation(m_gridStep->value()));
+}
+
 CorrelationSettings MainWindow::currentSettings() const
 {
     CorrelationSettings settings;
@@ -873,6 +1023,11 @@ CorrelationSettings MainWindow::currentSettings() const
     settings.strainRadius = m_strainRadius->value();
     settings.strainMinPoints = m_strainMinPoints->value();
     settings.strainMeasure = StrainMeasure(m_strainMeasure->currentData().toInt());
+
+    settings.recovery.enabled = m_recoveryEnabled->isChecked();
+    settings.recovery.retryBelowZncc = m_recoveryRetryBelow->value();
+    settings.recovery.reliableZncc = m_recoveryReliable->value();
+    settings.recovery.maxRounds = m_recoveryRounds->value();
     return settings;
 }
 
@@ -1655,6 +1810,28 @@ void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
     for (auto it = result.failuresByReason.constBegin();
          it != result.failuresByReason.constEnd(); ++it) {
         log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
+    }
+
+    // What the second pass repaired. Stated whenever it ran, including when it
+    // repaired nothing: a run with the pass off and a run with the pass on that
+    // found nothing produce identical fields, and they mean different things.
+    if (result.recoveryRequested) {
+        if (result.recoveredPoints > 0) {
+            log(tr("  %1 of those points were measured on the second pass, "
+                   "from a displacement fitted to their reliable neighbours "
+                   "and then solved again (%2 round(s)). Each carries its own "
+                   "correlation and is marked as recovered.")
+                    .arg(result.recoveredPoints)
+                    .arg(result.recoveryRounds));
+        } else {
+            log(tr("  The second pass at poorly correlated points recovered "
+                   "none of them."));
+        }
+        if (result.stillUnrecovered > 0) {
+            log(tr("  %1 point(s) are still unmeasured or poorly correlated "
+                   "after it.")
+                    .arg(result.stillUnrecovered));
+        }
     }
 
     // How far the field can be trusted, as its own line rather than folded into

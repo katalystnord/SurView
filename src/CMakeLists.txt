@@ -33,6 +33,8 @@ add_library(surview_core STATIC
     core/Sequence.h
     core/ReferenceUpdate.cpp
     core/ReferenceUpdate.h
+    core/Recovery.cpp
+    core/Recovery.h
     core/Roi.cpp
     core/Roi.h
     core/RoiDetect.cpp

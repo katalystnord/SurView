@@ -23,6 +23,7 @@ set(SURVIEW_UNIT_TESTS
     test_solver_choices
     test_sequence
     test_reference_update
+    test_recovery
     test_sequence_runner
     test_strain_fit
     test_strain_measure
@@ -109,3 +110,4 @@ vtk_module_autoinit(
     TARGETS test_workspace_walkthrough
     MODULES ${VTK_LIBRARIES}
 )
+

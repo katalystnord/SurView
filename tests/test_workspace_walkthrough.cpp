@@ -25,6 +25,7 @@
 #include <QApplication>
 #include <QRegularExpression>
 #include <QCheckBox>
+#include <QWheelEvent>
 #include <QComboBox>
 #include <QFrame>
 #include <QLabel>
@@ -308,6 +309,8 @@ private slots:
     void the_shipped_examples_can_be_opened_from_the_menu();
     void a_session_saved_and_reopened_is_the_session_that_was_saved();
     void a_committed_region_can_be_adjusted_without_drawing_it_again();
+    void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
+    void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 };
 
@@ -1679,6 +1682,130 @@ void TestWorkspaceWalkthrough::a_committed_region_can_be_adjusted_without_drawin
     QCOMPARE(adjusted.vertices.at(0), QPoint(60, 50));
     QCOMPARE(adjusted.vertices.at(2), QPoint(170, 110));
     QCOMPARE(adjusted.vertices.at(3), QPoint(60, 110));
+}
+
+void TestWorkspaceWalkthrough::the_second_pass_is_on_screen_and_says_what_it_does_and_costs()
+{
+    // ⚑ THE ONE FEATURE HERE THAT IS ON BY DEFAULT AND CHANGES THE RESULT.
+    // Everything else the panel does happens because somebody asked for it. A
+    // user who never opens this group still gets a fuller field than the solver
+    // alone would produce, so the group has to be findable, has to say what it
+    // does, and has to say what it costs -- otherwise it is exactly the hidden
+    // behaviour the "can only use what he sees" rule forbids.
+    MainWindow window;
+    window.resize(1200, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *retryBelow = controlLabelled<QDoubleSpinBox>(
+        &window, QStringLiteral("Try again below this correlation"));
+    auto *fitFrom = controlLabelled<QDoubleSpinBox>(
+        &window, QStringLiteral("Fit from points at or above"));
+    auto *rounds =
+        controlLabelled<QSpinBox>(&window, QStringLiteral("Most rounds to try"));
+    QVERIFY2(retryBelow && fitFrom && rounds,
+             "the second pass has no controls on the Analysis panel, so a user "
+             "cannot see that it runs or change how forgiving it is");
+
+    // It says what it does, in the panel rather than in documentation nobody
+    // has open.
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("starting guess")),
+             "the panel does not say why a point is worth trying again");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("rounds")),
+             "the panel does not say the pass repeats");
+
+    // And it says what it costs, which is the part nobody expects: that a
+    // repaired point is a real measurement, marked, and that a worse answer is
+    // never kept.
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("marked as recovered")),
+             "the panel does not say a repaired point is marked");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("better than the one it "
+                                                          "replaces")),
+             "the panel does not say the pass cannot spoil a point");
+
+    // The neighbourhood is derived rather than typed, so it has to state where
+    // its numbers came from -- and restate them when the grid step changes,
+    // since that is what they are derived from.
+    auto *gridStep = controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"));
+    QVERIFY(gridStep);
+    gridStep->setValue(3);
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("within 12 px")),
+             "the derived neighbourhood is not stated for a 3 px grid step");
+    gridStep->setValue(5);
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("within 20 px")),
+             "the stated neighbourhood did not follow the grid step it is "
+             "derived from, so the panel is describing a run that will not "
+             "happen");
+}
+
+void TestWorkspaceWalkthrough::scrolling_the_analysis_panel_does_not_change_what_will_be_measured()
+{
+    // ⚑ FOUND BY SCREENSHOT, NOT BY TEST, 2026-09-02. The Analysis panel is
+    // taller than its dock, so reaching the lower groups means scrolling -- and
+    // a wheel event over a Qt spin box adjusts the spin box. Scrolling down to
+    // READ the panel therefore silently changed the strain subregion radius
+    // from 25.0 px to 11.0 px, with nothing on screen to say a setting had
+    // moved and no reason for anyone to look.
+    //
+    // That is the worst shape of defect this application can have: not a wrong
+    // answer, but a run quietly conducted under settings nobody chose. It gets
+    // worse with every group added to the panel, because every group added
+    // makes scrolling more necessary.
+    MainWindow window;
+    window.resize(1200, 700);   // deliberately short, so the panel must scroll
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *subsetRadius =
+        controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    auto *strainRadius =
+        controlLabelled<QDoubleSpinBox>(&window, QStringLiteral("Subregion radius"));
+    auto *measure =
+        controlLabelled<QComboBox>(&window, QStringLiteral("Strain measure"));
+    QVERIFY(subsetRadius && strainRadius && measure);
+
+    const int subsetBefore = subsetRadius->value();
+    const double strainBefore = strainRadius->value();
+    const int measureBefore = measure->currentIndex();
+
+    // A wheel roll over each control, as it arrives while scrolling past.
+    for (QWidget *control : {static_cast<QWidget *>(subsetRadius),
+                             static_cast<QWidget *>(strainRadius),
+                             static_cast<QWidget *>(measure)}) {
+        for (int i = 0; i < 5; i++) {
+            QWheelEvent wheel(QPointF(control->rect().center()),
+                              control->mapToGlobal(control->rect().center()),
+                              QPoint(0, -40), QPoint(0, -120),
+                              Qt::NoButton, Qt::NoModifier,
+                              Qt::NoScrollPhase, false);
+            QCoreApplication::sendEvent(control, &wheel);
+        }
+    }
+
+    QVERIFY2(subsetRadius->value() == subsetBefore,
+             qPrintable(QStringLiteral("scrolling changed the subset radius "
+                                       "from %1 to %2 px")
+                            .arg(subsetBefore).arg(subsetRadius->value())));
+    QVERIFY2(qFuzzyCompare(strainRadius->value(), strainBefore),
+             qPrintable(QStringLiteral("scrolling changed the strain subregion "
+                                       "from %1 to %2 px")
+                            .arg(strainBefore).arg(strainRadius->value())));
+    QVERIFY2(measure->currentIndex() == measureBefore,
+             "scrolling changed the strain measure");
+
+    // ...and the controls must still be usable deliberately, or the fix has
+    // simply broken them. Clicking in gives focus, and a focused control keeps
+    // its wheel.
+    strainRadius->setFocus();
+    QWheelEvent deliberate(QPointF(strainRadius->rect().center()),
+                           strainRadius->mapToGlobal(strainRadius->rect().center()),
+                           QPoint(0, -40), QPoint(0, -120),
+                           Qt::NoButton, Qt::NoModifier,
+                           Qt::NoScrollPhase, false);
+    QCoreApplication::sendEvent(strainRadius, &deliberate);
+    QVERIFY2(!qFuzzyCompare(strainRadius->value(), strainBefore),
+             "a control the user has clicked into no longer takes the wheel, "
+             "so the fix removed a way of setting it rather than protecting it");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

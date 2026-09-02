@@ -400,6 +400,96 @@ though it is a property of the reference image, because estimating it needs the
 engine and `core/Correlation.cpp` is one of only two files allowed to know the
 engine exists.
 
+### Forgiving DIC: a second pass at the points that failed (2026-09-02)
+
+Most points a solve loses are not unmeasurable places on the specimen; they are
+places where the initial guess was poor. Reliability-guided DIC -- the whole
+algorithm in Ncorr and VIC-2D -- exploits that from the very first point: one
+seed gets a global initial guess, every other subset is initialised from a
+converged neighbour. Our first pass initialises each point independently and
+throws the signal away. This pass picks it back up, using the engine's
+`RegionFit2D` to fit an affine displacement field to the reliable points around
+a bad one.
+
+⚑ **THE POSTURE IS FORGIVING (David's call): permissive about what is attempted
+and what is kept, strict about what is claimed.** Those are not in tension --
+the second is what pays for the first. A pass may re-attempt almost anything and
+keep almost anything it improves, because every point it hands back still
+carries its own correlation, its own noise floor and the mark saying it was
+recovered. Strictness in reporting is what funds generosity in measuring; a
+permissive pass without it would just be a field that lies more confidently.
+The defaults are therefore wider than the engine's own worked example (seed at
+0.8 rather than 0.9, retry below 0.7 rather than 0.5), and all of them are on
+the Analysis panel.
+
+What it buys, measured on the examples that ship, with **no point made worse in
+any run**:
+
+| pair | solved before | after | rounds |
+|---|---|---|---|
+| synthetic large_strain 00-05 | 167 | 8099 | 2 |
+| synthetic rotation 00-03 | 2574 | 10170 | 2 |
+| real tension without holes 00-04 | 5401 | 8455 | 16 |
+| real tension with holes 00-01 | 6513 | 9044 | 8 |
+
+On a run that already measured 90 per cent of the field it costs 40 per cent
+more time and changes almost nothing; the effort scales to how much is broken.
+
+Five decisions, all settled deliberately rather than in code:
+
+- **A FITTED POINT IS NOT A MEASURED POINT.** The fit borrows an answer from the
+  neighbours, so it is an INITIAL GUESS that ICGN re-solves, and what is
+  reported is a real correlation measured at that point. Using the fitted value
+  directly would put an interpolation into the field wearing the same colour as
+  a measurement -- the trap already ruled out for unmeasured points at export
+  and for strain fitted onto rejected points.
+- **A RECOVERY PASS MAY NEVER MAKE A POINT WORSE.** The one rule the forgiving
+  posture does not relax. An answer is kept only if it converged and correlates
+  better than the one it replaces, so the pass is safe to run by default: it
+  only ever adds. This is what makes permissiveness everywhere else free.
+- ⚑ **AND THE CORRELATION MUST BE STRICTLY POSITIVE.** `RegionFit2D` marks a
+  point whose displacement it fitted by resetting that point's correlation to
+  ZERO -- the engine's own way of saying "borrowed, not measured". A zero is
+  therefore the absence of a correlation, not a poor one, and a rule that merely
+  asked "did it converge" let every fitted value through as a measurement. Same
+  reasoning as "strictly positive, not merely non-negative" for sigma and beta,
+  and found the same way. ⚑ **The accuracy suite could not catch it**: on a
+  smoothly rotating synthetic field the affine fit is itself accurate to a tenth
+  of a pixel, so displacement error cannot tell an interpolation from a
+  measurement. Only the correlation can.
+- **A recovered point is MARKED**, in the readout, the run report, the `.vtu`
+  and the CSV, beside `solved`. It is a real measurement needing no apology; it
+  is marked because it reached its answer by a different route, and because
+  marking is what lets us keep more.
+- **The pass runs in ROUNDS**, each round's recoveries seeding the next, so
+  repair spreads inward from good ground. The interior of a large failed patch
+  has no reliable neighbour at all on the first round, so a single pass cannot
+  reach it however good the fit is. Upstream's own demo does the same, and
+  arrives at reliability-guided propagation from the other end.
+
+The neighbourhood is **derived from the grid step and stated on screen** --
+four grid steps, a floor of nine neighbours, both from the engine's own worked
+example rather than invented -- and overridable, since a derived number a user
+cannot see the basis of is a magic number with extra steps.
+
+Two defects found while building it, neither by the thing that should have
+caught it:
+
+- ⚑ **A threshold compared in double excluded the point sitting exactly on it.**
+  A correlation is a float and a spin box gives a double; widened, `0.9f` is
+  `0.899999976`, which is below `0.9`. Invisible, and only at the boundary.
+  Both sides are narrowed to float once now.
+- ⚑ **THE MOUSE WHEEL WAS EDITING SETTINGS WHILE THE PANEL WAS SCROLLED.** Found
+  by screenshot, and the worst shape of defect this application can have: not a
+  wrong answer, but a run quietly conducted under settings nobody chose. The
+  Analysis panel is taller than its dock, so reaching the lower groups means
+  scrolling, and a wheel event over a Qt spin box adjusts the spin box --
+  scrolling down to READ the panel moved the strain subregion from 25.0 px to
+  11.0 px and the subset radius from 16 px to 11 px, with nothing on screen to
+  say so. `WheelGuard` in `MainWindow.cpp` refuses the wheel at any control the
+  user has not clicked into and passes it to the scroll area instead. It gets
+  worse with every group added to the panel, which is why it surfaced now.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

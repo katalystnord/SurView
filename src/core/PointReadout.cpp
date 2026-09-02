@@ -107,6 +107,21 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
         return readout;
     }
 
+    // How this point reached its answer. Stated here rather than only in the
+    // run report, because the place a reader asks about one point is that
+    // point. It is a real measurement and the note says so -- the mark is not
+    // a caveat, it is provenance.
+    if (point.recovered) {
+        readout.lines.append({QObject::tr("Measured on"),
+                              QObject::tr("the second pass"),
+                              QObject::tr("The first solve did not measure this "
+                                          "point well. It was solved again from "
+                                          "a displacement fitted to its reliable "
+                                          "neighbours, and the correlation below "
+                                          "is its own."),
+                              false});
+    }
+
     readout.lines.append({QObject::tr("Displacement u, v"),
                           QObject::tr("%1, %2 px")
                               .arg(measured(double(point.u)),
