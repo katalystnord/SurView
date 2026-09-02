@@ -103,7 +103,10 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 - **Coverage reporting** is present but not tracked over time.
 - The **walkthrough suite races with the X server's own pointer motion**;
   synthetic and real mouse moves arrive in an order that is not deterministic.
-  Worked around by repeating the gesture and by taking readings from clicks.
+  Every reading is taken from a click rather than a hover, which is
+  unambiguous, and the panel says "Click to pin it" so the test is still only
+  doing what the screen tells it to. The last case still reading a hover was
+  found on 2026-09-02 by CI failing where the developer's machine passed.
 
 ## Fixed, kept here because the reason is worth remembering
 

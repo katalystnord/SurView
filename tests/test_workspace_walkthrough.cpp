@@ -23,6 +23,7 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QRegularExpression>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFrame>
@@ -48,6 +49,9 @@
 #include <vtkStringArray.h>
 #include <vtkUnstructuredGrid.h>
 #include <vtkXMLUnstructuredGridReader.h>
+
+#include <optional>
+#include <utility>
 
 namespace {
 
@@ -192,6 +196,33 @@ QString pointPanelText(QWidget *root)
             parts << label->text();
     }
     return parts.join(QLatin1Char('\n'));
+}
+
+// The two numbers on the panel's displacement line, as numbers.
+//
+// Returns nothing when the panel is not showing a measured displacement at all
+// -- an unmeasured point, or no point under the pointer -- which is a
+// different answer from "showing the wrong numbers" and has to stay
+// distinguishable from it.
+std::optional<std::pair<double, double>> displacementLine(const QString &panel)
+{
+    for (const QString &line : panel.split(QLatin1Char('\n'))) {
+        if (!line.contains(QStringLiteral("px")))
+            continue;
+        // "<u>, <v> px" -- two numbers, in that order, on one line.
+        static const QRegularExpression pattern(
+            QStringLiteral("^\\s*(-?[0-9.eE+-]+)\\s*,\\s*(-?[0-9.eE+-]+)\\s*px\\s*$"));
+        const QRegularExpressionMatch match = pattern.match(line);
+        if (!match.hasMatch())
+            continue;
+        bool okU = false;
+        bool okV = false;
+        const double u = match.captured(1).toDouble(&okU);
+        const double v = match.captured(2).toDouble(&okV);
+        if (okU && okV)
+            return std::make_pair(u, v);
+    }
+    return std::nullopt;
 }
 
 // Where a given image pixel currently sits inside the viewport widget.
@@ -1124,33 +1155,70 @@ void TestWorkspaceWalkthrough::pointing_at_a_measured_point_reads_out_what_it_me
     QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
              "the correlation produced no field within two minutes");
 
-    // Point at the middle of the picture, the way the panel says to.
-    const ImageRecord &record = viewport->record();
-    const double px = record.width / 2.0;
-    const double py = record.height / 2.0;
-    // Moved twice, with a wait between. QTest's synthetic move and the X
-    // server's own pointer motion both arrive, and the last one wins; repeating
-    // the gesture is what a user does anyway, and makes which one that is
-    // stop mattering.
-    QTest::mouseMove(viewport, widgetPointForPixel(viewport, px, py));
-    QTest::qWait(50);
-    QTest::mouseMove(viewport, widgetPointForPixel(viewport, px, py));
-    QTest::qWait(50);
+    // Let the window finish arriving before reading it, as the pinned-point
+    // case does: the field appears as soon as the frame lands, the panel
+    // follows.
+    QTest::qWait(300);
 
+    // Ask the result where a measured point IS, and point at that, rather than
+    // at the middle of the picture and trusting one to be there. The middle
+    // falls between grid nodes as easily as on one, and pointNearestTo answers
+    // about the RESULT while the panel answers about the position actually
+    // under the pointer -- so the two could disagree while both were right.
+    const ImageRecord &record = viewport->record();
     const CorrelationResult &result = window.lastResult();
-    const int index = pointNearestTo(result, float(px), float(py));
+    const int index = pointNearestTo(result, float(record.width / 2.0),
+                                     float(record.height / 2.0));
     QVERIFY2(index >= 0, "no measured point near the middle of the picture");
     const CorrelationPoint &point = result.points[index];
     QVERIFY(point.converged);
 
+    // Click to pin, as the panel says, rather than reading a hover. ⚑ A
+    // synthetic pointer move races with the X server's own and the last one
+    // wins, which is not something this case is about: it is about whether the
+    // panel carries this point's own measurement. Read from a hover, it failed
+    // on CI with "no point measured here" while the pointer sat somewhere else
+    // entirely. The pinned-point case beside this one already took a click for
+    // exactly this reason; this one had not been changed to match.
+    const QPoint at = widgetPointForPixel(viewport, double(point.x), double(point.y));
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at);
+
+    // Waited for rather than slept past, so a slow machine reports the same
+    // result as a fast one.
+    QVERIFY2(QTest::qWaitFor([&window] {
+                 return displacementLine(pointPanelText(&window)).has_value();
+             }, 5000),
+             qPrintable(QStringLiteral("panel never showed a displacement:\n%1")
+                            .arg(pointPanelText(&window))));
+
     const QString said = pointPanelText(&window);
 
     // The screen must carry this point's OWN measurement, not a summary and
-    // not a placeholder. Compared against the value in the result, so what is
-    // asserted is that the panel is wired to the real measurement.
-    QVERIFY2(said.contains(QString::number(double(point.u), 'g', 4)),
-             qPrintable(QStringLiteral("panel said:\n%1\nu was %2")
-                            .arg(said, QString::number(double(point.u)))));
+    // not a placeholder.
+    //
+    // ⚑ Read as NUMBERS out of the displacement line, not as a substring of
+    // the whole panel. The substring form looked strict and was nearly
+    // vacuous: on this fixture u is exactly 3 px, so it asserted that the
+    // panel contained the character "3" somewhere -- which it does in a
+    // coordinate, a noise floor, or a correlation. Negative-checked by making
+    // the panel report DOUBLE the displacement: the substring version passed,
+    // this version fails and says by how much.
+    //
+    // Compared numerically rather than against a re-formatted string so the
+    // test states the property (the panel carries this point's measurement)
+    // without restating how the panel is allowed to format it. The tolerance
+    // is the display's own: four significant digits.
+    const auto shown = displacementLine(said);
+    QVERIFY2(shown.has_value(), qPrintable(said));
+    const double tolerance = 1e-3;
+    QVERIFY2(qAbs(shown->first - double(point.u))
+                 <= tolerance * qMax(1.0, qAbs(double(point.u))),
+             qPrintable(QStringLiteral("panel said u = %1, measured u was %2\npanel:\n%3")
+                            .arg(shown->first).arg(double(point.u)).arg(said)));
+    QVERIFY2(qAbs(shown->second - double(point.v))
+                 <= tolerance * qMax(1.0, qAbs(double(point.v))),
+             qPrintable(QStringLiteral("panel said v = %1, measured v was %2\npanel:\n%3")
+                            .arg(shown->second).arg(double(point.v)).arg(said)));
     QVERIFY2(said.contains(QStringLiteral("Displacement"), Qt::CaseInsensitive),
              qPrintable(said));
 
