@@ -1,0 +1,327 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Appendix - The SurView DIC Manual</title>
+<meta name="description" content="Glossary, where to find each task on screen, and what this manual does not cover yet.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfcfd;
+  --surface: #ffffff;
+  --text: #131a21;
+  --text-dim: #55616d;
+  --border: #e2e8ee;
+  --accent: #1a6fb5;
+  --accent-strong: #14568c;
+  --accent-soft: #e8f1f9;
+  --hot: #d9531e;
+  --dark: #0f1720;
+  --code-bg: #f2f5f8;
+  --shadow: 0 1px 2px rgba(15,23,32,0.05), 0 8px 24px rgba(15,23,32,0.09);
+}
+:root[data-theme="dark"] {
+  --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+  --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+  --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+  --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+    --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+    --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+    --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.62; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); }
+img { max-width: 100%; }
+code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; }
+
+header.nav {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  border-bottom: 1px solid var(--border); display: flex; align-items: center;
+  gap: 22px; padding: 12px 28px; flex-wrap: wrap;
+}
+header.nav .brand {
+  display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.02rem;
+  color: var(--text); text-decoration: none; margin-right: auto;
+}
+header.nav .brand svg { display: block; }
+.nav-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.92rem; }
+.nav-links a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.nav-links a:hover, .nav-links a.current { color: var(--accent-strong); }
+
+.book-shell { display: grid; grid-template-columns: 1fr; max-width: 1180px; margin: 0 auto; }
+@media (min-width: 980px) {
+  .book-shell { grid-template-columns: 250px minmax(0,1fr); gap: 48px; padding: 0 28px; }
+}
+.book-toc {
+  padding: 32px 20px 40px; font-size: 0.9rem;
+}
+@media (min-width: 980px) {
+  .book-toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; padding: 32px 0 40px; }
+}
+.book-toc .toc-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; font-weight: 800; color: var(--text-dim); margin: 18px 0 8px; }
+.book-toc .toc-label:first-child { margin-top: 0; }
+.book-toc ol { list-style: none; margin: 0; padding: 0; }
+.book-toc li { margin: 0; }
+.book-toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.book-toc a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc a.current { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc .part-link { color: var(--text); font-weight: 800; }
+.book-toc .toc-label.current-part { color: var(--accent-strong); }
+
+main.chapter { padding: 40px 20px 90px; max-width: 760px; }
+main.chapter .kicker { color: var(--accent-strong); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; margin: 0 0 10px; }
+main.chapter h1 { font-size: 2.1rem; letter-spacing: -0.01em; margin: 0 0 6px; }
+main.chapter .lede { color: var(--text-dim); font-size: 1.12rem; margin: 0 0 36px; max-width: 60ch; }
+main.chapter h2 { font-size: 1.42rem; margin: 46px 0 14px; letter-spacing: -0.005em; }
+main.chapter h2:first-of-type { margin-top: 8px; }
+main.chapter h3 { font-size: 1.1rem; margin: 30px 0 10px; }
+main.chapter p { margin: 0 0 16px; max-width: 68ch; }
+main.chapter ul, main.chapter ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+main.chapter li { margin: 0 0 8px; }
+main.chapter strong { color: var(--text); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 24px 0; max-width: 66ch;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .callout-label { font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-strong); margin: 0 0 6px; }
+.callout.warn { border-left-color: var(--hot); background: rgba(217,83,30,0.08); }
+.callout.warn .callout-label { color: var(--hot); }
+
+table.data { border-collapse: collapse; margin: 18px 0 28px; font-size: 0.92rem; width: 100%; max-width: 66ch; }
+table.data th, table.data td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+table.data th { background: var(--code-bg); font-weight: 700; }
+table.data td.num, table.data th.num { text-align: right; font-family: "SF Mono", Menlo, Consolas, monospace; }
+
+.chapter-nav { display: flex; justify-content: space-between; gap: 16px; margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); max-width: 66ch; }
+.chapter-nav a { text-decoration: none; color: var(--text); font-weight: 700; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); flex: 1; }
+.chapter-nav a.next { text-align: right; }
+.chapter-nav a small { display: block; color: var(--text-dim); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.chapter-nav a:hover { border-color: var(--accent); }
+
+dl.glossary dt { font-weight: 800; margin-top: 18px; }
+dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
+
+.status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
+
+footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
+footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+footer a:hover { color: var(--accent-strong); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="../index.html">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--dark)"/>
+      <circle cx="9" cy="9" r="2" fill="#4aa3e0"/>
+      <circle cx="16" cy="10" r="1.4" fill="#8fd3c8"/>
+      <circle cx="23" cy="8" r="1.8" fill="#d9d94a"/>
+      <circle cx="10" cy="17" r="1.5" fill="#2bb8a6"/>
+      <circle cx="17" cy="18" r="2.2" fill="#e8b13c"/>
+      <circle cx="24" cy="16" r="1.5" fill="#e8743c"/>
+      <circle cx="8" cy="24" r="1.7" fill="#4aa3e0"/>
+      <circle cx="16" cy="24" r="1.4" fill="#8fd3c8"/>
+      <circle cx="24" cy="23" r="2" fill="#d9531e"/>
+    </svg>
+    SurView DIC
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">Manual</a>
+    <a href="../index.html#get">Download</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </nav>
+</header>
+
+<div class="book-shell">
+<div class="book-toc"><nav aria-label="Table of contents">
+<div class="toc-label">Manual</div><ol>
+<li><a href="index.html">Front matter</a></li>
+</ol>
+<div class="toc-label">Part I. What DIC measures</div><ol>
+<li><a href="part-1-what-dic-measures.html#the-idea">1. Two photographs and a question</a></li>
+<li><a href="part-1-what-dic-measures.html#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li>
+<li><a href="part-1-what-dic-measures.html#absence-not-zero">3. A rejected point is not a zero</a></li>
+<li><a href="part-1-what-dic-measures.html#coordinate-frame">4. One coordinate frame</a></li>
+</ol>
+<div class="toc-label">Part II. Running a measurement</div><ol>
+<li><a href="part-2-running-a-measurement.html#region-and-holes">5. The region, and what a hole means</a></li>
+<li><a href="part-2-running-a-measurement.html#sequences">6. Sequences: order matters, reference matters</a></li>
+<li><a href="part-2-running-a-measurement.html#reference-updating">7. When the reference goes stale</a></li>
+<li><a href="part-2-running-a-measurement.html#recovery">8. Points that fail, and the pass that repairs them</a></li>
+</ol>
+<div class="toc-label">Part III. How much to trust it</div><ol>
+<li><a href="part-3-how-much-to-trust-it.html#two-questions">9. Two questions, never one score</a></li>
+<li><a href="part-3-how-much-to-trust-it.html#reading-critically">10. Reading a field critically</a></li>
+</ol>
+<div class="toc-label">Part IV. Beyond one field</div><ol>
+<li><a href="part-4-beyond-one-field.html#sequence-as-curve">11. Reading a sequence as a curve</a></li>
+<li><a href="part-4-beyond-one-field.html#leaving-the-application">12. The field leaving the application</a></li>
+</ol>
+<div class="toc-label">Part V. Practice</div><ol>
+<li><a href="part-5-practice.html#speckling">13. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">14. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">15. Lighting and imaging</a></li>
+</ol>
+<div class="toc-label current-part">Reference</div><ol>
+<li><a href="appendix.html" class="current">Appendix</a></li>
+</ol>
+</nav></div>
+
+<main class="chapter">
+  <p class="kicker">Appendix</p>
+  <h1 id="glossary">Glossary</h1>
+  <p class="lede">
+    Terms as this manual uses them. Where SurView's own screens use a
+    different word for the same idea, that word is given alongside it.
+  </p>
+
+  <dl class="glossary">
+    <dt>Reference image</dt>
+    <dd>The photograph taken before deformation. Every displacement in a
+    run is measured relative to it.</dd>
+
+    <dt>Target image</dt>
+    <dd>A photograph taken after some deformation has occurred, compared
+    against the reference (or, after reference updating, against a
+    previous target) to measure movement.</dd>
+
+    <dt>Subset</dt>
+    <dd>The small patch of pixels around one measurement point that is
+    matched between the reference and the target. Its size is the subset
+    radius.</dd>
+
+    <dt>Grid step</dt>
+    <dd>The spacing, in pixels, between neighbouring measurement points.</dd>
+
+    <dt>Correlation coefficient (ZNCC)</dt>
+    <dd>A number stating how closely a candidate match in the target
+    resembles the original subset in the reference. A measure of matching
+    confidence, not of physical correctness.</dd>
+
+    <dt>Displacement field</dt>
+    <dd>The measured movement, in pixels, at every point of the grid.</dd>
+
+    <dt>Strain</dt>
+    <dd>Local stretching or shearing, fitted from the displacements of
+    neighbouring points rather than measured directly at any one point.
+    Reported in three common forms: Cauchy (small-strain), Green-Lagrange,
+    and Euler-Almansi, which agree closely at small deformations and
+    diverge at large ones.</dd>
+
+    <dt>Region of interest (ROI)</dt>
+    <dd>The boundary restricting where measurement points are placed,
+    drawn by hand or proposed by automatic segmentation of the speckle
+    quality. May exclude one or more holes: places inside the outer
+    boundary that are not to be measured.</dd>
+
+    <dt>Sequence</dt>
+    <dd>A reference image plus an ordered series of target images, making
+    up one loading test.</dd>
+
+    <dt>Reference updating (re-anchoring)</dt>
+    <dd>Switching a sequence's comparison from the original reference to
+    a more recent frame, once too little of the field still correlates
+    against the original. Off by default.</dd>
+
+    <dt>Recovery pass ("Points that failed" in the Analysis panel)</dt>
+    <dd>A second attempt at points the first correlation could not measure
+    well, seeded with a displacement fitted from nearby reliable points
+    and then fully re-solved. On by default; never accepts an answer worse
+    than the one it would replace.</dd>
+
+    <dt>Noise floor (sigma)</dt>
+    <dd>The finest displacement a given subset's own speckle quality could
+    resolve against the camera's sensor noise. A lower bound, computed
+    from the reference image alone.</dd>
+
+    <dt>Match conditioning (beta)</dt>
+    <dd>How sharply the matching cost rises around the solution actually
+    found for one point. Meaningful only within a single run.</dd>
+
+    <dt>Virtual extensometer</dt>
+    <dd>Two points placed on the measured field whose changing distance
+    apart is plotted against frame, standing in for a physical clip
+    gauge.</dd>
+  </dl>
+
+  <h1 id="on-screen">Where to find it on screen</h1>
+  <table class="data">
+    <thead><tr><th>To do this</th><th>Look here</th></tr></thead>
+    <tbody>
+      <tr><td>Import the reference or target images</td><td>Toolbar: <strong>Reference</strong>, <strong>Target</strong></td></tr>
+      <tr><td>Draw or auto-detect a region</td><td>Toolbar: <strong>Define ROI</strong>, <strong>Auto-detect ROI</strong></td></tr>
+      <tr><td>Exclude a hole from a region</td><td>Toolbar: <strong>Add Hole</strong> (needs a region first)</td></tr>
+      <tr><td>Choose the solver, subset, grid step, strain settings</td><td><strong>Analysis</strong> panel</td></tr>
+      <tr><td>Turn reference updating on and see its cost</td><td><strong>Analysis</strong> panel, "Reference" group</td></tr>
+      <tr><td>Turn the recovery pass on and adjust it</td><td><strong>Analysis</strong> panel, "Points that failed" group</td></tr>
+      <tr><td>Start or stop measuring</td><td>Toolbar: <strong>Run Correlation</strong>, <strong>Stop</strong></td></tr>
+      <tr><td>Read a value at one point of the field</td><td><strong>Point</strong> panel; hover the field, click to pin</td></tr>
+      <tr><td>Switch between displacement, strain, and reliability channels</td><td>The "Showing" selector above the field</td></tr>
+      <tr><td>Place a virtual extensometer</td><td>Toolbar: <strong>Extensometer</strong>, then two clicks on the specimen</td></tr>
+      <tr><td>Plot a quantity against frame</td><td><strong>Plot</strong> panel</td></tr>
+      <tr><td>See provenance for an imported image</td><td><strong>Record</strong> panel</td></tr>
+      <tr><td>Export a field</td><td>File menu: <code>.vtu</code> for ParaView and FreeCAD, or <code>.csv</code></td></tr>
+    </tbody>
+  </table>
+
+  <h1 id="not-yet">What is not in this manual yet</h1>
+  <p>
+    Written up only where the screen it describes actually exists, this
+    manual is necessarily behind SurView's own roadmap. As of this
+    writing, the following are real, tracked work that simply has not
+    landed:
+  </p>
+  <ul>
+    <li>Stereo and out-of-plane (2.5D) measurement, and the camera
+    calibration workflow it depends on.</li>
+    <li>Reading a quantity along a line, rather than only at one point or
+    between two extensometer anchors.</li>
+    <li>Multi-view measurement from a single moved camera, for slow or
+    static tests such as creep.</li>
+    <li>Sparse point-marker tracking, alongside the dense speckle field.</li>
+  </ul>
+  <p>
+    See <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">ROADMAP.md</a>
+    for the current state of each. This manual will gain a chapter for
+    each one as it ships.
+  </p>
+
+  <div class="chapter-nav">
+<a class="prev" href="part-5-practice.html"><small>Previous</small>Part V: Practice</a>
+<span></span>
+</div>
+</main>
+
+</div>
+
+<footer>
+  <div class="footer-links">
+    <a href="../index.html">SurView DIC</a>
+    <a href="index.html">Manual contents</a>
+    <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </div>
+  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+</footer>
+
+</body>
+</html>

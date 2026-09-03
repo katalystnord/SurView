@@ -1,0 +1,526 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Part II. Running a measurement - The SurView DIC Manual</title>
+<meta name="description" content="Regions and holes, frame order, reference updating, and the second pass that recovers points the first solve could not measure.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfcfd;
+  --surface: #ffffff;
+  --text: #131a21;
+  --text-dim: #55616d;
+  --border: #e2e8ee;
+  --accent: #1a6fb5;
+  --accent-strong: #14568c;
+  --accent-soft: #e8f1f9;
+  --hot: #d9531e;
+  --dark: #0f1720;
+  --code-bg: #f2f5f8;
+  --shadow: 0 1px 2px rgba(15,23,32,0.05), 0 8px 24px rgba(15,23,32,0.09);
+}
+:root[data-theme="dark"] {
+  --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+  --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+  --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+  --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+    --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+    --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+    --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.62; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); }
+img { max-width: 100%; }
+code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; }
+
+header.nav {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  border-bottom: 1px solid var(--border); display: flex; align-items: center;
+  gap: 22px; padding: 12px 28px; flex-wrap: wrap;
+}
+header.nav .brand {
+  display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.02rem;
+  color: var(--text); text-decoration: none; margin-right: auto;
+}
+header.nav .brand svg { display: block; }
+.nav-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.92rem; }
+.nav-links a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.nav-links a:hover, .nav-links a.current { color: var(--accent-strong); }
+
+.book-shell { display: grid; grid-template-columns: 1fr; max-width: 1180px; margin: 0 auto; }
+@media (min-width: 980px) {
+  .book-shell { grid-template-columns: 250px minmax(0,1fr); gap: 48px; padding: 0 28px; }
+}
+.book-toc {
+  padding: 32px 20px 40px; font-size: 0.9rem;
+}
+@media (min-width: 980px) {
+  .book-toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; padding: 32px 0 40px; }
+}
+.book-toc .toc-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; font-weight: 800; color: var(--text-dim); margin: 18px 0 8px; }
+.book-toc .toc-label:first-child { margin-top: 0; }
+.book-toc ol { list-style: none; margin: 0; padding: 0; }
+.book-toc li { margin: 0; }
+.book-toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.book-toc a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc a.current { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc .part-link { color: var(--text); font-weight: 800; }
+.book-toc .toc-label.current-part { color: var(--accent-strong); }
+
+main.chapter { padding: 40px 20px 90px; max-width: 760px; }
+main.chapter .kicker { color: var(--accent-strong); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; margin: 0 0 10px; }
+main.chapter h1 { font-size: 2.1rem; letter-spacing: -0.01em; margin: 0 0 6px; }
+main.chapter .lede { color: var(--text-dim); font-size: 1.12rem; margin: 0 0 36px; max-width: 60ch; }
+main.chapter h2 { font-size: 1.42rem; margin: 46px 0 14px; letter-spacing: -0.005em; }
+main.chapter h2:first-of-type { margin-top: 8px; }
+main.chapter h3 { font-size: 1.1rem; margin: 30px 0 10px; }
+main.chapter p { margin: 0 0 16px; max-width: 68ch; }
+main.chapter ul, main.chapter ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+main.chapter li { margin: 0 0 8px; }
+main.chapter strong { color: var(--text); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 24px 0; max-width: 66ch;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .callout-label { font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-strong); margin: 0 0 6px; }
+.callout.warn { border-left-color: var(--hot); background: rgba(217,83,30,0.08); }
+.callout.warn .callout-label { color: var(--hot); }
+
+table.data { border-collapse: collapse; margin: 18px 0 28px; font-size: 0.92rem; width: 100%; max-width: 66ch; }
+table.data th, table.data td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+table.data th { background: var(--code-bg); font-weight: 700; }
+table.data td.num, table.data th.num { text-align: right; font-family: "SF Mono", Menlo, Consolas, monospace; }
+
+.chapter-nav { display: flex; justify-content: space-between; gap: 16px; margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); max-width: 66ch; }
+.chapter-nav a { text-decoration: none; color: var(--text); font-weight: 700; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); flex: 1; }
+.chapter-nav a.next { text-align: right; }
+.chapter-nav a small { display: block; color: var(--text-dim); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.chapter-nav a:hover { border-color: var(--accent); }
+
+dl.glossary dt { font-weight: 800; margin-top: 18px; }
+dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
+
+.status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
+
+footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
+footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+footer a:hover { color: var(--accent-strong); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="../index.html">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--dark)"/>
+      <circle cx="9" cy="9" r="2" fill="#4aa3e0"/>
+      <circle cx="16" cy="10" r="1.4" fill="#8fd3c8"/>
+      <circle cx="23" cy="8" r="1.8" fill="#d9d94a"/>
+      <circle cx="10" cy="17" r="1.5" fill="#2bb8a6"/>
+      <circle cx="17" cy="18" r="2.2" fill="#e8b13c"/>
+      <circle cx="24" cy="16" r="1.5" fill="#e8743c"/>
+      <circle cx="8" cy="24" r="1.7" fill="#4aa3e0"/>
+      <circle cx="16" cy="24" r="1.4" fill="#8fd3c8"/>
+      <circle cx="24" cy="23" r="2" fill="#d9531e"/>
+    </svg>
+    SurView DIC
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">Manual</a>
+    <a href="../index.html#get">Download</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </nav>
+</header>
+
+<div class="book-shell">
+<div class="book-toc"><nav aria-label="Table of contents">
+<div class="toc-label">Manual</div><ol>
+<li><a href="index.html">Front matter</a></li>
+</ol>
+<div class="toc-label">Part I. What DIC measures</div><ol>
+<li><a href="part-1-what-dic-measures.html#the-idea">1. Two photographs and a question</a></li>
+<li><a href="part-1-what-dic-measures.html#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li>
+<li><a href="part-1-what-dic-measures.html#absence-not-zero">3. A rejected point is not a zero</a></li>
+<li><a href="part-1-what-dic-measures.html#coordinate-frame">4. One coordinate frame</a></li>
+</ol>
+<div class="toc-label current-part">Part II. Running a measurement</div><ol>
+<li><a href="part-2-running-a-measurement.html#region-and-holes" class="current">5. The region, and what a hole means</a></li>
+<li><a href="part-2-running-a-measurement.html#sequences" class="current">6. Sequences: order matters, reference matters</a></li>
+<li><a href="part-2-running-a-measurement.html#reference-updating" class="current">7. When the reference goes stale</a></li>
+<li><a href="part-2-running-a-measurement.html#recovery" class="current">8. Points that fail, and the pass that repairs them</a></li>
+</ol>
+<div class="toc-label">Part III. How much to trust it</div><ol>
+<li><a href="part-3-how-much-to-trust-it.html#two-questions">9. Two questions, never one score</a></li>
+<li><a href="part-3-how-much-to-trust-it.html#reading-critically">10. Reading a field critically</a></li>
+</ol>
+<div class="toc-label">Part IV. Beyond one field</div><ol>
+<li><a href="part-4-beyond-one-field.html#sequence-as-curve">11. Reading a sequence as a curve</a></li>
+<li><a href="part-4-beyond-one-field.html#leaving-the-application">12. The field leaving the application</a></li>
+</ol>
+<div class="toc-label">Part V. Practice</div><ol>
+<li><a href="part-5-practice.html#speckling">13. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">14. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">15. Lighting and imaging</a></li>
+</ol>
+<div class="toc-label">Reference</div><ol>
+<li><a href="appendix.html">Appendix</a></li>
+</ol>
+</nav></div>
+
+<main class="chapter">
+  <p class="kicker">Part II &middot; Running a measurement</p>
+  <h1 id="region-and-holes">5. The region, and what a hole means</h1>
+  <p class="lede">
+    Most of the time a correlation does not need to measure the whole
+    photograph - the specimen fills only part of the frame, and the
+    background around it correlates against itself perfectly well while
+    telling you nothing you want to know. Restricting where points are
+    placed is not just an optimisation; it changes what the result can
+    honestly claim.
+  </p>
+
+  <h2>Drawn or detected, the region is honest about which</h2>
+  <p>
+    A region of interest can be drawn by hand, corner by corner, or
+    proposed automatically by segmenting the image for wherever the
+    speckle is strong enough to correlate well. The two are not the same
+    kind of claim: a hand-drawn boundary is a person's judgement about
+    where the specimen is, and a detected one is an algorithm's judgement
+    about where the pattern is measurable, which are related but different
+    questions. A result should carry which kind of boundary produced it,
+    because a reader deciding how much to trust the edge of a field needs
+    to know which question was actually asked there.
+  </p>
+
+  <h2>What a region actually restricts</h2>
+  <p>
+    A region decides where the <em>centres</em> of measurement points are
+    allowed to sit. It does not shrink the subset each point correlates
+    over: a point near the edge of a region still looks at a full subset
+    of pixels around it, some of which lie outside the region. That is
+    unavoidable - a correlation needs real texture to work with, and
+    clipping the subset at the boundary would only starve it - but
+    it means a boundary is a little softer than it looks: points close to
+    the edge are influenced by whatever sits just outside it.
+  </p>
+
+  <h2>A hole is not decoration</h2>
+  <p>
+    Many real specimens are not solid: a dogbone tension coupon drilled
+    for a pin, a plate with a hole for a fastener, a bracket with slots cut
+    into it. Where the material is genuinely absent, the camera sees
+    whatever is behind the specimen instead - background, or a
+    fixture, or empty space - and that background does
+    <strong>not</strong> move the way the specimen does. A measurement
+    point placed there correlates the background against itself
+    perfectly well and reports, with complete confidence, that nothing
+    moved.
+  </p>
+  <p>
+    That is the worst possible place for a false reading to appear. A
+    hole through a loaded part is exactly where stress concentrates, which
+    is exactly where a strain map is most worth looking at closely -
+    and a cold, confident, entirely wrong "no strain here" sitting right
+    at that concentration is precisely the kind of error nobody thinks to
+    double-check, because it looks like an answer rather than like a
+    mistake.
+  </p>
+  <p>
+    A region that can describe a hole - an outer boundary with a
+    place cut out of it, excluded from measurement - fixes this by
+    simply not placing points there at all. What is drawn is then a
+    positive statement about the specimen's actual shape, not merely a
+    rough outer boundary hoping nobody looks too closely at what is
+    inside it.
+  </p>
+
+  <h2>A subset can still reach into a hole it does not sit inside</h2>
+  <p>
+    The same softness that applies at the outer boundary applies at a
+    hole's edge too, and for the same reason: a subset extends beyond the
+    single point it is centred on. A point just outside a hole can still
+    have a subset that reaches partway into it, picking up some pixels
+    that are genuinely background and do not move with the specimen. That
+    pulls its answer very slightly toward "did not move," in the same
+    quiet, plausible-looking direction as a point placed fully inside the
+    hole would be, just to a lesser degree.
+  </p>
+  <p>
+    The honest response is not to pretend this cannot happen by excluding
+    every point anywhere near a hole - that would apply a stricter
+    rule at a hole's edge than the same result already accepts at the
+    outer boundary, for no principled reason. It is to <strong>count and
+    report</strong> how many measured points have a subset reaching into a
+    hole, so a reader can widen the exclusion or simply read those points
+    knowing what they are.
+  </p>
+
+  <h1 id="sequences">6. Sequences: order matters, reference matters</h1>
+  <p class="lede">
+    A DIC test is almost never one photograph compared against another. It
+    is a loading series: a reference, and a run of targets taken as
+    whatever is being studied happens over time. Two decisions that look
+    like bookkeeping turn out to be about correctness.
+  </p>
+
+  <h2>Frame order is a correctness problem, not a presentation one</h2>
+  <p>
+    Sort a list of filenames the way a computer sorts text, and
+    <code>frame_10</code> comes before <code>frame_2</code>, because
+    <code>"1"</code> is a smaller character than <code>"2"</code> and the
+    rest of the comparison never looks at the full number. A twelve-frame
+    test sorted that way gets measured in the order 1, 10, 11, 12, 2, 3,
+    and so on - and every individual frame still solves correctly,
+    because the correlation itself has no idea what order it was asked to
+    run in.
+  </p>
+  <p>
+    The result is a field that is internally perfect and, taken as a
+    series, complete nonsense: a specimen that appears to jump backward
+    and forward instead of loading smoothly. Nothing about any one frame
+    reveals the problem, because nothing is wrong with any one frame. The
+    only fix is to sort frames the way a person reads them - as
+    numbers, not as text - before anything is measured, so what is
+    listed as the sequence is guaranteed to be what gets measured as the
+    sequence.
+  </p>
+  <p>
+    The same trap appears again on the way out. A results file numbered
+    without leading zeros sorts the same wrong way in most viewers, so an
+    exported frame 10 is grouped before frame 2 when a series is played
+    back as an animation. Files need to be numbered so their names sort
+    the same way their content is meant to play.
+  </p>
+
+  <h2>Every frame against the original reference, by default</h2>
+  <p>
+    The straightforward, and usual, meaning of a DIC sequence is that
+    every target is compared against the <em>same</em> reference frame,
+    not against the frame immediately before it. That keeps every
+    reported displacement directly comparable across the whole test: frame
+    5's displacement and frame 9's displacement both mean "how far has
+    this point moved from where it started," and can be laid over one
+    another or subtracted from one another meaningfully.
+  </p>
+  <p>
+    The cost is that correlation quality degrades as the specimen deforms
+    further from how it looked in that original photograph - the
+    later the frame, the less it resembles the reference, and eventually
+    subsets that correlated beautifully at the start start failing. The
+    next chapter is about what to do when that happens.
+  </p>
+
+  <h1 id="reference-updating">7. When the reference goes stale</h1>
+  <p class="lede">
+    A reference that no longer resembles the current state of the
+    specimen makes correlation fail, not through any flaw in the method,
+    but because the two images genuinely no longer look alike enough to
+    match. Re-anchoring is the standard answer, and it trades one kind of
+    correctness for another in a way worth understanding before switching
+    it on.
+  </p>
+
+  <h2>What re-anchoring does</h2>
+  <p>
+    Once too little of the field still correlates well against the
+    original reference, later frames are measured against the
+    <em>current</em> frame instead of the original one. Each point's
+    displacement since the original reference is banked - the new
+    increment is added to whatever was already accumulated - so what
+    is <strong>reported</strong> stays relative to the original reference
+    throughout, even though what was actually <strong>measured</strong>
+    on any individual frame after the switch was relative to a more
+    recent one.
+  </p>
+  <p>
+    This recovers correlation on a specimen that has deformed too far to
+    compare directly against its starting photograph. It is not free: it
+    abandons any point that could not be measured on the exact frame the
+    re-anchor happens on, because there is no other way to know where
+    that point went. That trade is explained wherever the setting is
+    switched on, not buried in a default.
+  </p>
+
+  <h2>The rule that decides when to re-anchor has to count losses, not just successes</h2>
+  <p>
+    The obvious way to decide "has the reference gone stale" is to ask
+    what share of points still correlate well. The obvious way to build
+    that is to count the points that succeeded. That is backwards, and
+    the reason is not obvious until you watch it fail: if only the points
+    that are <em>still solving well</em> get a vote, then a field that has
+    lost half its points to decorrelation but still correlates beautifully
+    on the half that remains never triggers a re-anchor at all - the
+    surviving half looks great and is the only half being asked.
+  </p>
+  <p>
+    On a real synthetic tension sequence this was not a hypothetical: solved
+    points fell from 97% of the field to 47% across five load steps, and a
+    rule that counted only successes never re-anchored once. <strong>A
+    point lost to decorrelation is the strongest evidence available that
+    the reference has gone stale</strong>, and it has to count against the
+    reference exactly because it dropped out, not despite it.
+  </p>
+  <p>
+    There is one case where that rule has to bend the other way: a frame
+    where <em>nothing</em> correlated must never trigger a re-anchor,
+    because re-anchoring works by banking the increment just measured, and
+    a frame with no increment to bank marks every point lost and ends the
+    sequence's usefulness outright. A reference that is merely stale can
+    recover on a later frame. A field that has lost every tracked point
+    cannot.
+  </p>
+
+  <h2>The threshold is set by measurement, and moving it changes the outcome directly</h2>
+  <p>
+    A convenient-sounding default (borrowed from other tools' 75% share)
+    turned out to be too permissive when tried against real data: at 75%,
+    a tension sequence sat at 75.3% on its fourth load step - a hair
+    above the line - held the reference one step too long, and
+    arrived at the fifth step with less than half the field still solved.
+    At 90%, the same sequence re-anchors one step earlier, and its final
+    frame keeps far more of the field intact. The number is not a
+    convention; it is a knob that visibly changes how much of a hard test
+    survives to the end.
+  </p>
+
+  <h2>Two rules the bookkeeping has to get right, always</h2>
+  <ul>
+    <li>
+      <strong>A frame is always reported on the original grid, relative
+      to the original reference</strong> - whatever it was actually
+      measured against. Otherwise the reported field drifts across the
+      picture as the specimen itself does, and no two frames of the
+      series, and no frame and the original photograph, can ever be laid
+      over one another again.
+    </li>
+    <li>
+      <strong>A point with no measurement on a re-anchor frame is lost,
+      not frozen.</strong> Its position in the new reference is unknown
+      the moment the anchor moves without it, so continuing to report its
+      last known displacement forever would present a region that has
+      genuinely stopped being tracked as though it had simply stopped
+      moving - a measurement claim, sitting where there is none
+      left to make.
+    </li>
+  </ul>
+
+  <h1 id="recovery">8. Points that fail, and the pass that repairs them</h1>
+  <p class="lede">
+    Most points a correlation loses are not places where the surface is
+    genuinely unmeasurable. They are places where the search started from
+    a poor guess. A second pass that gives failed points a better starting
+    guess, and re-solves them properly, recovers a substantial share of a
+    field - if it is built so that it can never make anything worse.
+  </p>
+
+  <h2>Borrowing from the neighbours, then re-solving in full</h2>
+  <p>
+    A subset's correlation search has to start somewhere, and if that
+    starting guess is far from the real answer, the search can fail to
+    converge even though a perfectly good match exists nearby. A recovery
+    pass fits a displacement field to the points around a failed one that
+    <em>did</em> correlate well, uses that fit as a better starting guess
+    at the failed point, and runs the full correlation search again from
+    there.
+  </p>
+  <p>
+    The result of the fit is never reported as a measurement on its own.
+    It is only ever an initial guess, and the point is only accepted once
+    it has been correlated properly from that guess - with its own,
+    independently earned correlation score. Reporting the fitted value
+    directly, without re-solving, would put an interpolation borrowed from
+    a point's neighbours into the field wearing the same appearance as a
+    real measurement, which is exactly the trap Chapter 2 describes for
+    strain, one step further along the same idea.
+  </p>
+
+  <h2>The rule that makes this safe to leave switched on: it may never make anything worse</h2>
+  <p>
+    A recovery pass that only ever touches points that already failed can,
+    at worst, do nothing. That is the entire argument for running it by
+    default: an answer is accepted only if it converges <em>and</em>
+    correlates better than whatever was there before - nothing, in
+    the case of a point that had failed outright - so the pass can
+    only add points to a field, never spoil ones that were already there.
+  </p>
+  <p>
+    Recovery spreads in rounds: points recovered in one round become
+    trustworthy neighbours for the next, so repair can work its way into
+    the middle of a large failed patch that had no good neighbour at all
+    on the very first attempt.
+  </p>
+
+  <h2>A recovered point is marked, everywhere it is reported</h2>
+  <p>
+    A recovered point is a genuine measurement - it converged, and
+    it carries its own correlation score - and needs no apology on
+    that account. But it reached its answer by a different route than the
+    rest of the field, and that is exactly the kind of thing this manual
+    has already argued should never be hidden: the mark travels with the
+    point everywhere it is reported, so a reader can always ask where the
+    repairs are concentrated. That question has a real answer worth
+    asking - repairs clustered along one edge of a specimen usually
+    mean something about the specimen; repairs scattered evenly usually
+    mean something about the correlation settings.
+  </p>
+
+  <h2>What it actually buys, measured</h2>
+  <p>
+    On real specimens the effect is large. A hard frame of a real tension
+    test with two holes through the gauge section went from
+    <strong>5401 points measured to 8455</strong> once the pass was
+    switched on. On a run that already measured most of its field, the
+    same pass costs a modest amount of extra time and changes almost
+    nothing - the effort scales to how much of the field was
+    actually broken.
+  </p>
+
+  <table class="data">
+    <thead><tr><th>pair</th><th class="num">before</th><th class="num">after</th></tr></thead>
+    <tbody>
+      <tr><td>synthetic large strain, first to last frame</td><td class="num">167</td><td class="num">8099</td></tr>
+      <tr><td>synthetic rotation, first to a later frame</td><td class="num">2574</td><td class="num">10170</td></tr>
+      <tr><td>real tension coupon without holes</td><td class="num">5401</td><td class="num">8455</td></tr>
+      <tr><td>real tension coupon with holes</td><td class="num">6513</td><td class="num">9044</td></tr>
+    </tbody>
+  </table>
+
+  <div class="chapter-nav">
+<a class="prev" href="part-1-what-dic-measures.html"><small>Previous</small>Part I: What DIC measures</a>
+<a class="next" href="part-3-how-much-to-trust-it.html"><small>Next</small>Part III: How much to trust it</a>
+</div>
+</main>
+
+</div>
+
+<footer>
+  <div class="footer-links">
+    <a href="../index.html">SurView DIC</a>
+    <a href="index.html">Manual contents</a>
+    <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </div>
+  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+</footer>
+
+</body>
+</html>

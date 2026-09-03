@@ -1,0 +1,543 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Part I. What DIC measures - The SurView DIC Manual</title>
+<meta name="description" content="Two photographs, a speckle pattern, and what a correlation actually measures. Why strain is fitted, not measured, and why an unmeasured point must never look like a zero.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfcfd;
+  --surface: #ffffff;
+  --text: #131a21;
+  --text-dim: #55616d;
+  --border: #e2e8ee;
+  --accent: #1a6fb5;
+  --accent-strong: #14568c;
+  --accent-soft: #e8f1f9;
+  --hot: #d9531e;
+  --dark: #0f1720;
+  --code-bg: #f2f5f8;
+  --shadow: 0 1px 2px rgba(15,23,32,0.05), 0 8px 24px rgba(15,23,32,0.09);
+}
+:root[data-theme="dark"] {
+  --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+  --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+  --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+  --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+    --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+    --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+    --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.62; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); }
+img { max-width: 100%; }
+code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; }
+
+header.nav {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  border-bottom: 1px solid var(--border); display: flex; align-items: center;
+  gap: 22px; padding: 12px 28px; flex-wrap: wrap;
+}
+header.nav .brand {
+  display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.02rem;
+  color: var(--text); text-decoration: none; margin-right: auto;
+}
+header.nav .brand svg { display: block; }
+.nav-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.92rem; }
+.nav-links a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.nav-links a:hover, .nav-links a.current { color: var(--accent-strong); }
+
+.book-shell { display: grid; grid-template-columns: 1fr; max-width: 1180px; margin: 0 auto; }
+@media (min-width: 980px) {
+  .book-shell { grid-template-columns: 250px minmax(0,1fr); gap: 48px; padding: 0 28px; }
+}
+.book-toc {
+  padding: 32px 20px 40px; font-size: 0.9rem;
+}
+@media (min-width: 980px) {
+  .book-toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; padding: 32px 0 40px; }
+}
+.book-toc .toc-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; font-weight: 800; color: var(--text-dim); margin: 18px 0 8px; }
+.book-toc .toc-label:first-child { margin-top: 0; }
+.book-toc ol { list-style: none; margin: 0; padding: 0; }
+.book-toc li { margin: 0; }
+.book-toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.book-toc a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc a.current { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc .part-link { color: var(--text); font-weight: 800; }
+.book-toc .toc-label.current-part { color: var(--accent-strong); }
+
+main.chapter { padding: 40px 20px 90px; max-width: 760px; }
+main.chapter .kicker { color: var(--accent-strong); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; margin: 0 0 10px; }
+main.chapter h1 { font-size: 2.1rem; letter-spacing: -0.01em; margin: 0 0 6px; }
+main.chapter .lede { color: var(--text-dim); font-size: 1.12rem; margin: 0 0 36px; max-width: 60ch; }
+main.chapter h2 { font-size: 1.42rem; margin: 46px 0 14px; letter-spacing: -0.005em; }
+main.chapter h2:first-of-type { margin-top: 8px; }
+main.chapter h3 { font-size: 1.1rem; margin: 30px 0 10px; }
+main.chapter p { margin: 0 0 16px; max-width: 68ch; }
+main.chapter ul, main.chapter ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+main.chapter li { margin: 0 0 8px; }
+main.chapter strong { color: var(--text); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 24px 0; max-width: 66ch;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .callout-label { font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-strong); margin: 0 0 6px; }
+.callout.warn { border-left-color: var(--hot); background: rgba(217,83,30,0.08); }
+.callout.warn .callout-label { color: var(--hot); }
+
+table.data { border-collapse: collapse; margin: 18px 0 28px; font-size: 0.92rem; width: 100%; max-width: 66ch; }
+table.data th, table.data td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+table.data th { background: var(--code-bg); font-weight: 700; }
+table.data td.num, table.data th.num { text-align: right; font-family: "SF Mono", Menlo, Consolas, monospace; }
+
+.chapter-nav { display: flex; justify-content: space-between; gap: 16px; margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); max-width: 66ch; }
+.chapter-nav a { text-decoration: none; color: var(--text); font-weight: 700; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); flex: 1; }
+.chapter-nav a.next { text-align: right; }
+.chapter-nav a small { display: block; color: var(--text-dim); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.chapter-nav a:hover { border-color: var(--accent); }
+
+dl.glossary dt { font-weight: 800; margin-top: 18px; }
+dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
+
+.status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
+
+footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
+footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+footer a:hover { color: var(--accent-strong); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="../index.html">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--dark)"/>
+      <circle cx="9" cy="9" r="2" fill="#4aa3e0"/>
+      <circle cx="16" cy="10" r="1.4" fill="#8fd3c8"/>
+      <circle cx="23" cy="8" r="1.8" fill="#d9d94a"/>
+      <circle cx="10" cy="17" r="1.5" fill="#2bb8a6"/>
+      <circle cx="17" cy="18" r="2.2" fill="#e8b13c"/>
+      <circle cx="24" cy="16" r="1.5" fill="#e8743c"/>
+      <circle cx="8" cy="24" r="1.7" fill="#4aa3e0"/>
+      <circle cx="16" cy="24" r="1.4" fill="#8fd3c8"/>
+      <circle cx="24" cy="23" r="2" fill="#d9531e"/>
+    </svg>
+    SurView DIC
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">Manual</a>
+    <a href="../index.html#get">Download</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </nav>
+</header>
+
+<div class="book-shell">
+<div class="book-toc"><nav aria-label="Table of contents">
+<div class="toc-label">Manual</div><ol>
+<li><a href="index.html">Front matter</a></li>
+</ol>
+<div class="toc-label current-part">Part I. What DIC measures</div><ol>
+<li><a href="part-1-what-dic-measures.html#the-idea" class="current">1. Two photographs and a question</a></li>
+<li><a href="part-1-what-dic-measures.html#displacement-and-strain" class="current">2. Displacement is measured, strain is fitted</a></li>
+<li><a href="part-1-what-dic-measures.html#absence-not-zero" class="current">3. A rejected point is not a zero</a></li>
+<li><a href="part-1-what-dic-measures.html#coordinate-frame" class="current">4. One coordinate frame</a></li>
+</ol>
+<div class="toc-label">Part II. Running a measurement</div><ol>
+<li><a href="part-2-running-a-measurement.html#region-and-holes">5. The region, and what a hole means</a></li>
+<li><a href="part-2-running-a-measurement.html#sequences">6. Sequences: order matters, reference matters</a></li>
+<li><a href="part-2-running-a-measurement.html#reference-updating">7. When the reference goes stale</a></li>
+<li><a href="part-2-running-a-measurement.html#recovery">8. Points that fail, and the pass that repairs them</a></li>
+</ol>
+<div class="toc-label">Part III. How much to trust it</div><ol>
+<li><a href="part-3-how-much-to-trust-it.html#two-questions">9. Two questions, never one score</a></li>
+<li><a href="part-3-how-much-to-trust-it.html#reading-critically">10. Reading a field critically</a></li>
+</ol>
+<div class="toc-label">Part IV. Beyond one field</div><ol>
+<li><a href="part-4-beyond-one-field.html#sequence-as-curve">11. Reading a sequence as a curve</a></li>
+<li><a href="part-4-beyond-one-field.html#leaving-the-application">12. The field leaving the application</a></li>
+</ol>
+<div class="toc-label">Part V. Practice</div><ol>
+<li><a href="part-5-practice.html#speckling">13. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">14. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">15. Lighting and imaging</a></li>
+</ol>
+<div class="toc-label">Reference</div><ol>
+<li><a href="appendix.html">Appendix</a></li>
+</ol>
+</nav></div>
+
+<main class="chapter">
+  <p class="kicker">Part I &middot; What DIC measures</p>
+  <h1 id="the-idea">1. Two photographs and a question</h1>
+  <p class="lede">
+    Digital image correlation answers one question: how did the surface in
+    this photograph move, compared with this other one? Everything else in
+    this manual is about what that question does and does not let you ask.
+  </p>
+
+  <h2>The reference and the target</h2>
+  <p>
+    Every measurement starts with two photographs of the same surface: a
+    <strong>reference</strong>, taken before whatever you are studying
+    happens, and a <strong>target</strong>, taken after. A test with several
+    load steps has several targets, each compared against the reference in
+    turn - Part II covers what "compared" means once there is more
+    than one.
+  </p>
+  <p>
+    The surface has to carry a random, high-contrast texture: a
+    <strong>speckle pattern</strong>. This is not decoration. It is what
+    makes the measurement possible at all. A patch of featureless grey has
+    nothing distinguishing it from the patch next to it, so there is no way
+    to say which pixel in the target corresponds to which pixel in the
+    reference - the correspondence is genuinely ambiguous, not merely
+    hard to compute. A patch of speckle is different every few pixels in
+    every direction, so its match in the target is (with enough contrast
+    and enough texture) unique. Part V returns to what makes a pattern good.
+  </p>
+
+  <h2>The subset, and the grid</h2>
+  <p>
+    DIC does not try to match single pixels. It lays a grid of points over
+    the reference image, and around each point takes a small square patch
+    of pixels called a <strong>subset</strong>. For each subset, it searches
+    the target image for the patch of pixels whose pattern of light and
+    dark most closely matches it - allowing that patch to have moved,
+    stretched, rotated, or sheared slightly, since the surface genuinely did
+    those things between the two photographs. The centre of the best match
+    is where that point of the surface now is. The distance between where
+    it started and where it was found is the <strong>displacement</strong>
+    at that point, in pixels.
+  </p>
+  <p>
+    Do this at every point of the grid and the result is a
+    <strong>displacement field</strong>: not one number, but a value at
+    every measured point, which can be drawn as a picture - usually a
+    colour map, warm where the movement was large, cool where it was small.
+  </p>
+
+  <h2>How sure the match is</h2>
+  <p>
+    The search does not just report a best match; it reports how good that
+    match was, as a <strong>correlation coefficient</strong>. A value close
+    to its best possible score means the patch in the target looks almost
+    identical to the patch in the reference, once the found deformation is
+    accounted for. A poor score means no candidate patch looked convincingly
+    like the original - the surface may have torn, gone out of focus,
+    left the frame, or simply have too little texture in that subset to
+    pin down at all.
+  </p>
+  <p>
+    This number is a statement about pattern-matching confidence, not a
+    statement about physical truth. A subset can match with high confidence
+    while telling you nothing you actually want to know - a smooth,
+    empty patch of background can correlate excellently against itself
+    while genuinely reporting no useful information. Confidence in the
+    match and meaningfulness of the answer are related but not the same
+    question, and Part III is built entirely around keeping them separate.
+  </p>
+
+  <div class="callout">
+    <p class="callout-label">In one sentence</p>
+    <p>
+      DIC follows small, uniquely textured patches of a photographed
+      surface from a reference image to a target image, and reports how
+      far each one moved and how confident it is in that answer.
+    </p>
+  </div>
+
+  <h1 id="displacement-and-strain">2. Displacement is measured, strain is fitted</h1>
+  <p class="lede">
+    Displacement and strain are reported side by side and look like the
+    same kind of number. They are not measured the same way, and treating
+    them as though they were is the single most common way to misread a
+    DIC result.
+  </p>
+
+  <h2>Displacement exists at a point</h2>
+  <p>
+    A correlation finds where one subset went. That answer belongs entirely
+    to that one point: ask "how far did this point move" and the field has
+    a direct answer, measured by comparing that point's own neighbourhood
+    in the reference against the target.
+  </p>
+
+  <h2>Strain does not</h2>
+  <p>
+    Strain is a measure of local stretching or shearing - how much a
+    small patch of material deformed relative to its own neighbours, not
+    how far it travelled. That is a <em>gradient</em> of displacement, and a
+    gradient has no meaning at a single point on its own: it is a
+    comparison between a point and the points around it. So strain is not
+    measured directly at all. It is <strong>fitted</strong>: a plane (or a
+    more general surface) is fitted through the displacements of every
+    measured point inside a small neighbourhood, and the slope of that fit
+    is the strain reported at the centre.
+  </p>
+  <p>
+    This has real consequences, and each of them is easy to miss unless a
+    tool goes out of its way to surface it.
+  </p>
+
+  <h3>A declined fit is not a strain of zero</h3>
+  <p>
+    A fit can fail to find enough well-correlated neighbours to fit through
+    at all. When that happens, the honest answer is "not established here",
+    and a tool that quietly reports zero in that case is lying in the most
+    dangerous possible direction: zero looks like a real, specific,
+    reassuring answer - "this region did not strain" - rather
+    than "this region was never evaluated". SurView carries the distinction
+    explicitly, as a flag alongside every strain value, and a strain map
+    with holes in it means exactly what it looks like: places nothing was
+    established, not places nothing happened.
+  </p>
+
+  <h3>Neighbourhoods can be silently substituted</h3>
+  <p>
+    A fit needs a minimum number of neighbouring points inside its
+    subregion. If a subregion does not contain enough of them - near
+    an edge of the measured area, or near a hole, or wherever the
+    displacement field itself is sparse - some engines will quietly
+    reach further out and borrow the nearest points available instead of
+    refusing, and the result looks exactly as complete as a properly
+    supported fit. The honest response is to say, live, how many points a
+    given subregion setting will actually gather before a run is even
+    started, so a setting that would trigger this silently is visible
+    before it is used rather than discovered afterwards.
+  </p>
+
+  <h3>Only well-correlated points get to vote</h3>
+  <p>
+    A point that correlated poorly is not trustworthy evidence about its
+    own displacement, and a strain fit that used it anyway would be
+    building a gradient on top of noise. DIC engines typically exclude
+    points below a correlation threshold (0.9 is a common default) from
+    every fit they could otherwise contribute to. A consequence worth
+    expecting rather than being alarmed by: a strain map is often visibly
+    sparser than the displacement map sitting right next to it. That is
+    the fit being conservative, not a fault.
+  </p>
+
+  <h3>The trap that is easiest to fall into: extrapolation dressed as measurement</h3>
+  <p>
+    Here is the one worth reading twice. A strain fit is centred on a
+    point and built from that point's <em>neighbours</em>. Nothing stops
+    the fit from succeeding at a centre point whose own displacement was
+    <em>rejected</em>: the centre simply excludes itself from its own
+    regression and still receives a strain value extrapolated entirely from
+    points around it. That value describes a place the instrument never
+    actually got a reading from, and on the screen it is completely
+    indistinguishable from a value measured where the instrument really
+    did succeed.
+  </p>
+  <p>
+    This was found, not anticipated: a run reported <strong>"strain fitted
+    at 1092 of the 1025 solved points"</strong> - more strain values
+    than there were successful displacement measurements to fit them from,
+    which is only possible if some of those strain values were sitting on
+    points the instrument had already given up on. The fix is a rule that
+    is nowhere in the correlation engine itself and has to be added on
+    top: <strong>strain is reported only at a point whose own displacement
+    was measured.</strong> A rejected centre gets no strain value, however
+    good its neighbours look, because a value there would be an
+    extrapolation wearing the same colour as a measurement.
+  </p>
+
+  <div class="callout warn">
+    <p class="callout-label">What to check, every time</p>
+    <p>
+      Before reading a strain map as an answer, check: are unmeasured
+      regions shown as gaps, or could they be reading as zero? Does the
+      strain map extend anywhere the displacement map itself has holes? If
+      a tool cannot answer either question, treat every value near a
+      boundary or a hole with real suspicion.
+    </p>
+  </div>
+
+  <h2>Two display choices that follow from this</h2>
+  <p>
+    Because strain and displacement are different kinds of quantity, they
+    should not share a colour convention. A strain field's scale is
+    centred on zero, because zero strain is a real physical state (nothing
+    stretched) and the sign either side of it is meaningful (tension
+    against compression). A displacement field's scale is not centred,
+    because a displacement of zero is only "wherever the reference frame
+    happens to sit" - a specimen that simply translated across the
+    frame would spend half its colour range on values that cannot occur if
+    the scale were forced to straddle zero.
+  </p>
+
+  <h1 id="absence-not-zero">3. A rejected point is not a zero</h1>
+  <p class="lede">
+    One principle, showing up in every part of a DIC result: a place the
+    instrument did not measure, and a place the instrument measured a
+    value of zero, must never look the same. This chapter states the
+    principle once so the rest of the manual does not have to keep
+    re-arguing it.
+  </p>
+
+  <h2>Why zero is the dangerous default</h2>
+  <p>
+    Software defaults numeric fields to zero constantly, and it is usually
+    harmless. In a measurement field it is not, because zero is never a
+    neutral placeholder here - it is always <em>also</em> a
+    legitimate, meaningful answer. Zero displacement means "this point did
+    not move." Zero strain means "this material did not deform." A rejected
+    point defaulting to zero is therefore not a blank; it is a false and
+    entirely plausible-looking claim, and it looks exactly as confident as
+    a real one.
+  </p>
+  <p>
+    The fix is the same everywhere it applies: use a value that cannot be
+    mistaken for a measurement - not-a-number, a missing entry, a
+    hole in a colour map - and carry a separate flag saying whether a
+    value was actually established. "Nothing here" and "zero here" have to
+    stay two different, unconfusable states, all the way from the engine
+    to the screen to whatever file the result is exported into.
+  </p>
+
+  <h2>Where this shows up</h2>
+  <ul>
+    <li>
+      <strong>A rejected point's displacement.</strong> The correlation
+      failed, or the subset moved out of frame, or the match was too poor
+      to trust. The point is marked as not converged, and reports no
+      displacement value at all - not a displacement of zero.
+    </li>
+    <li>
+      <strong>A declined strain fit</strong> (Chapter 2): the same rule,
+      one derived quantity further out.
+    </li>
+    <li>
+      <strong>An unestablished reliability figure</strong> (Part III):
+      a noise floor or match-conditioning value that could not be
+      computed is absent, never zero - zero would be the single
+      most flattering, and therefore most misleading, reading either
+      metric could give.
+    </li>
+    <li>
+      <strong>A frame a sequence could not read</strong> (Part IV): missing
+      from a curve as a visible break, never plotted as though the
+      quantity had returned to zero.
+    </li>
+    <li>
+      <strong>An exported field</strong> (Chapter 12): the same absence has
+      to survive leaving the application. A viewer that assumes every cell
+      holds a number, and a format that cannot represent "not established",
+      quietly turn every one of the cases above back into a lie the moment
+      the file is opened somewhere else.
+    </li>
+  </ul>
+
+  <div class="callout">
+    <p class="callout-label">A reading habit worth having</p>
+    <p>
+      When a field looks unusually smooth or unusually complete, ask what
+      would have happened to a point the instrument could not measure. If
+      the honest answer is "it would look identical to a real zero," the
+      field is not to be trusted at face value, whichever tool produced it.
+    </p>
+  </div>
+
+  <h1 id="coordinate-frame">4. One coordinate frame</h1>
+  <p class="lede">
+    Every number in a DIC result is a position or a displacement, and every
+    position or displacement is meaningless without knowing which way the
+    axes point. This is duller than the rest of Part I and just as capable
+    of quietly ruining a result.
+  </p>
+
+  <h2>Image coordinates, not maths coordinates</h2>
+  <p>
+    A photograph is stored as rows of pixels, and the row order is a
+    convention, not a law: some formats store the top row of the image
+    first, others store the bottom row first. Screen and image coordinate
+    systems follow the file: x increases to the right, and
+    <strong>y increases downward</strong>, with the origin at the top-left
+    pixel. That is the opposite of the y-axis convention used in ordinary
+    graphing, where y increases upward - and a rendering system built
+    for graphs (as most 3D and plotting toolkits are) will get this
+    backwards unless it is deliberately told not to.
+  </p>
+
+  <h2>Why this has to be nailed down explicitly, once</h2>
+  <p>
+    Different image formats do not even agree with each other. Some readers
+    honour a file's own stated orientation; others always deliver rows in
+    one fixed order regardless of what the file says. Left alone, this
+    produces a genuinely alarming failure mode: some image formats display
+    correctly and others display <strong>vertically mirrored</strong>,
+    silently, depending only on which file format happened to be used for
+    that particular photograph - with nothing about the mirrored
+    image looking obviously wrong at a glance, since a flipped photograph
+    of a speckle pattern still looks like a perfectly plausible speckle
+    pattern.
+  </p>
+  <p>
+    The only reliable fix is to normalise every image, on the way in, to
+    one stated row order, and to make every other coordinate in the system
+    (a click on screen, a region's corners, a measured point, a rendered
+    field) agree with that same order and with nothing else. Once that is
+    true, a click on the picture, a point in the result, and a pixel in
+    the exported file are all talking about the same place without any
+    conversion between them anywhere in the pipeline - which is also
+    what makes it safe to overlay a result directly on top of its own
+    reference photograph and trust that they line up.
+  </p>
+
+  <h2>Why an exported file has to say so explicitly</h2>
+  <p>
+    A result rarely stays inside the tool that produced it. It gets opened
+    in a general-purpose viewer that has its own, entirely reasonable,
+    default assumption about which way is up - usually the graphing
+    convention, not the image convention. If the file does not state its
+    own coordinate frame, a viewer that assumes the wrong one draws the
+    field <strong>mirrored</strong>, and there is no way to tell from
+    looking, because a mirrored field of a real specimen still looks like
+    a plausible field of some specimen. The one thing that catches it is
+    laying the exported field directly back over the original photograph:
+    a field that lines up is right, and a field that lines up perfectly
+    except flipped is a coordinate-frame bug wearing the appearance of a
+    correct result.
+  </p>
+
+  <div class="chapter-nav">
+<a class="prev" href="index.html"><small>Previous</small>Front matter</a>
+<a class="next" href="part-2-running-a-measurement.html"><small>Next</small>Part II: Running a measurement</a>
+</div>
+</main>
+
+</div>
+
+<footer>
+  <div class="footer-links">
+    <a href="../index.html">SurView DIC</a>
+    <a href="index.html">Manual contents</a>
+    <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </div>
+  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+</footer>
+
+</body>
+</html>

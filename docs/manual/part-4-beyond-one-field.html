@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Part IV. Beyond one field - The SurView DIC Manual</title>
+<meta name="description" content="Reading a whole sequence as a curve with a virtual extensometer, and what a result has to carry with it once it leaves the application.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfcfd;
+  --surface: #ffffff;
+  --text: #131a21;
+  --text-dim: #55616d;
+  --border: #e2e8ee;
+  --accent: #1a6fb5;
+  --accent-strong: #14568c;
+  --accent-soft: #e8f1f9;
+  --hot: #d9531e;
+  --dark: #0f1720;
+  --code-bg: #f2f5f8;
+  --shadow: 0 1px 2px rgba(15,23,32,0.05), 0 8px 24px rgba(15,23,32,0.09);
+}
+:root[data-theme="dark"] {
+  --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+  --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+  --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+  --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+    --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+    --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+    --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.62; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); }
+img { max-width: 100%; }
+code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; }
+
+header.nav {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  border-bottom: 1px solid var(--border); display: flex; align-items: center;
+  gap: 22px; padding: 12px 28px; flex-wrap: wrap;
+}
+header.nav .brand {
+  display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.02rem;
+  color: var(--text); text-decoration: none; margin-right: auto;
+}
+header.nav .brand svg { display: block; }
+.nav-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.92rem; }
+.nav-links a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.nav-links a:hover, .nav-links a.current { color: var(--accent-strong); }
+
+.book-shell { display: grid; grid-template-columns: 1fr; max-width: 1180px; margin: 0 auto; }
+@media (min-width: 980px) {
+  .book-shell { grid-template-columns: 250px minmax(0,1fr); gap: 48px; padding: 0 28px; }
+}
+.book-toc {
+  padding: 32px 20px 40px; font-size: 0.9rem;
+}
+@media (min-width: 980px) {
+  .book-toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; padding: 32px 0 40px; }
+}
+.book-toc .toc-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; font-weight: 800; color: var(--text-dim); margin: 18px 0 8px; }
+.book-toc .toc-label:first-child { margin-top: 0; }
+.book-toc ol { list-style: none; margin: 0; padding: 0; }
+.book-toc li { margin: 0; }
+.book-toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.book-toc a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc a.current { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc .part-link { color: var(--text); font-weight: 800; }
+.book-toc .toc-label.current-part { color: var(--accent-strong); }
+
+main.chapter { padding: 40px 20px 90px; max-width: 760px; }
+main.chapter .kicker { color: var(--accent-strong); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; margin: 0 0 10px; }
+main.chapter h1 { font-size: 2.1rem; letter-spacing: -0.01em; margin: 0 0 6px; }
+main.chapter .lede { color: var(--text-dim); font-size: 1.12rem; margin: 0 0 36px; max-width: 60ch; }
+main.chapter h2 { font-size: 1.42rem; margin: 46px 0 14px; letter-spacing: -0.005em; }
+main.chapter h2:first-of-type { margin-top: 8px; }
+main.chapter h3 { font-size: 1.1rem; margin: 30px 0 10px; }
+main.chapter p { margin: 0 0 16px; max-width: 68ch; }
+main.chapter ul, main.chapter ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+main.chapter li { margin: 0 0 8px; }
+main.chapter strong { color: var(--text); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 24px 0; max-width: 66ch;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .callout-label { font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-strong); margin: 0 0 6px; }
+.callout.warn { border-left-color: var(--hot); background: rgba(217,83,30,0.08); }
+.callout.warn .callout-label { color: var(--hot); }
+
+table.data { border-collapse: collapse; margin: 18px 0 28px; font-size: 0.92rem; width: 100%; max-width: 66ch; }
+table.data th, table.data td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+table.data th { background: var(--code-bg); font-weight: 700; }
+table.data td.num, table.data th.num { text-align: right; font-family: "SF Mono", Menlo, Consolas, monospace; }
+
+.chapter-nav { display: flex; justify-content: space-between; gap: 16px; margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); max-width: 66ch; }
+.chapter-nav a { text-decoration: none; color: var(--text); font-weight: 700; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); flex: 1; }
+.chapter-nav a.next { text-align: right; }
+.chapter-nav a small { display: block; color: var(--text-dim); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.chapter-nav a:hover { border-color: var(--accent); }
+
+dl.glossary dt { font-weight: 800; margin-top: 18px; }
+dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
+
+.status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
+
+footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
+footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+footer a:hover { color: var(--accent-strong); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="../index.html">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--dark)"/>
+      <circle cx="9" cy="9" r="2" fill="#4aa3e0"/>
+      <circle cx="16" cy="10" r="1.4" fill="#8fd3c8"/>
+      <circle cx="23" cy="8" r="1.8" fill="#d9d94a"/>
+      <circle cx="10" cy="17" r="1.5" fill="#2bb8a6"/>
+      <circle cx="17" cy="18" r="2.2" fill="#e8b13c"/>
+      <circle cx="24" cy="16" r="1.5" fill="#e8743c"/>
+      <circle cx="8" cy="24" r="1.7" fill="#4aa3e0"/>
+      <circle cx="16" cy="24" r="1.4" fill="#8fd3c8"/>
+      <circle cx="24" cy="23" r="2" fill="#d9531e"/>
+    </svg>
+    SurView DIC
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">Manual</a>
+    <a href="../index.html#get">Download</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </nav>
+</header>
+
+<div class="book-shell">
+<div class="book-toc"><nav aria-label="Table of contents">
+<div class="toc-label">Manual</div><ol>
+<li><a href="index.html">Front matter</a></li>
+</ol>
+<div class="toc-label">Part I. What DIC measures</div><ol>
+<li><a href="part-1-what-dic-measures.html#the-idea">1. Two photographs and a question</a></li>
+<li><a href="part-1-what-dic-measures.html#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li>
+<li><a href="part-1-what-dic-measures.html#absence-not-zero">3. A rejected point is not a zero</a></li>
+<li><a href="part-1-what-dic-measures.html#coordinate-frame">4. One coordinate frame</a></li>
+</ol>
+<div class="toc-label">Part II. Running a measurement</div><ol>
+<li><a href="part-2-running-a-measurement.html#region-and-holes">5. The region, and what a hole means</a></li>
+<li><a href="part-2-running-a-measurement.html#sequences">6. Sequences: order matters, reference matters</a></li>
+<li><a href="part-2-running-a-measurement.html#reference-updating">7. When the reference goes stale</a></li>
+<li><a href="part-2-running-a-measurement.html#recovery">8. Points that fail, and the pass that repairs them</a></li>
+</ol>
+<div class="toc-label">Part III. How much to trust it</div><ol>
+<li><a href="part-3-how-much-to-trust-it.html#two-questions">9. Two questions, never one score</a></li>
+<li><a href="part-3-how-much-to-trust-it.html#reading-critically">10. Reading a field critically</a></li>
+</ol>
+<div class="toc-label current-part">Part IV. Beyond one field</div><ol>
+<li><a href="part-4-beyond-one-field.html#sequence-as-curve" class="current">11. Reading a sequence as a curve</a></li>
+<li><a href="part-4-beyond-one-field.html#leaving-the-application" class="current">12. The field leaving the application</a></li>
+</ol>
+<div class="toc-label">Part V. Practice</div><ol>
+<li><a href="part-5-practice.html#speckling">13. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">14. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">15. Lighting and imaging</a></li>
+</ol>
+<div class="toc-label">Reference</div><ol>
+<li><a href="appendix.html">Appendix</a></li>
+</ol>
+</nav></div>
+
+<main class="chapter">
+  <p class="kicker">Part IV &middot; Beyond one field</p>
+  <h1 id="sequence-as-curve">11. Reading a sequence as a curve</h1>
+  <p class="lede">
+    One field is a snapshot. What a loading test is actually for is a
+    curve - strain against load step, elongation against time
+    - and getting from a stack of fields to a trustworthy curve has
+    its own ways of going wrong.
+  </p>
+
+  <h2>The virtual extensometer</h2>
+  <p>
+    A physical extensometer is a clip gauge: two arms attached to a
+    specimen a fixed distance apart, reporting how that distance changes
+    as the specimen deforms. A <strong>virtual extensometer</strong> is
+    the same idea done in software: place two points anywhere on the
+    measured field, and read the change in the distance between them
+    across every frame of the sequence.
+  </p>
+
+  <h2>It measures the gap between the anchors, never the movement of either one</h2>
+  <p>
+    This is the rule that matters most, and it is easy to get backwards
+    without noticing, because a common way to test the idea does not
+    expose the mistake. A gauge has to compute the change in
+    <strong>distance between</strong> its two anchor points, not the
+    displacement of either anchor on its own. A specimen carried bodily
+    across the frame - a pure rigid translation, no stretching at
+    all - has genuinely strained by nothing whatsoever. An
+    implementation that (by mistake) read one anchor's own displacement
+    instead of the gap between the two would turn that rigid motion into
+    a large, smooth-looking, entirely fictitious strain reading.
+  </p>
+  <p>
+    The trap in verifying this: testing only with a pure stretch centred
+    on the origin will not catch the bug, because under that specific kind
+    of deformation the two calculations happen to agree by coincidence. It
+    takes a genuinely rigid translation, tested on its own, to tell the
+    two apart.
+  </p>
+
+  <h2>An anchor needs real measurement on all sides to mean anything</h2>
+  <p>
+    An anchor placed between grid points does not sit exactly on a
+    measured point; its reading is interpolated from the four points
+    around it. If any one of those four is a gap (Chapter 3), every
+    obvious way to paper over it is dishonest in its own way: using the
+    three that remain quietly changes what is being averaged; reaching
+    further out for a substitute borrows a reading from somewhere the
+    anchor is not; filling the gap with zero drags the whole reading
+    toward "did not move," which is the most plausible-looking wrong
+    answer available. The honest response is to refuse the reading
+    outright and let the anchor be moved somewhere the field can actually
+    support it.
+  </p>
+
+  <h2>A gap in the curve is drawn as a gap</h2>
+  <p>
+    Some frames will not be readable - an anchor sat over a hole
+    (Chapter 5), or that frame's field simply did not measure enough of
+    the specimen. Dropping that frame from the curve and drawing a
+    straight line from the frame before it to the frame after would fill
+    territory nobody actually measured with a segment that is, on the
+    screen, indistinguishable from real data. The honest curve breaks
+    visibly where a frame could not be read, and says so in words, rather
+    than smoothing over the hole.
+  </p>
+
+  <h2>Verified, not merely argued</h2>
+  <p>
+    A synthetic tension sequence ships with an exactly known answer for
+    every frame, and a virtual extensometer placed on it reads 0.005,
+    0.010, 0.020 and 0.036 against stated strains of 0.005, 0.010, 0.020
+    and 0.035 across four frames - close enough, over displacements
+    reaching tens of pixels, to trust the method rather than merely the
+    argument for it.
+  </p>
+
+  <h1 id="leaving-the-application">12. The field leaving the application</h1>
+  <p class="lede">
+    A result rarely stays where it was produced. It gets opened in
+    another tool entirely - a general-purpose scientific viewer, a
+    spreadsheet, a finite-element package - and every principle this
+    manual has argued for has to survive that trip, or it was never really
+    upheld at all.
+  </p>
+
+  <h2>Geometry says where the instrument looked; the data says what it found</h2>
+  <p>
+    An exported field's underlying mesh should cover every place a
+    measurement was <em>attempted</em>, not merely every place it
+    <em>succeeded</em>. If the geometry itself shrank to fit only the
+    successful points, a difficult specimen would quietly export as a
+    smaller, easier-looking one than it really is - the very
+    difficulty that makes it worth studying would disappear from the
+    file before anyone else ever saw it. The data arrays sitting on that
+    geometry are where "attempted but not measured" actually gets stated,
+    following the same absence-not-zero rule as everything else.
+  </p>
+
+  <h2>The same "not zero" rule, one file format further out</h2>
+  <p>
+    In almost any viewer, a field of zeros renders as a perfectly
+    reasonable, uniform blue region - entirely indistinguishable
+    from a genuine measurement of no movement. An export has to carry
+    unmeasured values as not-a-number, exactly as the application's own
+    screen does, and state outright, in an array of its own, which points
+    were actually measured - rather than leaving a reader to infer
+    it from wherever the holes happen to be. A derived quantity that was
+    never asked for at all (strain, on a run where it was switched off)
+    should be <em>absent</em> from the file entirely, not present and
+    filled with not-a-number everywhere: an array that is entirely
+    not-a-number reads as "we tried and failed everywhere," which is a
+    much more alarming and much less accurate claim than "this was never
+    attempted."
+  </p>
+
+  <h2>A file has to state its own coordinate frame</h2>
+  <p>
+    Chapter 4 explained why one consistent coordinate frame matters
+    inside the application. The moment a field leaves it, that guarantee
+    is gone: whatever opens the file next has its own default assumption
+    about which way is up, and there is no reason to expect it matches.
+    The file has to say, explicitly, which convention its coordinates
+    use, so a reader - human or software - does not have to
+    guess and does not draw the field mirrored without any way to notice.
+  </p>
+
+  <h2>Provenance travels with the file, captured at the moment that matters</h2>
+  <p>
+    A trustworthy result carries an account of how it was made: both
+    source images identified precisely enough that a substitution would
+    be caught, the settings the correlation actually ran with, the region
+    that was used, and the exact version of the software and its engine
+    that produced it. That account has to be captured <strong>when the
+    run starts</strong>, not read back from an on-screen panel afterward
+    - a panel that keeps accepting input after a run finishes will,
+    if read late, describe a configuration that never actually produced
+    anything, attached with complete confidence to a result that was
+    really made under different settings entirely.
+  </p>
+
+  <div class="callout warn">
+    <p class="callout-label">A trap worth knowing about, generally</p>
+    <p>
+      A file-writing call that reports success is not automatically proof
+      a file was written. It is worth checking, once, that the specific
+      writer a pipeline depends on actually fails loudly - some
+      report success even when the destination directory does not exist
+      and nothing was written at all. A confirmed write, not merely an
+      unrejected one, is the only thing that should tell a user their
+      result is saved.
+    </p>
+  </div>
+
+  <div class="chapter-nav">
+<a class="prev" href="part-3-how-much-to-trust-it.html"><small>Previous</small>Part III: How much to trust it</a>
+<a class="next" href="part-5-practice.html"><small>Next</small>Part V: Practice</a>
+</div>
+</main>
+
+</div>
+
+<footer>
+  <div class="footer-links">
+    <a href="../index.html">SurView DIC</a>
+    <a href="index.html">Manual contents</a>
+    <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </div>
+  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+</footer>
+
+</body>
+</html>

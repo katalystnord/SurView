@@ -67,6 +67,16 @@ well-engineered, cross-platform, license-clean, ecosystem-native GUI that a
 working scientist can adopt and hand to a colleague. SurView DIC fills that
 space.
 
+The DIC teaching in this file - what strain fitting means, why an unmeasured
+point must never look like a zero, what reliability actually reports - is
+written for whoever is next changing the code. The same ideas, written for
+whoever is next using the tool, are in `docs/manual/`
+(https://katalystnord.github.io/SurView/manual/), started 2026-09-03. The two
+overlap in substance and diverge in audience on purpose: this file explains
+why the code is shaped the way it is, the manual explains what a result on
+screen means. Keep both in mind before changing a rule either one states -
+a fix that only lands in one of them will drift from the other silently.
+
 ## Engine: OpenCorr
 
 SurView DIC wraps **OpenCorr** (Jiang, `vincentjzy/OpenCorr`, MPL-2.0) as its

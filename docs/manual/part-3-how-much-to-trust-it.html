@@ -1,0 +1,383 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Part III. How much to trust it - The SurView DIC Manual</title>
+<meta name="description" content="Noise floor and match conditioning: two different questions about reliability, and a five-question checklist for reading any DIC field critically.">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg: #fbfcfd;
+  --surface: #ffffff;
+  --text: #131a21;
+  --text-dim: #55616d;
+  --border: #e2e8ee;
+  --accent: #1a6fb5;
+  --accent-strong: #14568c;
+  --accent-soft: #e8f1f9;
+  --hot: #d9531e;
+  --dark: #0f1720;
+  --code-bg: #f2f5f8;
+  --shadow: 0 1px 2px rgba(15,23,32,0.05), 0 8px 24px rgba(15,23,32,0.09);
+}
+:root[data-theme="dark"] {
+  --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+  --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+  --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+  --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+}
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #10161c; --surface: #182028; --text: #eef3f7; --text-dim: #a7b4c0;
+    --border: #26313b; --accent: #4aa3e0; --accent-strong: #8ccbf2;
+    --accent-soft: rgba(74,163,224,0.14); --hot: #f0743c; --dark: #0b1116;
+    --code-bg: #1d262f; --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 8px 30px rgba(0,0,0,0.45);
+  }
+}
+* { box-sizing: border-box; }
+html { scroll-behavior: smooth; }
+body {
+  margin: 0; background: var(--bg); color: var(--text);
+  font-family: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  line-height: 1.62; -webkit-font-smoothing: antialiased;
+}
+a { color: var(--accent-strong); }
+img { max-width: 100%; }
+code, .mono { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.92em; }
+code { background: var(--code-bg); padding: 0.1em 0.4em; border-radius: 4px; }
+
+header.nav {
+  position: sticky; top: 0; z-index: 20; background: var(--bg);
+  border-bottom: 1px solid var(--border); display: flex; align-items: center;
+  gap: 22px; padding: 12px 28px; flex-wrap: wrap;
+}
+header.nav .brand {
+  display: flex; align-items: center; gap: 8px; font-weight: 800; font-size: 1.02rem;
+  color: var(--text); text-decoration: none; margin-right: auto;
+}
+header.nav .brand svg { display: block; }
+.nav-links { display: flex; gap: 18px; flex-wrap: wrap; font-size: 0.92rem; }
+.nav-links a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.nav-links a:hover, .nav-links a.current { color: var(--accent-strong); }
+
+.book-shell { display: grid; grid-template-columns: 1fr; max-width: 1180px; margin: 0 auto; }
+@media (min-width: 980px) {
+  .book-shell { grid-template-columns: 250px minmax(0,1fr); gap: 48px; padding: 0 28px; }
+}
+.book-toc {
+  padding: 32px 20px 40px; font-size: 0.9rem;
+}
+@media (min-width: 980px) {
+  .book-toc { position: sticky; top: 64px; align-self: start; max-height: calc(100vh - 90px); overflow-y: auto; padding: 32px 0 40px; }
+}
+.book-toc .toc-label { text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.72rem; font-weight: 800; color: var(--text-dim); margin: 18px 0 8px; }
+.book-toc .toc-label:first-child { margin-top: 0; }
+.book-toc ol { list-style: none; margin: 0; padding: 0; }
+.book-toc li { margin: 0; }
+.book-toc a { display: block; padding: 5px 10px; border-radius: 6px; color: var(--text-dim); text-decoration: none; font-weight: 600; }
+.book-toc a:hover { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc a.current { background: var(--accent-soft); color: var(--accent-strong); }
+.book-toc .part-link { color: var(--text); font-weight: 800; }
+.book-toc .toc-label.current-part { color: var(--accent-strong); }
+
+main.chapter { padding: 40px 20px 90px; max-width: 760px; }
+main.chapter .kicker { color: var(--accent-strong); font-weight: 800; text-transform: uppercase; letter-spacing: 0.06em; font-size: 0.78rem; margin: 0 0 10px; }
+main.chapter h1 { font-size: 2.1rem; letter-spacing: -0.01em; margin: 0 0 6px; }
+main.chapter .lede { color: var(--text-dim); font-size: 1.12rem; margin: 0 0 36px; max-width: 60ch; }
+main.chapter h2 { font-size: 1.42rem; margin: 46px 0 14px; letter-spacing: -0.005em; }
+main.chapter h2:first-of-type { margin-top: 8px; }
+main.chapter h3 { font-size: 1.1rem; margin: 30px 0 10px; }
+main.chapter p { margin: 0 0 16px; max-width: 68ch; }
+main.chapter ul, main.chapter ol { margin: 0 0 16px; padding-left: 22px; max-width: 66ch; }
+main.chapter li { margin: 0 0 8px; }
+main.chapter strong { color: var(--text); }
+
+.callout {
+  border-left: 3px solid var(--accent); background: var(--accent-soft);
+  border-radius: 0 10px 10px 0; padding: 16px 20px; margin: 24px 0; max-width: 66ch;
+}
+.callout p:last-child { margin-bottom: 0; }
+.callout .callout-label { font-weight: 800; font-size: 0.78rem; text-transform: uppercase; letter-spacing: 0.05em; color: var(--accent-strong); margin: 0 0 6px; }
+.callout.warn { border-left-color: var(--hot); background: rgba(217,83,30,0.08); }
+.callout.warn .callout-label { color: var(--hot); }
+
+table.data { border-collapse: collapse; margin: 18px 0 28px; font-size: 0.92rem; width: 100%; max-width: 66ch; }
+table.data th, table.data td { border: 1px solid var(--border); padding: 8px 12px; text-align: left; }
+table.data th { background: var(--code-bg); font-weight: 700; }
+table.data td.num, table.data th.num { text-align: right; font-family: "SF Mono", Menlo, Consolas, monospace; }
+
+.chapter-nav { display: flex; justify-content: space-between; gap: 16px; margin-top: 56px; padding-top: 24px; border-top: 1px solid var(--border); max-width: 66ch; }
+.chapter-nav a { text-decoration: none; color: var(--text); font-weight: 700; padding: 12px 16px; border: 1px solid var(--border); border-radius: 10px; background: var(--surface); box-shadow: var(--shadow); flex: 1; }
+.chapter-nav a.next { text-align: right; }
+.chapter-nav a small { display: block; color: var(--text-dim); font-weight: 600; font-size: 0.76rem; text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: 3px; }
+.chapter-nav a:hover { border-color: var(--accent); }
+
+dl.glossary dt { font-weight: 800; margin-top: 18px; }
+dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
+
+.status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
+
+footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
+footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
+footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
+footer a:hover { color: var(--accent-strong); }
+</style>
+</head>
+<body>
+
+<header class="nav">
+  <a class="brand" href="../index.html">
+    <svg width="24" height="24" viewBox="0 0 32 32" aria-hidden="true">
+      <rect x="1" y="1" width="30" height="30" rx="7" fill="var(--dark)"/>
+      <circle cx="9" cy="9" r="2" fill="#4aa3e0"/>
+      <circle cx="16" cy="10" r="1.4" fill="#8fd3c8"/>
+      <circle cx="23" cy="8" r="1.8" fill="#d9d94a"/>
+      <circle cx="10" cy="17" r="1.5" fill="#2bb8a6"/>
+      <circle cx="17" cy="18" r="2.2" fill="#e8b13c"/>
+      <circle cx="24" cy="16" r="1.5" fill="#e8743c"/>
+      <circle cx="8" cy="24" r="1.7" fill="#4aa3e0"/>
+      <circle cx="16" cy="24" r="1.4" fill="#8fd3c8"/>
+      <circle cx="24" cy="23" r="2" fill="#d9531e"/>
+    </svg>
+    SurView DIC
+  </a>
+  <nav class="nav-links">
+    <a href="index.html">Manual</a>
+    <a href="../index.html#get">Download</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </nav>
+</header>
+
+<div class="book-shell">
+<div class="book-toc"><nav aria-label="Table of contents">
+<div class="toc-label">Manual</div><ol>
+<li><a href="index.html">Front matter</a></li>
+</ol>
+<div class="toc-label">Part I. What DIC measures</div><ol>
+<li><a href="part-1-what-dic-measures.html#the-idea">1. Two photographs and a question</a></li>
+<li><a href="part-1-what-dic-measures.html#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li>
+<li><a href="part-1-what-dic-measures.html#absence-not-zero">3. A rejected point is not a zero</a></li>
+<li><a href="part-1-what-dic-measures.html#coordinate-frame">4. One coordinate frame</a></li>
+</ol>
+<div class="toc-label">Part II. Running a measurement</div><ol>
+<li><a href="part-2-running-a-measurement.html#region-and-holes">5. The region, and what a hole means</a></li>
+<li><a href="part-2-running-a-measurement.html#sequences">6. Sequences: order matters, reference matters</a></li>
+<li><a href="part-2-running-a-measurement.html#reference-updating">7. When the reference goes stale</a></li>
+<li><a href="part-2-running-a-measurement.html#recovery">8. Points that fail, and the pass that repairs them</a></li>
+</ol>
+<div class="toc-label current-part">Part III. How much to trust it</div><ol>
+<li><a href="part-3-how-much-to-trust-it.html#two-questions" class="current">9. Two questions, never one score</a></li>
+<li><a href="part-3-how-much-to-trust-it.html#reading-critically" class="current">10. Reading a field critically</a></li>
+</ol>
+<div class="toc-label">Part IV. Beyond one field</div><ol>
+<li><a href="part-4-beyond-one-field.html#sequence-as-curve">11. Reading a sequence as a curve</a></li>
+<li><a href="part-4-beyond-one-field.html#leaving-the-application">12. The field leaving the application</a></li>
+</ol>
+<div class="toc-label">Part V. Practice</div><ol>
+<li><a href="part-5-practice.html#speckling">13. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">14. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">15. Lighting and imaging</a></li>
+</ol>
+<div class="toc-label">Reference</div><ol>
+<li><a href="appendix.html">Appendix</a></li>
+</ol>
+</nav></div>
+
+<main class="chapter">
+  <p class="kicker">Part III &middot; How much to trust it</p>
+  <h1 id="two-questions">9. Two questions, never one score</h1>
+  <p class="lede">
+    "How reliable is this measurement" sounds like one question. It is
+    genuinely two, they have different answers, and collapsing them into a
+    single quality score throws away exactly the information that would
+    let you tell which kind of problem you are looking at.
+  </p>
+
+  <h2>Question one: how well could this ever have gone?</h2>
+  <p>
+    A speckle pattern has more or less texture, more or less contrast,
+    in any given small patch. Some patches are naturally easier to lock
+    onto than others, independent of anything that happens to them
+    afterward - a patch with strong, varied local contrast can be
+    located far more precisely than a smoother, weaker one, purely as a
+    matter of how much information is in the pattern itself.
+  </p>
+  <p>
+    A <strong>noise floor</strong> answers exactly this: given the
+    pattern's own local contrast and the camera sensor's own noise level,
+    what is the finest displacement this particular subset could ever
+    resolve? It is computed from the reference image alone, comparing the
+    subset's gradient strength against an estimate of the sensor's noise.
+  </p>
+  <div class="callout warn">
+    <p class="callout-label">What it cannot see</p>
+    <p>
+      Because it never looks at the target image at all, a noise floor
+      cannot see anything that goes wrong <em>during</em> the measurement:
+      decorrelation, out-of-plane motion, focus drift, or a shape function
+      too poor to represent the real deformation. It is a lower bound on
+      how good a result could be, never a total error bar on how good the
+      result actually was.
+    </p>
+  </div>
+  <p>
+    In practice it behaves like a map of speckle quality, expressed
+    directly in the units that matter: pixels of displacement. On real
+    measured data it typically sits in the range of a few thousandths of
+    a pixel - small enough that reading the bare number in isolation
+    is nearly meaningless. Chapter 10 covers how to read it usefully.
+  </p>
+
+  <h2>Question two: how confident is this particular answer?</h2>
+  <p>
+    <strong>Match conditioning</strong> asks a different question: around
+    the specific solution this search actually converged to, how sharply
+    does the matching cost rise as the candidate position moves away from
+    it? A sharp, well-defined minimum means the search landed somewhere
+    unambiguous. A shallow, flat-bottomed minimum means many nearby
+    positions matched almost as well, so the reported position, while a
+    genuine best answer, carries more uncertainty about exactly where the
+    true match sits.
+  </p>
+  <p>
+    Unlike the noise floor, this probes the actual match that was found,
+    so it does respond to problems during the measurement. It is
+    dimensionless and has no absolute scale of its own: it is only
+    meaningful <em>within</em> one run, comparing one point against
+    another in the same field, never across two different runs or two
+    different specimens.
+  </p>
+
+  <h2>Both read the opposite way from everything else</h2>
+  <p>
+    Every other quantity in a DIC result - displacement, strain
+    - is read the ordinary way: a value simply is what it is,
+    neither good nor bad on its own. Both reliability figures are
+    different: for both of them, <strong>a larger number is worse</strong>,
+    the way a margin of error is worse the larger it gets. Reading them
+    with the wrong habit - treating a large value as an interesting
+    hotspot rather than a warning - is an easy mistake to carry over
+    from every other channel, and it needs to be stated plainly wherever
+    these numbers appear, not left to be inferred.
+  </p>
+
+  <h2>Zero is the most dangerous value either can show</h2>
+  <p>
+    Neither figure can honestly reach zero. A zero noise floor would claim
+    a perfectly resolvable measurement; a zero match conditioning would
+    claim a perfectly sharp, unambiguous cost minimum. Neither is
+    physically reachable. So a value that is not strictly positive was
+    never actually established - it is the same "absence, not zero"
+    principle from Chapter 3, and it applies with particular force here,
+    because zero looks like the <em>best</em> possible reading a reader
+    could hope for, rather than an obviously suspicious one.
+  </p>
+
+  <h2>A bare number needs something to be measured against</h2>
+  <p>
+    A noise floor of a few thousandths of a pixel means nothing on its
+    own - whether that is excellent or barely adequate depends
+    entirely on how large the displacements being measured actually are.
+    Putting it against the largest displacement the run actually measured
+    turns it into a sentence that means something on its own: something
+    like "at worst, one part in several hundred of the largest movement
+    measured." That comparison uses only numbers the run already produced;
+    it invents no external idea of what counts as a "good" noise floor,
+    which would only be a threshold pulled from nowhere in particular.
+  </p>
+
+  <h1 id="reading-critically">10. Reading a field critically</h1>
+  <p class="lede">
+    A colour map is persuasive by nature - smooth gradients look
+    authoritative whether or not they deserve to. This chapter is a
+    checklist for looking at any DIC field, from any tool, without being
+    talked into more confidence than the data actually earns.
+  </p>
+
+  <h2>Read the scale before reading the colours</h2>
+  <p>
+    What is the range, and what are the units? A field that runs from
+    3.000000 to 3.000002 pixels is, for all practical purposes, uniform
+    - and drawn with the same rainbow as a field that genuinely
+    spans a wide range, it can look just as dramatic. The colours alone
+    cannot distinguish real variation from noise sitting at the sixth
+    decimal place; only the number on the scale can.
+  </p>
+
+  <h2>Is zero centred, or is it not?</h2>
+  <p>
+    A strain scale should be centred on zero, because zero strain is a
+    real physical state and the sign either side of it means something
+    (tension against compression). A displacement scale should not be,
+    because a specimen that merely translated across the frame has no
+    reason for its displacement to straddle zero at all. If a scale's
+    centring does not match which kind of quantity is on screen, treat
+    every colour on it with suspicion until that is understood.
+  </p>
+
+  <h2>Which direction is "worse"?</h2>
+  <p>
+    For an ordinary measurement, a large value is just a large value. For
+    a reliability channel (Chapter 9), a large value is a warning. The
+    same warm-to-cool colour ramp can be used for both, and nothing about
+    the colours themselves tells you which reading applies - only
+    the label does. Check what is actually being shown before deciding
+    whether the red patch is the interesting result or the part to
+    distrust.
+  </p>
+
+  <h2>Are the holes really holes?</h2>
+  <p>
+    Ask what an unmeasured point would look like on this particular map.
+    If the honest answer is "identical to a genuine zero," as Chapter 3
+    warns, then a smooth-looking field may be smooth because the tool
+    filled in the gaps with the most reassuring possible value rather
+    than because the specimen actually behaved smoothly. A field that is
+    willing to show visible holes is, perhaps counterintuitively, more
+    trustworthy in the parts that remain than one that never does.
+  </p>
+
+  <h2>Does the field extend further than the measurement that feeds it?</h2>
+  <p>
+    A strain map should never reach further than the displacement map it
+    was fitted from (Chapter 2), and a repaired point (Chapter 8) should
+    be visibly marked as one if that information is available at all. A
+    field that looks suspiciously complete, with no trace of where the
+    underlying measurement actually struggled, is a field worth asking
+    harder questions about.
+  </p>
+
+  <div class="callout">
+    <p class="callout-label">The five-question pass</p>
+    <p>
+      Scale and units. Centred on zero, or not. Which direction is worse.
+      Are the gaps real. Does this field outrun what it was built from.
+      Running through these five before reading any conclusion off a DIC
+      field takes seconds, and it is where most confident misreadings
+      actually get caught.
+    </p>
+  </div>
+
+  <div class="chapter-nav">
+<a class="prev" href="part-2-running-a-measurement.html"><small>Previous</small>Part II: Running a measurement</a>
+<a class="next" href="part-4-beyond-one-field.html"><small>Next</small>Part IV: Beyond one field</a>
+</div>
+</main>
+
+</div>
+
+<footer>
+  <div class="footer-links">
+    <a href="../index.html">SurView DIC</a>
+    <a href="index.html">Manual contents</a>
+    <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
+    <a href="https://github.com/katalystnord/SurView">GitHub</a>
+  </div>
+  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+</footer>
+
+</body>
+</html>
