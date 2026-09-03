@@ -98,6 +98,20 @@ QString saveProject(const QString &path, const Project &project)
     QJsonObject roi;
     roi[QStringLiteral("vertices")] = vertices;
     roi[QStringLiteral("origin")] = int(project.roi.origin);
+    // Written in the same [x, y] form the outer boundary uses, so one reader
+    // serves both and the two cannot drift apart.
+    QJsonArray holes;
+    for (const QVector<QPoint> &hole : project.roi.holes) {
+        QJsonArray ring;
+        for (const QPoint &vertex : hole) {
+            QJsonArray point;
+            point.append(vertex.x());
+            point.append(vertex.y());
+            ring.append(point);
+        }
+        holes.append(ring);
+    }
+    roi[QStringLiteral("holes")] = holes;
     root[QStringLiteral("region")] = roi;
 
     const CorrelationSettings &s = project.settings;
@@ -206,6 +220,17 @@ ProjectLoad loadProject(const QString &path)
     for (const QJsonValue &value : roi[QStringLiteral("vertices")].toArray()) {
         const QJsonArray point = value.toArray();
         out.project.roi.vertices << QPoint(point.at(0).toInt(), point.at(1).toInt());
+    }
+    for (const QJsonValue &ringValue : roi[QStringLiteral("holes")].toArray()) {
+        QVector<QPoint> hole;
+        for (const QJsonValue &value : ringValue.toArray()) {
+            const QJsonArray point = value.toArray();
+            hole << QPoint(point.at(0).toInt(), point.at(1).toInt());
+        }
+        // A ring of fewer than three corners encloses nothing, so it is dropped
+        // on the way in rather than carried as something to keep re-checking.
+        if (hole.size() >= 3)
+            out.project.roi.holes.append(hole);
     }
     out.project.roi.origin =
         RegionOfInterest::Origin(roi[QStringLiteral("origin")].toInt());

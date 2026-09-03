@@ -163,6 +163,19 @@ struct CorrelationResult
     bool restrictedToRoi = false;
     RegionOfInterest roi;
 
+    // Measured points whose subset reaches into a hole.
+    //
+    // ⚑ Counted, not excluded. Excluding a point whose CENTRE is in a hole does
+    // not stop a point just outside one correlating over a subset that reaches
+    // in, and those pixels are background that does not move with the specimen:
+    // they drag the answer toward no movement, which is plausible and therefore
+    // dangerous. They are not excluded because exactly the same is already true
+    // and accepted at the outer boundary, and applying a stricter rule to one
+    // boundary of a region than to the other would be a difference nobody could
+    // see or account for. Stated instead, so a reader can widen the hole or
+    // accept it knowingly.
+    int subsetsReachingAHole = 0;
+
     // Failures counted by the engine's own reason, never lumped into one
     // number: "did not converge" and "subset out of bounds" call for different
     // responses, and reporting a bare failure count would hide that.

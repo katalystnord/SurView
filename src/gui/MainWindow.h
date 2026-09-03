@@ -104,6 +104,7 @@ private slots:
     // A boundary was completed in the viewport, or discarded from the project.
     void onRoiDrawn(const RegionOfInterest &roi);
     void detectRoi();
+    void onHoleDrawn(const QVector<QPoint> &ring);
     void clearRoi();
 
     void stopCorrelation();
@@ -324,6 +325,7 @@ private:
     // Actions whose enabled state depends on project progress.
     QAction *m_actRun = nullptr;
     QAction *m_actStop = nullptr;
+    QAction *m_actAddHole = nullptr;
     QAction *m_actExtensometer = nullptr;
     QAction *m_actDefineRoi = nullptr;
     QAction *m_actAutoRoi = nullptr;

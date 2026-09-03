@@ -69,8 +69,15 @@ public:
     // mode announces itself with an on-screen bar carrying its own controls,
     // so it can be entered, completed and left without knowing a shortcut.
     void beginRoiDrawing();
+
+    // The same gesture, adding a hole to the region already in force rather
+    // than replacing it. A hole is a ring like any other, so it reuses the
+    // drawing machinery entirely and differs only in what is done with the
+    // ring at the end.
+    void beginHoleDrawing();
     void cancelRoiDrawing();
     bool isDrawingRoi() const { return m_roiDrawing; }
+    bool isDrawingHole() const { return m_roiDrawing && m_drawingHole; }
 
     // Display a region that already exists -- the one just drawn, or one the
     // detector proposed. Passing an invalid region clears the display.
@@ -125,6 +132,10 @@ signals:
     // A boundary was completed. The region is in image pixel coordinates; the
     // viewport draws it, but the project owns it.
     void roiDrawn(const RegionOfInterest &roi);
+
+    // A ring was completed as a hole. The viewport does not own the region, so
+    // it hands the ring over and the window decides what to attach it to.
+    void holeDrawn(const QVector<QPoint> &ring);
 
     // Entering or leaving drawing mode, so the rest of the window can keep its
     // own controls consistent with a mode the user can see they are in.
@@ -239,6 +250,7 @@ private:
     double grabReachInPixels(const QPointF &position) const;
 
     bool m_roiDrawing = false;
+    bool m_drawingHole = false;
     bool m_roiActorAdded = false;
     QVector<QPoint> m_roiPlaced;   // corners placed so far, while drawing
     QPoint m_roiCursor;            // where the rubber band currently reaches

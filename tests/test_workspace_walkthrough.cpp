@@ -313,6 +313,7 @@ private slots:
     void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
     void the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it();
+    void a_hole_can_be_cut_out_of_a_region_from_the_screen();
     void the_plot_panel_says_what_it_is_for_before_a_sequence_exists();
     void an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
@@ -1960,6 +1961,123 @@ void TestWorkspaceWalkthrough::an_extensometer_is_placed_by_clicking_and_plotted
     QVERIFY2(choice->findText(QStringLiteral("Mean"), Qt::MatchContains) >= 0,
              "the plot offers no whole-field curve, so reading a sequence "
              "always requires placing a gauge first");
+}
+
+void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen()
+{
+    // ⚑ The specimen this exists for ships with the application: the open-hole
+    // tension example has two holes through it, and until now the region could
+    // not say "not there" about anything. A point measured in a hole correlates
+    // the background against itself and reports that nothing moved, which on a
+    // strain map is a cold spot exactly where the stress concentrates.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    auto *addHole = actionLabelled(&window, QStringLiteral("Add Hole"));
+    QVERIFY2(addHole, "nothing on the toolbar cuts a hole out of a region");
+
+    // ⚑ Dead until there is a region to cut it out of, and DISABLED rather than
+    // failing when pressed: a control that does nothing when you press it is
+    // indistinguishable from a broken one.
+    QVERIFY2(!addHole->isEnabled(),
+             "Add Hole is offered before any region exists");
+
+    // Draw the outer boundary the way a user does.
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    const QVector<QPointF> outer{QPointF(30, 30), QPointF(170, 30),
+                                 QPointF(170, 120), QPointF(30, 120)};
+    for (const QPointF &corner : outer) {
+        QPointF at;
+        QVERIFY(viewport->widgetPositionForImagePixel(corner, at));
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+    }
+    // Finished from the mode bar's own button, as a user does. The bar carries
+    // every way out of the mode, which is why the test never needs a shortcut.
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    QVERIFY(window.roi().isValid());
+    QVERIFY2(!window.roi().hasHoles(), "a fresh region has no holes");
+    QVERIFY2(addHole->isEnabled(), "Add Hole stays dead once a region exists");
+
+    // Now cut a hole out of it, with the same gesture.
+    addHole->trigger();
+    QVERIFY2(viewport->isDrawingHole(),
+             "pressing Add Hole did not enter a drawing mode the user can see");
+    const QVector<QPointF> hole{QPointF(80, 60), QPointF(120, 60),
+                                QPointF(120, 90), QPointF(80, 90)};
+    for (const QPointF &corner : hole) {
+        QPointF at;
+        QVERIFY(viewport->widgetPositionForImagePixel(corner, at));
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+
+    QVERIFY2(window.roi().hasHoles(), "the ring did not become a hole");
+    QCOMPARE(window.roi().vertices.size(), 4);   // the outer boundary is untouched
+
+    // ⚑ A SECOND hole, because a specimen usually has more than one -- and
+    // because the moment BEFORE its first corner is placed once corrupted VTK's
+    // memory outright. With a hole already committed and none of the new ring
+    // placed yet, moving the pointer drew a rubber band from corner "-1", and
+    // the next render aborted the process with "double free or corruption".
+    //
+    // Found by driving the real application, not here: QTest::mouseClick jumps
+    // straight to the press, so the suite never generated the pointer motion
+    // that triggers it. The move below is what this case adds.
+    //
+    // NEGATIVE CHECK: with the `placed >= 1` guard removed this case does not
+    // fail cleanly, it HANGS -- a corrupted heap does not abort on a schedule.
+    // Worth knowing, because in CI that reads as a stuck runner rather than as
+    // a defect.
+    addHole->trigger();
+    QVERIFY(viewport->isDrawingHole());
+    {
+        QPointF over;
+        QVERIFY(viewport->widgetPositionForImagePixel(QPointF(70, 100), over));
+        QTest::mouseMove(viewport, over.toPoint());
+        QCoreApplication::processEvents();
+    }
+    const QVector<QPointF> second{QPointF(60, 95), QPointF(90, 95),
+                                  QPointF(90, 110), QPointF(60, 110)};
+    for (const QPointF &corner : second) {
+        QPointF at;
+        QVERIFY(viewport->widgetPositionForImagePixel(corner, at));
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    QCOMPARE(window.roi().holes.size(), 2);
+    QVERIFY(!regionContains(window.roi(), 75, 100));
+
+    // And the hole excludes: a point in it is outside the region, a point
+    // beside it is not.
+    QVERIFY(!regionContains(window.roi(), 100, 75));
+    QVERIFY(regionContains(window.roi(), 50, 75));
+
+    // Measure, and the run must actually place no point inside the hole.
+    //
+    // ⚑ A coarse grid on purpose. This case asks whether the ENGINE honours the
+    // holes, not how dense a field can be, and the pre-commit hook builds
+    // without optimisation -- at a fine step this one case took the hook from
+    // two minutes to longer than anybody will wait, which is how a suite trains
+    // its own authors to pass --no-verify. The hole is 40 by 30 px, so a 20 px
+    // step still puts points in it if nothing excludes them.
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    for (const CorrelationPoint &point : window.lastResult().points) {
+        QVERIFY2(!(point.x > 80 && point.x < 120 && point.y > 60 && point.y < 90),
+                 qPrintable(QStringLiteral("a point was measured at (%1, %2), "
+                                           "inside the hole")
+                                .arg(double(point.x)).arg(double(point.y))));
+    }
+    QVERIFY2(window.lastResult().total() > 0, "and points were measured elsewhere");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

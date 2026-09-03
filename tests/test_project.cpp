@@ -83,6 +83,10 @@ Project sampleProject(const QString &dir)
     gauge.by = 61.5;
     project.extensometers.append(gauge);
 
+    // A hole, because a region that reopened without one would measure across
+    // exactly the place the user went to the trouble of excluding.
+    project.roi.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+
     project.referenceUpdate.enabled = true;
     project.referenceUpdate.znccThreshold = 0.85;
     project.referenceUpdate.percentile = 0.8;
@@ -151,6 +155,10 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
              saved.extensometers.first().bx);
     QCOMPARE(loaded.project.extensometers.first().by,
              saved.extensometers.first().by);
+
+    QCOMPARE(loaded.project.roi.holes.size(), saved.roi.holes.size());
+    QVERIFY(loaded.project.roi.hasHoles());
+    QCOMPARE(loaded.project.roi.holes.first(), saved.roi.holes.first());
 
     QCOMPARE(loaded.project.settings.recovery.enabled,
              saved.settings.recovery.enabled);

@@ -128,6 +128,7 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_viewport);
 
     connect(m_viewport, &ImageViewport::roiDrawn, this, &MainWindow::onRoiDrawn);
+    connect(m_viewport, &ImageViewport::holeDrawn, this, &MainWindow::onHoleDrawn);
     connect(m_viewport, &ImageViewport::extensometerPlaced, this,
             &MainWindow::onExtensometerPlaced);
     connect(m_viewport, &ImageViewport::extensometerPlacingChanged, this,
@@ -196,6 +197,31 @@ void MainWindow::createActions()
         paint.drawEllipse(QPointF(4, 10), 2.6, 2.6);
         paint.drawEllipse(QPointF(16, 10), 2.6, 2.6);
     }
+
+    // ⚑ Drawn, not borrowed, and found by looking at the toolbar: the obvious
+    // standard icon here is the same cross Clear ROI already wears, so the
+    // action that ADDS to a region and the one that DESTROYS it appeared
+    // identical. A hole is an outline with a bite taken out of it, so the icon
+    // can simply be that.
+    QPixmap holeIcon(20, 20);
+    holeIcon.fill(Qt::transparent);
+    {
+        QPainter paint(&holeIcon);
+        paint.setRenderHint(QPainter::Antialiasing);
+        const QColor ink = palette().color(QPalette::WindowText);
+        paint.setPen(QPen(ink, 1.6));
+        paint.setBrush(Qt::NoBrush);
+        paint.drawRect(3, 3, 14, 14);
+        paint.setBrush(ink);
+        paint.drawEllipse(QPointF(10, 10), 3.4, 3.4);
+    }
+
+    m_actAddHole = new QAction(QIcon(holeIcon), tr("Add Hole"), this);
+    m_actAddHole->setStatusTip(
+        tr("Exclude a place inside the region: a hole through the specimen, or "
+           "anywhere the pattern cannot be trusted"));
+    connect(m_actAddHole, &QAction::triggered, this,
+            [this] { m_viewport->beginHoleDrawing(); });
 
     m_actExtensometer = new QAction(QIcon(gaugeIcon), tr("Extensometer"), this);
     m_actExtensometer->setStatusTip(
@@ -328,6 +354,7 @@ void MainWindow::createToolBar()
     toolbar->addSeparator();
     toolbar->addAction(m_actDefineRoi);
     toolbar->addAction(m_actAutoRoi);
+    toolbar->addAction(m_actAddHole);
     toolbar->addAction(m_actClearRoi);
     toolbar->addSeparator();
     toolbar->addAction(m_actRun);
@@ -1103,6 +1130,30 @@ void MainWindow::onExtensometerPlaced(double ax, double ay, double bx, double by
     if (m_frames.isEmpty()) {
         log(tr("  It will read once a sequence has been measured."));
     }
+}
+
+void MainWindow::onHoleDrawn(const QVector<QPoint> &ring)
+{
+    if (!m_roi.isValid() || ring.size() < 3)
+        return;
+
+    m_roi.holes.append(ring);
+    // A region somebody has added a hole to is no longer the detector's
+    // proposal, and the detector's own caveat -- that it cannot represent a
+    // hole -- has just stopped describing this shape. The same rule
+    // withCornerMoved() keeps.
+    m_roi.origin = RegionOfInterest::Drawn;
+    m_roi.limitation.clear();
+
+    m_viewport->showRoi(m_roi);
+    showRoiInProject();
+    discardStaleResult();
+    updateActionStates();
+
+    log(tr("Added a hole of %1 corners. The region now excludes %2 place(s); "
+           "points there will not be measured.")
+            .arg(ring.size())
+            .arg(m_roi.holes.size()));
 }
 
 void MainWindow::clearExtensometers()
@@ -1973,6 +2024,14 @@ void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
         log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
     }
 
+    if (result.subsetsReachingAHole > 0) {
+        log(tr("  %1 measured point(s) have a subset reaching into a hole. Those "
+               "subsets include pixels that do not move with the specimen, which "
+               "pulls their answer toward no movement. Widen the hole to exclude "
+               "them, or read them knowing it.")
+                .arg(result.subsetsReachingAHole));
+    }
+
     // What the second pass repaired. Stated whenever it ran, including when it
     // repaired nothing: a run with the pass off and a run with the pass on that
     // found nothing produce identical fields, and they mean different things.
@@ -2334,6 +2393,10 @@ void MainWindow::updateActionStates()
                  : tr("Import an image first"));
 
     m_actClearRoi->setEnabled(m_roi.isValid() && !running && !drawing);
+    // A hole needs a region to be a hole IN, so the action is dead until there
+    // is one -- and says so through being disabled rather than by failing when
+    // pressed.
+    m_actAddHole->setEnabled(m_roi.isValid() && !running && !drawing);
     m_actClearRoi->setToolTip(m_roi.isValid()
                                   ? tr("Discard the region and measure the "
                                        "whole image")

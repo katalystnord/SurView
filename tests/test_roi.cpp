@@ -24,6 +24,13 @@ private slots:
     void a_pointer_far_from_every_corner_grabs_none_of_them();
     void the_nearest_corner_wins_when_two_are_within_reach();
     void moving_a_corner_leaves_every_other_corner_alone();
+
+    // Regions with holes: an outer boundary minus the places not to measure.
+    void a_region_without_holes_is_unchanged_by_the_hole_machinery();
+    void a_point_inside_a_hole_is_outside_the_region();
+    void a_hole_needs_three_corners_like_any_other_ring();
+    void the_regions_bounds_are_the_outer_boundarys_alone();
+    void a_subset_reaching_into_a_hole_is_reported_not_hidden();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -161,6 +168,85 @@ void TestRoi::moving_a_corner_leaves_every_other_corner_alone()
     // An index nobody has returns the region untouched rather than growing it.
     QCOMPARE(withCornerMoved(roi, 9, QPoint(0, 0)).vertices, roi.vertices);
     QCOMPARE(withCornerMoved(roi, -1, QPoint(0, 0)).vertices, roi.vertices);
+}
+
+void TestRoi::a_region_without_holes_is_unchanged_by_the_hole_machinery()
+{
+    // Every region drawn before holes existed must behave exactly as it did.
+    RegionOfInterest square;
+    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+
+    QVERIFY(square.isValid());
+    QVERIFY(!square.hasHoles());
+    QVERIFY(regionContains(square, 50, 50));
+    QVERIFY(!regionContains(square, 150, 50));
+}
+
+void TestRoi::a_point_inside_a_hole_is_outside_the_region()
+{
+    // ⚑ THE WHOLE POINT. A specimen with a hole through it shows BACKGROUND
+    // there, and background does not move with the specimen. A point measured
+    // in a hole correlates the picture behind the specimen against itself and
+    // reports, confidently, that nothing moved -- which on a strain map is a
+    // cold spot exactly where the stress concentrates.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+
+    QVERIFY(region.hasHoles());
+    QVERIFY2(regionContains(region, 10, 10), "outside the hole is still inside");
+    QVERIFY2(!regionContains(region, 50, 50), "inside the hole is outside the region");
+    QVERIFY2(!regionContains(region, 150, 50), "outside the outer boundary is outside");
+}
+
+void TestRoi::a_hole_needs_three_corners_like_any_other_ring()
+{
+    // A hole of two corners encloses nothing, and a ring that encloses nothing
+    // cannot exclude anything. Dropped rather than carried, so nothing
+    // downstream has to keep asking whether a hole is real.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(40, 40), QPoint(60, 40)});
+
+    QVERIFY2(!region.hasHoles(), "a two-corner hole is not a hole");
+    QVERIFY2(regionContains(region, 50, 50), "and it excludes nothing");
+}
+
+void TestRoi::the_regions_bounds_are_the_outer_boundarys_alone()
+{
+    // A hole is inside the outer ring by construction, so it cannot enlarge the
+    // bounds -- and a bounds that grew to include one would put the grid's
+    // origin somewhere no point can be placed.
+    RegionOfInterest region;
+    region.vertices = {QPoint(10, 10), QPoint(90, 10), QPoint(90, 90), QPoint(10, 90)};
+    const QRect withoutHole = region.bounds();
+
+    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    QCOMPARE(region.bounds(), withoutHole);
+}
+
+void TestRoi::a_subset_reaching_into_a_hole_is_reported_not_hidden()
+{
+    // ⚑ Excluding a point whose CENTRE is in a hole does not stop a point just
+    // outside one from correlating over a subset that reaches in. Those pixels
+    // are background, and they drag the answer toward no movement -- a
+    // plausible number, which is the dangerous kind.
+    //
+    // Not silently excluded, because the same is already true and accepted at
+    // the outer boundary, and quietly applying a stricter rule to holes would
+    // make two boundaries of one region behave differently for no stated
+    // reason. Counted instead, so the run can say so and a reader can widen the
+    // hole or accept it.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+
+    QVERIFY2(subsetReachesAHole(region, 30, 50, 16),
+             "a point 10 px from the hole with a 16 px subset reaches into it");
+    QVERIFY2(!subsetReachesAHole(region, 10, 50, 16),
+             "a point 30 px away with a 16 px subset does not");
+    QVERIFY2(!subsetReachesAHole(region, 10, 50, 16),
+             "and a region with no holes reaches none");
 }
 
 QTEST_MAIN(TestRoi)

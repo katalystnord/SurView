@@ -156,18 +156,25 @@ void ImageViewport::buildRoiBar()
         "QPushButton:disabled { color: #7b8089; border-color: #3a3e46; }"
         "QPushButton:hover:enabled { background: #3a3f4a; }"));
 
-    auto *row = new QHBoxLayout(m_roiBar);
-    row->setContentsMargins(12, 8, 12, 8);
-    row->setSpacing(10);
+    // ⚑ TWO ROWS, not one, and found by looking at the screen. Beside the three
+    // buttons the text had only what they left it -- about 170 px in a narrow
+    // viewport -- so it wrapped to a dozen lines and the bar grew until it
+    // covered a third of the picture, including the specimen it was telling the
+    // user to click on. An overlay must not eat what it is overlaying, which is
+    // the same lesson the field bar learned separately, one bar along.
+    auto *stack = new QVBoxLayout(m_roiBar);
+    stack->setContentsMargins(12, 8, 12, 8);
+    stack->setSpacing(6);
 
     m_roiBarText = new QLabel(m_roiBar);
     m_roiBarText->setWordWrap(true);
-    // The text takes whatever the buttons leave and wraps into it. No minimum
-    // width: one large enough to keep the wrapping tidy also stopped the label
-    // shrinking when the bar was capped to the viewport width, and the text ran
-    // on underneath the buttons.
-    row->addWidget(m_roiBarText, 1);
-    row->addSpacing(6);
+    stack->addWidget(m_roiBarText);
+
+    auto *row = new QHBoxLayout;
+    row->setContentsMargins(0, 0, 0, 0);
+    row->setSpacing(10);
+    stack->addLayout(row);
+    row->addStretch(1);
 
     m_roiUndo = new QPushButton(tr("Undo corner"), m_roiBar);
     connect(m_roiUndo, &QPushButton::clicked, this,
@@ -216,6 +223,16 @@ void ImageViewport::positionRoiBar()
                           barWidth, barHeight);
 }
 
+void ImageViewport::beginHoleDrawing()
+{
+    // Only meaningful inside a boundary that already exists: a hole with no
+    // region around it excludes nothing from nothing.
+    if (!m_hasImage || m_roiDrawing || !m_roiShown.isValid())
+        return;
+    m_drawingHole = true;
+    beginRoiDrawing();
+}
+
 void ImageViewport::beginRoiDrawing()
 {
     if (!m_hasImage || m_roiDrawing)
@@ -259,16 +276,29 @@ void ImageViewport::finishRoiDrawing()
     if (!m_roiDrawing || m_roiPlaced.size() < 3)
         return;
 
-    RegionOfInterest roi;
-    roi.vertices = m_roiPlaced;
-    roi.origin = RegionOfInterest::Drawn;
+    const QVector<QPoint> ring = m_roiPlaced;
+    const bool asHole = m_drawingHole;
 
     m_roiDrawing = false;
+    m_drawingHole = false;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
     unsetCursor();
     m_roiBar->hide();
+
+    if (asHole) {
+        // The window owns the region, so the ring goes to it and comes back as
+        // part of a whole region through showRoi(). The viewport does not
+        // assemble one itself, or two places would know how a region is built.
+        emit roiDrawingChanged(false);
+        emit holeDrawn(ring);
+        return;
+    }
+
+    RegionOfInterest roi;
+    roi.vertices = ring;
+    roi.origin = RegionOfInterest::Drawn;
 
     m_roiShown = roi;
     refreshRoiGeometry();
@@ -340,8 +370,11 @@ void ImageViewport::refreshRoiGeometry()
     const bool drawing = m_roiDrawing;
     const QVector<QPoint> &ring = drawing ? m_roiPlaced : m_roiShown.vertices;
     const bool committed = !drawing && m_roiShown.isValid();
+    // A region's holes are drawn whether or not a new ring is being placed, so
+    // the places already excluded stay visible while another is added.
+    const QVector<QVector<QPoint>> holeRings = m_roiShown.holes;
 
-    if (ring.isEmpty()) {
+    if (ring.isEmpty() && holeRings.isEmpty()) {
         if (m_roiActorAdded) {
             m_renderer->RemoveActor(m_roiActor);
             m_roiActorAdded = false;
@@ -375,7 +408,20 @@ void ImageViewport::refreshRoiGeometry()
 
     if (committed && placed >= 3) {
         segment(placed - 1, 0);
-    } else if (drawing && m_roiCursorValid) {
+    } else if (drawing && m_roiCursorValid && placed >= 1) {
+        // ⚑ `placed >= 1` is load-bearing, and its absence corrupted VTK's own
+        // memory. The rubber band runs from the LAST placed corner, so with
+        // none placed the segment below asks for point id `placed - 1`, which
+        // is -1: a line cell referencing a point that does not exist. VTK
+        // walks it in ComputeCellsBounds() during the next render and aborts
+        // with "double free or corruption".
+        //
+        // Unreachable until holes existed, because an empty ring used to mean
+        // there was nothing to draw at all and the method returned early.
+        // Adding a second ring to keep committed holes visible while a new one
+        // is placed removed that guard without replacing it -- so the crash
+        // needed a region that ALREADY had a hole, and then only once the
+        // pointer moved before the first corner was clicked.
         // While placing, the shape that WOULD be committed is drawn: a segment
         // from the last corner to the pointer, and the closing one back to the
         // first. Seeing the polygon before committing to it is the whole point
@@ -385,6 +431,23 @@ void ImageViewport::refreshRoiGeometry()
         segment(placed - 1, cursor);
         if (placed >= 2)
             segment(cursor, 0);
+    }
+
+    // Each hole as its own closed ring, in the same geometry so it takes the
+    // region's colour: a hole is part of the boundary, not a separate object.
+    for (const QVector<QPoint> &hole : holeRings) {
+        if (hole.size() < 3)
+            continue;
+        const vtkIdType first = points->GetNumberOfPoints();
+        for (const QPoint &vertex : hole) {
+            const vtkIdType id =
+                points->InsertNextPoint(vertex.x(), vertex.y(), kRoiDepth);
+            markers->InsertNextCell(1, &id);
+        }
+        const vtkIdType last = points->GetNumberOfPoints() - 1;
+        for (vtkIdType i = first; i < last; i++)
+            segment(i, i + 1);
+        segment(last, first);
     }
 
     m_roiGeometry->SetPoints(points);
