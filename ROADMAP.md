@@ -41,22 +41,82 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
 
+- **Stereo and 3D.** Now the largest gap in the tool, and the engine side of it
+  is already done. Confirmed by reading the fork rather than our own notes:
+  `Calibration` (intrinsics, extrinsics, projection matrix, undistortion maps),
+  `CameraCalibrator` (our port from DICe: checkerboard AND dot-target detection,
+  mono and stereo), `Stereovision` (fundamental matrix, `reconstruct()` from a
+  matched pair to a `Point3D`), `EpipolarSearch`, and `POI2DS`, which carries a
+  3D deformation vector, 3D reference and target coordinates and a 3D strain
+  vector. Five worked demos ship with real stereo data, one of them 3D strain.
+
+  What is missing is all ours, and it is three pieces rather than one:
+
+  1. **Calibration UX**, which is the first half of this item rather than a
+     separate one: nothing else can start until a pair of cameras can be
+     calibrated from the screen. The engine-side detection and quality metrics
+     are done (checkerboard, dot target, stereo epipolar); the screen is not
+     designed. From the 2026-07-17 competitive review, the parts worth having
+     are live numeric pose coaching, a coverage heat map, and drag-to-exclude
+     on a live reprojection-error chart.
+  2. **A stereo project model.** Today a project is one reference and a list of
+     targets. A stereo project is two synchronised sequences plus a calibration,
+     and every place that assumes a single image list has to learn the
+     difference. Pairing is a correctness matter of the same kind as frame
+     order: two views silently misaligned by one frame produce a plausible,
+     entirely wrong shape.
+  3. **A 3D view**, for a real out-of-plane measurement. See the constraint in
+     the pseudo-3D entry below, which binds this one too: whatever the real
+     stereo view looks like, the pseudo-3D surface must not look like it.
+
+  Volumetric DVC is in the engine as well and is NOT part of this item; it wants
+  volume data we have no way to load and a renderer of its own.
+- **A pseudo-3D strain surface**, drawing the field as a height map with strain
+  as the height. VTK does the work with `vtkWarpScalar`, which we already link.
+  Worth having because the eye reads HEIGHT far better than colour for ordering
+  and for local gradient: a colour map flattens a plateau and a slow ramp into
+  nearly the same picture, and a surface separates them at a glance, which is
+  exactly what matters at a strain concentration or a crack tip. A standard
+  idiom elsewhere (ParaView's Warp By Scalar, MATLAB's `surf`), and absent from
+  the open DIC GUIs.
+
+  ⚑ **THE CONSTRAINT THIS HANGS ON, and it is David's: it must look VERY
+  DIFFERENT from a real stereo/3D view.** The height is strain drawn in pixels,
+  a quantity with no spatial meaning, and the picture it makes is a convincing
+  likeness of out-of-plane displacement, which is the one thing 2D DIC is blind
+  to and precisely what the stereo work above will really measure. Two views
+  that look alike and mean different things is the worst outcome available here,
+  and it gets worse once both exist in the same application.
+
+  Concrete means, to be settled when it is built rather than left to taste:
+
+  - The real stereo view is a SHADED SOLID with the photograph mapped onto it,
+    under a perspective camera, with a metric axis triad. The pseudo-3D surface
+    is none of those: an unshaded lattice or wireframe, orthographic, with no
+    photographic texture at all.
+  - Its vertical axis is labelled in the STRAIN's own units and never in
+    millimetres or pixels, and the exaggeration factor is stated on screen
+    beside it. Without that, two pictures of the same data look like two
+    different specimens, and the factor is a number nobody can infer.
+  - The words "out-of-plane" and "height" do not appear in its labels.
+
+  Two things to design around. Unmeasured points are not-a-number, and a
+  not-a-number height throws geometry to infinity, so the existing rule that a
+  cell exists where all four corners were ATTEMPTED needs a companion rule for
+  heights. And a peak occludes what is behind it, including the holes we are
+  careful to keep visible everywhere else, so the flat map has to stay one
+  gesture away rather than being replaced.
 - **A line probe.** Plots over the sequence and virtual extensometers exist now;
   what is still missing is reading a quantity ALONG a line at one frame, which
   is the other half of what commercial tools offer. The sampling it needs is
   already built (`sampleFieldAt()` in `core/Series.h`), so this is a chart and a
   placement mode rather than new arithmetic.
-- **Stereo and 3D.** The engine has the capability; the application has no path
-  to it. Now the largest gap in the tool.
-
 ## Then
 
-- **Calibration UX.** Engine-side detection and quality metrics are done
-  (checkerboard, dot target, stereo epipolar). The screen is not designed:
-  live numeric pose coaching, a coverage heat map, and drag-to-exclude on a
-  live reprojection-error chart.
-- **Packaging.** No installer, no `install()` rules, no release artifacts.
-  This is the same item as shipping the examples, one layer out.
+- **Packaging.** `install()` rules exist, so the pieces are in place; what is
+  missing is an installer and release artifacts anyone can download. Everyone
+  else in this field ships binaries and we ship a build, which is the single
+  biggest thing standing between the tool and somebody trying it.
 
 ## Later
 
