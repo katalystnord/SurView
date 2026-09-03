@@ -5,6 +5,8 @@
 
 # --- core: the measurement half, no widgets -------------------------------
 add_library(surview_core STATIC
+    core/CoordinateFrame.cpp
+    core/CoordinateFrame.h
     core/Correlation.cpp
     core/Correlation.h
     core/Examples.cpp

@@ -174,6 +174,8 @@ private:
     void applyDisplayMapping(ImageRecord &record);
 
     // --- ROI drawing internals ---------------------------------------------
+    void buildFrameLegend();
+    void positionFrameLegend();
     void buildRoiBar();
     void buildGaugeBar();
     void positionGaugeBar();
@@ -230,6 +232,11 @@ private:
     // be drawn over the image.
     CorrelationResult m_fieldResult;
     FieldChannel m_fieldChannel = FieldChannel::DisplacementMagnitude;
+
+    // The coordinate-frame legend: a small permanent overlay saying which way
+    // the axes run. Shown whenever there is a picture to orient, because a
+    // convention with nothing on screen to apply it to is just trivia.
+    QFrame *m_frameLegend = nullptr;
 
     QFrame *m_roiBar = nullptr;
     QFrame *m_gaugeBar = nullptr;

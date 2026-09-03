@@ -10,6 +10,7 @@
 # is never a reason to skip them.
 set(SURVIEW_UNIT_TESTS
     test_roi
+    test_coordinate_frame
     test_poi_grid
     test_image_record
     test_image_pairing

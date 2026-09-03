@@ -314,6 +314,7 @@ private slots:
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
     void the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it();
     void a_hole_can_be_cut_out_of_a_region_from_the_screen();
+    void the_viewport_says_which_way_its_axes_run();
     void the_plot_panel_says_what_it_is_for_before_a_sequence_exists();
     void an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
@@ -2078,6 +2079,50 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
                                 .arg(double(point.x)).arg(double(point.y))));
     }
     QVERIFY2(window.lastResult().total() > 0, "and points were measured elsewhere");
+}
+
+void TestWorkspaceWalkthrough::the_viewport_says_which_way_its_axes_run()
+{
+    // ⚑ The convention every number in the application is expressed in, and
+    // the one a reader is likeliest to assume wrongly, because every graph
+    // they have ever met counts y upward and images count it down. CLAUDE.md
+    // explains why it had to be pinned down and the manual has a chapter on
+    // it; both are prose somebody has to go and find. This is the same fact
+    // beside the picture it describes.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    // Nothing to orient before an image exists, and a convention with nothing
+    // to apply it to would be trivia sitting on an empty workspace.
+    QVERIFY2(!somethingOnScreenSays(&window, QStringLiteral("y down")),
+             "the frame legend is shown before there is any picture to orient");
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("y down")),
+             "nothing on screen says which way y runs once an image is shown");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("x right")),
+             "nothing on screen says which way x runs");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("top-left")),
+             "nothing on screen says where the origin sits, and two directions "
+             "without an origin still leave a point unplaceable");
+
+    // ⚑ And it must not be drawn over the picture it describes. The legend is
+    // an overlay, and every overlay in this viewport has at some point grown
+    // over the specimen it was explaining - the field bar and the region bar
+    // both did, and both were found by looking rather than by a test.
+    auto *viewport = window.findChild<ImageViewport *>();
+    QVERIFY(viewport);
+    for (QFrame *frame : viewport->findChildren<QFrame *>()) {
+        if (!frame->isVisible() || frame->height() == 0)
+            continue;
+        QVERIFY2(frame->height() < viewport->height() / 3,
+                 qPrintable(QStringLiteral("an overlay is %1 px tall in a %2 px "
+                                           "viewport, which is eating the picture")
+                                .arg(frame->height()).arg(viewport->height())));
+    }
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

@@ -1,5 +1,6 @@
 #include "ImageViewport.h"
 
+#include "core/CoordinateFrame.h"
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
@@ -15,6 +16,7 @@
 #include <QShowEvent>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
+#include <QPainter>
 #include <QVBoxLayout>
 
 #include <vtkActor.h>
@@ -126,6 +128,7 @@ ImageViewport::ImageViewport(QWidget *parent)
     m_roiActor->GetProperty()->SetLighting(false);
 
     buildRoiBar();
+    buildFrameLegend();
 
     auto *layout = new QVBoxLayout(this);
     layout->setContentsMargins(0, 0, 0, 0);
@@ -144,6 +147,117 @@ ImageViewport::ImageViewport(QWidget *parent)
 // mode has to be visible and completable from what is on screen: a drawing mode
 // that can only be finished by a keystroke is a mode nobody who has not been
 // told about it can leave.
+// --- the coordinate-frame legend --------------------------------------------
+//
+// A picture of the axes, permanently in the corner, rather than a paragraph
+// somebody has to go and find. ⚑ The direction it draws is the direction the
+// application actually uses: y DOWN, origin at the top-left pixel. Every other
+// graph a reader has met counts y upward, so this exists precisely because the
+// instinct it corrects is a strong one.
+//
+// Bottom-right, because the other three corners are taken: the field bar sits
+// top-left, and the region and gauge bars own the bottom edge across the full
+// width. Small enough that it never competes with the specimen.
+
+void ImageViewport::buildFrameLegend()
+{
+    m_frameLegend = new QFrame(this);
+    m_frameLegend->setAttribute(Qt::WA_TransparentForMouseEvents);
+    m_frameLegend->setStyleSheet(QStringLiteral(
+        "QFrame { background: rgba(24, 26, 32, 210); border: 1px solid #4a4f5a;"
+        " border-radius: 6px; }"
+        "QLabel { color: #e8eaed; background: transparent; border: none; }"));
+
+    auto *column = new QVBoxLayout(m_frameLegend);
+    column->setContentsMargins(10, 8, 12, 8);
+    column->setSpacing(4);
+
+    // The axes as a drawn figure: an origin dot at the top left with x running
+    // right and y running down, which is the whole statement in one picture.
+    constexpr int kSize = 46;
+    QPixmap axes(kSize, kSize);
+    axes.fill(Qt::transparent);
+    {
+        QPainter paint(&axes);
+        paint.setRenderHint(QPainter::Antialiasing);
+        const QColor ink(232, 234, 237);
+        paint.setPen(QPen(ink, 1.4));
+
+        const QPointF origin(10.0, 10.0);
+        const QPointF xEnd(kSize - 8.0, 10.0);
+        const QPointF yEnd(10.0, kSize - 8.0);
+        paint.drawLine(origin, xEnd);
+        paint.drawLine(origin, yEnd);
+
+        // Arrow heads, drawn the way each axis actually points.
+        paint.setBrush(ink);
+        paint.setPen(Qt::NoPen);
+        const QPointF xHead[3] = {xEnd, xEnd + QPointF(-5, -3), xEnd + QPointF(-5, 3)};
+        paint.drawPolygon(xHead, 3);
+        const QPointF yHead[3] = {yEnd, yEnd + QPointF(-3, -5), yEnd + QPointF(3, -5)};
+        paint.drawPolygon(yHead, 3);
+
+        // The origin itself, so "where 0,0 sits" is shown and not only said.
+        paint.setBrush(Qt::NoBrush);
+        paint.setPen(QPen(ink, 1.4));
+        paint.drawEllipse(origin, 2.2, 2.2);
+
+        QFont small = paint.font();
+        small.setPointSizeF(7.5);
+        small.setBold(true);
+        paint.setFont(small);
+        paint.drawText(QRectF(xEnd.x() - 16, 12, 16, 12),
+                       Qt::AlignRight | Qt::AlignTop, axisLabel(Axis::X));
+        // Clear of the y arrow head, which occupies the same few pixels the
+        // label would otherwise be drawn straight on top of.
+        paint.drawText(QRectF(15, yEnd.y() - 14, 14, 12),
+                       Qt::AlignLeft | Qt::AlignVCenter, axisLabel(Axis::Y));
+    }
+
+    auto *figure = new QLabel(m_frameLegend);
+    figure->setPixmap(axes);
+    figure->setAlignment(Qt::AlignHCenter);
+    column->addWidget(figure);
+
+    // ⚑ And the sentence, because the drawing alone cannot say where the origin
+    // is in the IMAGE (a reader could take the dot for the picture's centre),
+    // and cannot say these are pixels rather than millimetres.
+    auto *caption = new QLabel(coordinateFrameCaption(), m_frameLegend);
+    caption->setWordWrap(true);
+    // ⚑ FIXED, not maximum. A wrapped QLabel reports one line as its minimum
+    // width as well as its minimum height, so a layout sized by the small
+    // pixmap above it squeezes the sentence into a five-line column that reads
+    // as broken rather than merely narrow. A fixed width sets the wrap point.
+    caption->setFixedWidth(178);
+    QFont captionFont = caption->font();
+    captionFont.setPointSizeF(captionFont.pointSizeF() - 1.0);
+    caption->setFont(captionFont);
+    column->addWidget(caption);
+
+    m_frameLegend->hide();
+}
+
+void ImageViewport::positionFrameLegend()
+{
+    if (!m_frameLegend || m_frameLegend->isHidden())
+        return;
+
+    constexpr int kMargin = 10;
+    m_frameLegend->resize(m_frameLegend->sizeHint());
+
+    // Clear of the region and gauge bars, which own the bottom edge whenever
+    // either mode is running.
+    int bottom = height() - kMargin;
+    for (QFrame *bar : {m_roiBar, m_gaugeBar}) {
+        if (bar && !bar->isHidden())
+            bottom = std::min(bottom, bar->y() - kMargin);
+    }
+
+    m_frameLegend->move(width() - m_frameLegend->width() - kMargin,
+                        bottom - m_frameLegend->height());
+    m_frameLegend->raise();
+}
+
 void ImageViewport::buildRoiBar()
 {
     m_roiBar = new QFrame(this);
@@ -957,6 +1071,7 @@ void ImageViewport::resizeEvent(QResizeEvent *event)
     positionRoiBar();
     positionGaugeBar();
     positionFieldBar();
+    positionFrameLegend();
 }
 
 void ImageViewport::showEvent(QShowEvent *event)
@@ -965,6 +1080,11 @@ void ImageViewport::showEvent(QShowEvent *event)
     // The interactor is created lazily; make sure our 2D style is attached once
     // the widget (and therefore its interactor) actually exists.
     applyImageInteractorStyle();
+    // ⚑ Positioned here as well as on resize. Placed only at the moment it is
+    // shown, the legend is laid out against whatever size this widget happens
+    // to have then, which during start-up is not the size it ends up with -
+    // and if no resize follows, that stale position is the one it keeps.
+    positionFrameLegend();
 }
 
 void ImageViewport::applyImageInteractorStyle()
@@ -997,6 +1117,13 @@ bool ImageViewport::loadImage(const QString &path)
     m_record = record;
     m_hint->hide();
     m_hintAction->hide();
+
+    // Shown only now there is a picture to orient. A coordinate convention with
+    // nothing on screen to apply it to is trivia rather than guidance.
+    if (m_frameLegend) {
+        m_frameLegend->show();
+        positionFrameLegend();
+    }
     return true;
 }
 
