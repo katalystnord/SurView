@@ -22,9 +22,11 @@ Measured against pyALDIC, iCorrVision-2D, Ncorr, and the commercial tools
 (VIC-2D, MatchID, GOM Correlate, LaVision DaVis). Our three-column shape is
 the idiom of the field, and these are what we do not have yet:
 
-⚑ **The most directly comparable tool was missing from this review until
-2026-09-03: OpenCorr's OWN GUI**, by the engine's authors (LI Rui, REN
-Haoqiang and Dr JIANG Zhenyu), now at GUI 3.0. It is documented in the
+⚑ **The most directly comparable tool belongs in this list and was not in it
+until 2026-09-03: OpenCorr's OWN GUI**, by the engine's authors (LI Rui, REN
+Haoqiang and Dr JIANG Zhenyu), now at GUI 3.0. Worth recording not because it
+unsettles anything - it does not, see below - but because a competitive review
+that omits the tool built on our own engine is an incomplete review. It is documented in the
 library we fork, in `7_Software_with_GUI.md`, which we had never read as
 competitive material. It is not rudimentary: 2D DIC single and multi-view,
 3D/stereo DIC with calibration file loading, DVC on multi-page TIFF and
@@ -40,22 +42,70 @@ What it is not, and this is where our own niche actually sits:
   function version requires emailing the authors from an institutional
   address with your name, institution, research project, and your
   supervisor's details if you are a graduate student. GUI 2.0 is the freely
-  downloadable one and has limited functions. No source is published: the
-  release carries `OpenCorr.exe` and DLLs, and there is no GUI source in the
-  repository we fork.
-- **Windows only.** An .exe plus DLLs in one folder.
+  downloadable one and has limited functions.
+
+  ⚑ **THE RELEASE PAGE APPEARS TO OFFER SOURCE, AND DOES NOT.** The
+  GUI_3.0 release lists "Source code (zip)" and "Source code (tar.gz)"
+  beside the download, which GitHub adds automatically to every release as
+  a snapshot of the repository at the tag, whether or not the author
+  uploaded anything. It is the LIBRARY, not the GUI. Verified rather than
+  assumed, 2026-09-03: that archive was downloaded and unpacked, and holds
+  302 files - the documentation, LICENSE, README, `examples/`, `gpu_lib/`,
+  `img/`, and a `src/` of 42 files every one of which is an `oc_*`
+  correlation source. Searching the whole archive for ImGui, ImPlot, a
+  `main.cpp`, window or render code, or file dialogs returns nothing. The
+  single genuinely uploaded asset is `OpenCorr.GUI_3.0.7z`, 13 MB, the
+  compiled Windows package. There is no separate GUI repository on the
+  account either; what is there are forks of `implot`, `implot3d` and
+  `portable-file-dialogs`, which are the dependencies such an application
+  needs, so it is possible to see what the GUI is built FROM and not what
+  it is built OF.
+
+  Recorded at this length because "GitHub says Source code" is exactly the
+  confusion the next person to look will hit, and the answer took a
+  download to establish beyond doubt.
+- **Windows only**, an .exe plus DLLs in one folder, and no mention of Linux
+  or macOS anywhere in its documentation.
+
+  ⚑ The REASON matters more than the fact. Dear ImGui, ImPlot and
+  portable-file-dialogs are all cross-platform: nothing in that stack
+  prevents a Linux build. The obstacle is only that the source is
+  unpublished, so a Linux build is something only their team can produce,
+  and they do not. Nobody else can port it, package it for a distribution,
+  patch it, or audit it. That, rather than the feature list, is where our
+  niche actually is: a gated Windows binary with no source is not adoptable
+  by a Linux-based lab or by anyone who has to show how a published number
+  was produced.
 - **CSV out.** No VTK-family export, so no path into ParaView or FreeCAD
   without a conversion step of the user's own.
 - **No account of its own reliability** that we can find in its
   documentation: no per-point noise floor or match conditioning, and nothing
   stating what a given number cannot tell you.
 
-So tenet 2's claim survives as written - it asks for a *cross-platform,
-ecosystem-native* GUI a working scientist *could adopt*, and a gated Windows
-shareware binary is none of those three. The supporting sentence "there are
-several good engines, but only rudimentary GUIs" is the part that is now
-wrong, and it is David's own wording in a tenet, so it is flagged for him
-rather than edited here.
+⚑ **THIS IS THE SAME PATTERN WE ALREADY DOCUMENTED, NOT A NEW FINDING**, and
+David's point on first reading it: it changes nothing about where SurView came
+from. `CLAUDE.md` has recorded the identical shape since the beginning, about
+the engine's GPU path - "closed-source (no CUDA source in the repo),
+Windows/NVIDIA-only ... binaries carry no verifiable license. SurView DIC
+treats it as unavailable - not something we can build, fix, or ship." The GUI
+is the second instance of that, not a surprise: closed source, Windows only,
+binary only, licence restrictive. Where the GPU path was one component
+distributed that way, the GUI is the whole application distributed that way.
+
+So this **justifies tenet 2 again rather than challenging it.** The tenet asks
+for a *cross-platform, ecosystem-native* GUI a working scientist *could
+adopt*, and "adopt" is the operative word: a gated Windows shareware binary
+with no source is not adoptable by a Linux lab, by anyone who has to show how
+a published number was produced, or by anyone who needs to fix it. On its own
+terms the tenet is straightforwardly correct.
+
+An earlier draft of this entry claimed the tenet's supporting sentence -
+"there are several good engines, but only rudimentary GUIs" - had been made
+wrong by this. That was an overstatement and is withdrawn. It reads as a
+statement about what is *usable*, which is what the rest of the tenet is
+about, and the GUI's own authors write that "its function and usage
+experience are far from perfect at the moment." Nothing here needs changing
+on David's side.
 
 ⚑ **It is also the best available reference for our own stereo and DVC work.**
 Written by the engine's authors, its feature set shows how the engine is
