@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>SurView DIC - digital image correlation you can hand to a colleague</title>
-<meta name="description" content="A free, open-source, cross-platform desktop GUI for digital image correlation. Speckle images in, trustworthy displacement and strain fields out, straight into ParaView and FreeCAD. Built on OpenCorr, Qt and VTK. LGPL-2.1-or-later.">
+<meta name="description" content="A free, open-source, cross-platform desktop GUI for digital image correlation. Speckle images in, trustworthy displacement and strain fields out, virtual extensometers and loading curves, straight into ParaView and FreeCAD. Built on OpenCorr, Qt and VTK. LGPL-2.1-or-later.">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -275,17 +275,20 @@
     <h2>Capabilities</h2>
     <p class="section-sub">
       SurView DIC measures how a speckled specimen moved and deformed between
-      photographs, over a whole loading sequence, and reports how far each
-      measured point can be trusted.
+      photographs, over a whole loading sequence, reads it back as a loading
+      curve, and reports how far each measured point can be trusted.
     </p>
     <ul class="bullets">
       <li>Two-dimensional subset correlation over a regular grid of points</li>
       <li>Region of interest drawn by hand or segmented automatically from speckle quality</li>
       <li>Whole loading sequences measured against one reference, in frame order</li>
       <li>Reference updating when correlation against the original frame degrades</li>
+      <li>A second pass that repairs points the first solve could not measure, and says which they were</li>
       <li>Strain fitted from neighbouring displacements, in three measures</li>
       <li>Per-point noise floor and match conditioning, computed on every run</li>
       <li>Per-point readout of every measured channel, pinnable</li>
+      <li>Any quantity plotted against frame, over the whole sequence</li>
+      <li>Virtual extensometers placed with two clicks, read as a loading curve</li>
       <li>Provenance recorded for every image, verified by SHA-256</li>
       <li>Export to VTK unstructured grid and to comma-separated text</li>
       <li>One numbered file per frame, which ParaView groups as a time series</li>
@@ -317,6 +320,14 @@
       <div class="spec-row">
         <div class="spec-key">Strain</div>
         <div class="spec-val">Fitted by plane regression over a subregion of chosen radius. Cauchy (small strain), Green-Lagrange and Euler-Almansi. Points correlating below 0.9 are excluded from every fit.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Repairing failures</div>
+        <div class="spec-val">Points the first solve rejected or correlated poorly are re-attempted from a displacement fitted to their reliable neighbours, then solved again in full, in rounds. An answer is kept only if it is better than the one it replaces, and every repaired point is marked wherever it is reported. On the example data it raises a hard frame from 5401 measured points to 8455.</div>
+      </div>
+      <div class="spec-row">
+        <div class="spec-key">Plots</div>
+        <div class="spec-val">Any field quantity against frame, and virtual extensometers: two points on the specimen, reported as gauge length, elongation and engineering strain. A frame that cannot be read breaks the curve rather than being joined across.</div>
       </div>
       <div class="spec-row">
         <div class="spec-key">Reliability</div>
@@ -374,9 +385,11 @@
         <h3>What was measured</h3>
         <p>
           Nothing unmeasured is reported as a number. A rejected point, an
-          unfitted strain and an unestablished uncertainty are absent or
-          not-a-number, never zero, in the display and in every exported file.
-          Failures are counted by the engine's own reason.
+          unfitted strain, an unestablished uncertainty and a frame an
+          extensometer could not read are absent or not-a-number, never zero,
+          in the display, in every plot and in every exported file. Failures are
+          counted by the engine's own reason, and a point repaired by the second
+          pass is marked as one everywhere it appears.
         </p>
       </div>
     </div>
@@ -388,6 +401,54 @@
       From a running build, measuring the example data that ships with it.
     </p>
     <div class="gallery">
+
+      <div class="gallery-item">
+        <div class="shot">
+          <img src="assets/loading-curve.png" alt="A five-frame tension sequence in SurView DIC: the displacement field over the speckled specimen with a virtual extensometer drawn across it, and beneath it a plot of engineering strain against frame rising smoothly from zero to 0.055.">
+        </div>
+        <div>
+          <h3>A loading curve, from two clicks</h3>
+          <p>
+            Place a virtual extensometer on the specimen and SurView reads the
+            change in the distance between its two points across every frame,
+            as gauge length, elongation or engineering strain. It measures the
+            distance BETWEEN the anchors, so a specimen that simply moved
+            reports no strain at all. A frame the gauge cannot read breaks the
+            curve and is counted in words beneath it, rather than being joined
+            across as though it had been measured.
+          </p>
+          <p>
+            This is the synthetic tension set, whose exact strain per frame is
+            stated in the data that ships with it. Over the first four frames
+            the gauge reads 0.005, 0.010, 0.020 and 0.036 against stated strains
+            of 0.005, 0.010, 0.020 and 0.035, and a test in the repository holds
+            it to that.
+          </p>
+        </div>
+      </div>
+
+      <div class="gallery-item tall">
+        <div class="shot">
+          <img src="assets/repair-map.png" alt="The repair map on a real dogbone specimen: most of the field is slate blue for points measured on the first solve, with orange patches around the two holes, along the edges and in a band across the gauge length where the second pass repaired them. The colour bar has exactly two blocks, labelled 0 and 1.">
+        </div>
+        <div>
+          <h3>Which points were hard won</h3>
+          <p>
+            Most points a solve loses were given a poor starting guess rather
+            than being unmeasurable. A second pass fits the displacement of the
+            reliable points around each failure and solves it again from there,
+            in rounds, so repair spreads inward from ground that correlated
+            well. Here it recovered 2531 of 9044 measured points.
+          </p>
+          <p>
+            A repaired point is a real measurement with its own correlation, and
+            it is marked as one on the map, in the readout, in the run report
+            and in both export formats. Where the repairs fall tells you
+            something the count cannot: clustered at the holes and edges, as
+            they are here, is the specimen talking.
+          </p>
+        </div>
+      </div>
 
       <div class="gallery-item">
         <div class="shot">

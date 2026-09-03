@@ -1042,6 +1042,21 @@ void ImageViewport::drawField()
 
 void ImageViewport::buildFieldColours(bool diverging, double lowest, double highest)
 {
+    // ⚑ A FLAG GETS TWO COLOURS, not a ramp through 254 it can never take. A
+    // rainbow over a two-state channel says there is a continuum between the
+    // states and invites a reader to look for the middle of it. Two flat
+    // colours say what is true: a point is one thing or the other.
+    if (fieldChannelIsFlag(m_fieldChannel)) {
+        m_fieldColours->SetNumberOfTableValues(2);
+        m_fieldColours->SetRange(lowest, highest);
+        m_fieldColours->Build();
+        // The quiet colour for the ordinary case, so the eye goes to the
+        // repairs rather than to the bulk of the field that needed none.
+        m_fieldColours->SetTableValue(0, 0.29, 0.40, 0.52, 1.0);
+        m_fieldColours->SetTableValue(1, 0.98, 0.58, 0.16, 1.0);
+        return;
+    }
+
     constexpr int kEntries = 256;
 
     m_fieldColours->SetNumberOfTableValues(kEntries);
