@@ -260,22 +260,6 @@ footer a:hover { color: var(--accent-strong); }
     a computer-generated, non-periodic pattern onto a decal or stencil
     and transferring or applying it to the specimen.
   </p>
-  <p>
-    SurView's sister tool, <a href="https://github.com/katalystnord/patternfab">PatternFab</a>,
-    is built for the second route: it reads a speckle pattern's geometry,
-    applies the manufacturing constraints a real print or cut process
-    needs (a minimum feature size, bleed compensation, bridging so a
-    stencil holds together, and a check that refuses to introduce
-    periodicity into a pattern whose whole value is being non-periodic),
-    and exports it as a laser-cut stencil, a direct-write file at a
-    stated resolution, or a 3D-printable relief. It also reports, before
-    anything is fabricated, an estimate of the displacement noise floor
-    the pattern could achieve under a stated camera sensor - the
-    same figure Chapter 9 describes, computed at design time instead of
-    measurement time, so a pattern's quality can be judged before it is
-    ever printed.
-  </p>
-
   <h2>Checking a pattern before committing to a whole test</h2>
   <p>
     The cheapest check is the one done before any load is applied at
