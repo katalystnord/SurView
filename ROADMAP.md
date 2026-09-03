@@ -108,7 +108,10 @@ experience are far from perfect at the moment." Nothing here needs changing
 on David's side.
 
 ⚑ **AND THERE ARE SPECIFIC THINGS IN IT WE SHOULD TAKE.** David's read on
-seeing its DVC screen, and he is right: the licence and the platform are one
+seeing its DVC screen, and he is right. Approved in full on 2026-09-03 and
+now tracked as work under Next, in "Borrowed from upstream's GUI"; what
+follows is the reasoning, kept here with the rest of the competitive
+assessment: the licence and the platform are one
 question, and whether the interface does good things is a separate one. It
 does. In rough order of what we would gain:
 
@@ -195,6 +198,47 @@ SHA-256 and carried into the exported file; nothing unmeasured written as
 zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
+
+- **Borrowed from upstream's GUI, smallest first.** David approved the whole
+  list on 2026-09-03. The competitive section above says why each one is
+  better than what we do; this is the commitment to do them. Five of the six
+  are small, and the first is the one to do next.
+
+  1. **A permanent coordinate-frame legend in the viewport.** A small panel
+     drawing the axes with their directions, always visible. We have a
+     section of `CLAUDE.md` and a chapter of the manual devoted to the y-down
+     trap, and our answer so far has been to get it right internally and
+     explain it in prose. A picture of the axes removes the ambiguity instead
+     of describing it, and it serves the 2D viewport today. Small, and the
+     best ratio of value to work on this list.
+  2. **Draw the subset and the strain subregion at their chosen size**,
+     behind their own switches, over the reference image. ⚑ IN ADDITION to
+     counting the neighbours a subregion will hold, which we already do and
+     they do not: the count is the rigorous answer and the drawn box is the
+     fast one, and "is this big enough to contain distinct pattern" is a
+     visual question. Neither replaces the other.
+  3. **A live readout of the raw image value under the cursor**, before and
+     independent of any run. Ours reports a measured point after a
+     correlation; this reports what the camera recorded, which is what a
+     person wants while judging exposure, contrast and clipping. Pairs with
+     the clipping figures the Record panel already computes.
+  4. **Units on every numeric field**, consistently. We do this in places and
+     not others, which is worse than either doing it everywhere or nowhere.
+  5. **Copy and Filter on the log**, not only auto-scroll. A long sequence
+     run produces a log worth searching and worth pasting into a note.
+  6. **An ROI of additive and subtractive primitives** - rectangle, ellipse
+     and polygon, each in a plus and a minus form. Strictly more expressive
+     than the outer polygon plus polygon holes shipped on 2026-09-03, and it
+     makes a hole the natural special case of subtraction rather than a
+     concept of its own. The largest item here, because it revisits a region
+     model that is days old and already has tests, serialisation and an
+     engine boundary built against it. Worth doing before the 3D region in
+     the volumetric entry, so that one generalises a good model rather than a
+     narrow one.
+
+  What is deliberately NOT on this list, from the same review: their flat
+  single-weight control layout, which answers nothing about where to start,
+  and the absence of any reliability account. Those stay ours.
 
 - **An optional multi-panel viewport, with linked panning and a shared
   crosshair.** David's, 2026-09-03, on seeing that upstream's own GUI labels
