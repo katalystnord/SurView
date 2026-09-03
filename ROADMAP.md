@@ -245,6 +245,24 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   point cloud. That is the same generalisation the stereo project model needs,
   which is two independent reasons to do it once and deliberately.
 
+- **A reference and target photographed in SEPARATE sessions.** Today the run
+  refuses a target whose pixel dimensions differ from the reference: "They must
+  describe the same pixel grid." That is right for a fixed rig, where a size
+  change means somebody altered the setup mid-test, and wrong for anything
+  photographed twice by hand.
+
+  The size check is the lesser half. Two sessions differ in scale, rotation and
+  perspective, and the first pass is an integer-pixel translation estimator that
+  cannot bridge any of it. What is needed is a coarse GLOBAL pre-alignment
+  before correlation: estimate a similarity or homography between the two
+  photographs, warp, then solve as usual. The fork already has the pieces --
+  `SIFT2D`, `FeatureAffine2D` and `ransacAffineFit` do exactly that step for
+  another purpose -- and printed fiducials would make it robust rather than
+  merely likely.
+
+  Unblocks the recovered-strip direction below, and hand-held or phone capture
+  generally.
+
 - **Registering a second image of the same specimen through its own speckle.**
   A general capability, arrived at from a specific case: reading a colour
   indicator layer that a monochrome DIC camera cannot resolve. Photograph or
@@ -305,6 +323,55 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   local subset solving diverges. Scoped, not planned; revisit on concrete need.
 - **Topology-aware ROI** beyond the multiply-connected regions already
   supported. Value is concentrated in near-discontinuity precision.
+
+## Directions, not yet features
+
+- **A phone as the reader.** A field diagnostic whose reader is a workstation is
+  not a field diagnostic. The recovered-strip direction below only works if the
+  measurement happens next to the machine that is stuck.
+
+  Three things make it more tractable than it looks. The artefact can carry its
+  own scale bar and fiducials, so the phone needs no calibration rig. The
+  handheld perspective problem is the same coarse pre-alignment the entry above
+  already needs. And the monochrome objection INVERTS: a phone camera is colour,
+  so the indicator layers a DIC rig cannot read become the easy part.
+
+  ⚑ **It also makes the core/GUI separation load-bearing rather than tidy.**
+  `surview_core` is engine-free and widget-free by construction and only two
+  files know OpenCorr exists, which is most of what a second front end needs.
+  VTK is the part that does not travel -- and a strip reader wants a 2D overlay
+  and a chart, not a 3D scene, so that may cost nothing. The rule this implies
+  is worth keeping deliberately: **VTK stays out of `surview_core`.**
+
+- **Reading a passive, recoverable strip.** David's, and it is the use case that
+  gives several entries above a concrete first application. Photograph a
+  speckled strip, put it somewhere no camera can go, work the mechanism, recover
+  it, photograph it again. From the pair: what moved, and from indicator layers
+  on the same strip, peak pressure and peak temperature. Maximum and static, and
+  accepted as such.
+
+  Prior art, checked: every channel exists separately and is mature. Fujifilm
+  sells Prescale for pressure and Thermoscale for heat; Sensor Products sells
+  Pressurex and Thermex, the latter changing colour permanently with intensity
+  related to temperature. Passive STRAIN recording is older still -- brittle
+  lacquer, Stresscoat, 1937 and still in use, plus patented peak-strain devices
+  (US 5675089, US 5932810). What none of them do is return a full-field
+  displacement VECTOR field, and what the lacquer cannot do is go somewhere you
+  cannot look. That combination is what is unclaimed. Four web searches is not a
+  freedom-to-operate search, and this would need one.
+
+  What it needs from us, all of it already listed above: reference and target
+  from separate sessions; multi-view, for reading the strip in its recovered
+  shape rather than flattening it, since flattening a strip bent to radius R
+  adds about t/2R of apparent strain and 100 um round 5 mm is one per cent;
+  second-modality registration, for the colour layers; and sparse point
+  tracking, if the strip is islanded rather than continuous.
+
+  ⚑ **The caution that belongs on the tin: a strip records what happened to the
+  STRIP.** Relating that to what the mechanism did needs to know how the strip
+  was constrained. It is a witness plate, which is exactly what a stuck
+  mechanism calls for, and it is not metrology. Nobody should ever report a foil
+  strain as a machine displacement.
 
 ## Test and tooling debt
 
