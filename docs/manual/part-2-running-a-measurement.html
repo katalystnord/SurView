@@ -120,6 +120,19 @@ dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
 
 .status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
 
+figure.plate { margin: 26px 0 30px; max-width: 66ch; }
+figure.plate img { display: block; width: 100%; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); background: var(--surface); }
+figure.plate figcaption { font-size: 0.87rem; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+figure.plate figcaption b { color: var(--text); font-weight: 700; }
+figure.plate.tight img { max-width: 420px; }
+
+.version-chip { display: inline-block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 4px 12px; margin: 0 0 18px; }
+.cite-box { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 18px 20px; margin: 22px 0; max-width: 66ch; box-shadow: var(--shadow); }
+.cite-box p { margin: 0 0 10px; }
+.cite-box .cite-text { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.84rem; background: var(--code-bg); padding: 12px 14px; border-radius: 8px; line-height: 1.5; }
+.pdf-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 700; border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 11px 18px; box-shadow: var(--shadow); color: var(--text); }
+.pdf-link:hover { border-color: var(--accent); }
+
 footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
 footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
 footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
@@ -252,6 +265,16 @@ footer a:hover { color: var(--accent-strong); }
     rough outer boundary hoping nobody looks too closely at what is
     inside it.
   </p>
+
+  <figure class="plate">
+    <img src="../assets/region.png" alt="Region drawing mode: a bounded quadrilateral drawn over a speckled specimen, with an on-screen bar reading the number of corners placed, the pointer position in image pixels, and buttons to undo, close, or cancel.">
+    <figcaption>
+      <b>Drawing a region.</b> Corners are placed by clicking the image,
+      and the mode states what it is doing, how many corners exist so far,
+      and every way to finish or abandon it. A hole is added the same way,
+      as a second ring cut out of the region already in force.
+    </figcaption>
+  </figure>
 
   <h2>A subset can still reach into a hole it does not sit inside</h2>
   <p>
@@ -483,6 +506,19 @@ footer a:hover { color: var(--accent-strong); }
     mean something about the correlation settings.
   </p>
 
+  <figure class="plate">
+    <img src="../assets/repair-map.png" alt="A map showing which points a second pass repaired on a real dogbone specimen. Most of the field is one flat colour for points measured on the first solve, with patches of a second colour around the two holes, along the edges, and in a band across the gauge length.">
+    <figcaption>
+      <b>Where the repairs fell.</b> 2531 of 9044 measured points on this
+      real specimen were recovered by the second pass. The map answers what
+      the count cannot: they cluster around the holes and along the edges,
+      which is the specimen talking, rather than scattering evenly, which
+      would point at the correlation settings instead. Two flat colours and
+      no gradient between them, because the channel has exactly two states
+      and a ramp would imply readings that cannot occur.
+    </figcaption>
+  </figure>
+
   <h2>What it actually buys, measured</h2>
   <p>
     On real specimens the effect is large. A hard frame of a real tension
@@ -519,7 +555,8 @@ footer a:hover { color: var(--accent-strong); }
     <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </div>
-  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+  <p>The SurView DIC Manual, version 2026.09.0 (2026-09-03).<br>
+  A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
 </footer>
 
 </body>

@@ -1,0 +1,53 @@
+# Machine-readable citation metadata. GitHub reads this to offer a
+# "Cite this repository" button, and reference managers and Zenodo read the
+# same fields, so this is the one place the citation is stated.
+#
+# The manual (docs/manual/) is documentation for this application rather than
+# a separate work, so it is cited through this entry at the version it
+# documents. Both carry the same version number for that reason.
+cff-version: 1.2.0
+message: "If you use SurView DIC in work you publish, please cite it as below, stating the version you used."
+title: "SurView DIC"
+abstract: >-
+  A free, open-source, cross-platform desktop application for digital image
+  correlation: full-field displacement and strain measurement from speckle
+  images, with per-point reliability reported on every run, virtual
+  extensometers, and native VTK export that ParaView and FreeCAD open
+  directly. Built on Qt and VTK, with correlation by OpenCorr.
+type: software
+authors:
+  - family-names: "Sandquist"
+    given-names: "David"
+    email: "david@katalystnord.com"
+    affiliation: "Katalyst Nord AB"
+version: "2026.09.0"
+date-released: "2026-09-03"
+license: "LGPL-2.1-or-later"
+repository-code: "https://github.com/katalystnord/SurView"
+url: "https://katalystnord.github.io/SurView/"
+keywords:
+  - digital image correlation
+  - DIC
+  - experimental mechanics
+  - full-field measurement
+  - strain measurement
+  - displacement measurement
+  - speckle pattern
+  - VTK
+  - Qt
+references:
+  - type: software
+    title: "OpenCorr"
+    abstract: "The correlation engine SurView DIC is built on."
+    authors:
+      - family-names: "Jiang"
+        given-names: "Zhenyu"
+    repository-code: "https://github.com/vincentjzy/OpenCorr"
+    license: "MPL-2.0"
+  - type: article
+    title: "OpenCorr: An open source library for research and development of digital image correlation"
+    authors:
+      - family-names: "Jiang"
+        given-names: "Zhenyu"
+    journal: "Optics and Lasers in Engineering"
+    year: 2023

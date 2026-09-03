@@ -120,6 +120,19 @@ dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
 
 .status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
 
+figure.plate { margin: 26px 0 30px; max-width: 66ch; }
+figure.plate img { display: block; width: 100%; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); background: var(--surface); }
+figure.plate figcaption { font-size: 0.87rem; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+figure.plate figcaption b { color: var(--text); font-weight: 700; }
+figure.plate.tight img { max-width: 420px; }
+
+.version-chip { display: inline-block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 4px 12px; margin: 0 0 18px; }
+.cite-box { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 18px 20px; margin: 22px 0; max-width: 66ch; box-shadow: var(--shadow); }
+.cite-box p { margin: 0 0 10px; }
+.cite-box .cite-text { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.84rem; background: var(--code-bg); padding: 12px 14px; border-radius: 8px; line-height: 1.5; }
+.pdf-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 700; border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 11px 18px; box-shadow: var(--shadow); color: var(--text); }
+.pdf-link:hover { border-color: var(--accent); }
+
 footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
 footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
 footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
@@ -401,7 +414,8 @@ footer a:hover { color: var(--accent-strong); }
     <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </div>
-  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+  <p>The SurView DIC Manual, version 2026.09.0 (2026-09-03).<br>
+  A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
 </footer>
 
 </body>

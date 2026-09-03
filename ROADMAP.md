@@ -22,6 +22,48 @@ Measured against pyALDIC, iCorrVision-2D, Ncorr, and the commercial tools
 (VIC-2D, MatchID, GOM Correlate, LaVision DaVis). Our three-column shape is
 the idiom of the field, and these are what we do not have yet:
 
+⚑ **The most directly comparable tool was missing from this review until
+2026-09-03: OpenCorr's OWN GUI**, by the engine's authors (LI Rui, REN
+Haoqiang and Dr JIANG Zhenyu), now at GUI 3.0. It is documented in the
+library we fork, in `7_Software_with_GUI.md`, which we had never read as
+competitive material. It is not rudimentary: 2D DIC single and multi-view,
+3D/stereo DIC with calibration file loading, DVC on multi-page TIFF and
+binary volumes, stereo reconstruction, strain, an ROI built from rectangles,
+ellipses and polygons with "+" and "-" for inclusion and exclusion, POI lists
+that round-trip through CSV, and subset and strain-subregion overlays for
+checking settings before a run. On stereo and volumetric it is AHEAD of us,
+which is worth saying plainly since those are two directions we want to go.
+
+What it is not, and this is where our own niche actually sits:
+
+- **Shareware, not open source.** Free for non-commercial use; the full-
+  function version requires emailing the authors from an institutional
+  address with your name, institution, research project, and your
+  supervisor's details if you are a graduate student. GUI 2.0 is the freely
+  downloadable one and has limited functions. No source is published: the
+  release carries `OpenCorr.exe` and DLLs, and there is no GUI source in the
+  repository we fork.
+- **Windows only.** An .exe plus DLLs in one folder.
+- **CSV out.** No VTK-family export, so no path into ParaView or FreeCAD
+  without a conversion step of the user's own.
+- **No account of its own reliability** that we can find in its
+  documentation: no per-point noise floor or match conditioning, and nothing
+  stating what a given number cannot tell you.
+
+So tenet 2's claim survives as written - it asks for a *cross-platform,
+ecosystem-native* GUI a working scientist *could adopt*, and a gated Windows
+shareware binary is none of those three. The supporting sentence "there are
+several good engines, but only rudimentary GUIs" is the part that is now
+wrong, and it is David's own wording in a tenet, so it is flagged for him
+rather than edited here.
+
+⚑ **It is also the best available reference for our own stereo and DVC work.**
+Written by the engine's authors, its feature set shows how the engine is
+meant to be driven for the modes we have not built: `7_Software_with_GUI.md`
+walks through the stereo workflow step by step, including the calibration
+file it loads and the primary-view convention, which is exactly the shape
+the stereo entry below has to match.
+
 - **Binaries.** Everyone else ships installers. We ship a build. `install()`
   rules exist now, so this is packaging rather than plumbing.
 - **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
@@ -157,6 +199,55 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   biprism or mirrors, which splits one sensor into two simultaneous views. That
   works on DYNAMIC tests, needs optics, and halves the resolution. A different
   answer to a different question, noted so the two are not conflated.
+
+- **Volumetric DVC, from tomography.** David's, 2026-09-03. Digital volume
+  correlation follows subsets of VOXELS through a three-dimensional image of a
+  specimen's interior, usually an X-ray CT reconstruction, and reports
+  displacement and strain inside the material rather than on its surface. The
+  material's own microstructure supplies the texture, since nothing can be
+  painted on an interior.
+
+  Genuinely different from everything above, and worth being clear about why:
+  stereo and multi-view both measure a SURFACE (2.5D geometry, 3D
+  displacement). This is the only entry that measures the inside, and it is
+  the only one where "3D" is the whole truth rather than a convention.
+
+  The engine carries real building blocks, checked rather than assumed:
+  `Image3D` loads a volume from a binary file or a multi-page TIFF, `POI3D`
+  carries a 3D deformation vector and a six-component 3D strain vector, there
+  is a `DVC` base class beside `DIC`, and `examples/dvc/` ships working
+  demos with real volume data (`al_foam4_0.bin`, a torus set) driven through
+  FFTCC plus ICGN, and a strain example. Upstream's own GUI already exposes
+  DVC, which tells us the library APIs are sufficient for a real workflow.
+
+  What is missing is ours, and it is more than the other entries need:
+
+  1. **Volume data in, with provenance.** Today the record pillar describes
+     2D images. A CT reconstruction is a stack or a volume file with its own
+     voxel spacing, bit depth and orientation conventions, and getting that
+     wrong is the volumetric version of the row-order trap: a volume read
+     with the wrong axis order gives a field that looks plausible and is
+     transposed. Formats worth supporting: multi-page TIFF and raw binary
+     (what the engine already reads), and probably DICOM, which is what a
+     scanner actually emits.
+  2. **A 3D region of interest.** A polygon with holes does not generalise to
+     a volume. This wants a box, or a mask volume, and the honest version of
+     "the subset must lie wholly inside the data" in three dimensions.
+  3. **A volume renderer.** VTK does this well and is already a dependency,
+     but showing a displacement field INSIDE a solid is a genuinely different
+     visualisation problem from drawing one on a photograph: slices, clipping
+     planes, isosurfaces, and the same care about never letting an unmeasured
+     voxel render as a measured zero.
+  4. **Cost.** A volume is not an image. A 1000-cubed volume is a billion
+     voxels, and a correlation over it is a different order of computation
+     from a 2D field. The chunked-progress-and-cancel trick still applies,
+     but memory does not: the engine's DVC API takes resident volumes.
+
+  Sequenced after stereo, for the same reason multi-view is: it reuses the
+  N-view project model, the calibration screen has nothing to do with it, and
+  the 3D view it needs is a superset of the one stereo builds. Worth writing
+  down now because it changes one decision early, exactly as multi-view did:
+  the record pillar should not assume an image is two-dimensional.
 
 - **A pseudo-3D strain surface**, drawing the field as a height map with strain
   as the height. VTK does the work with `vtkWarpScalar`, which we already link.

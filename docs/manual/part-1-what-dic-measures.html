@@ -120,6 +120,19 @@ dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
 
 .status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
 
+figure.plate { margin: 26px 0 30px; max-width: 66ch; }
+figure.plate img { display: block; width: 100%; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); background: var(--surface); }
+figure.plate figcaption { font-size: 0.87rem; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+figure.plate figcaption b { color: var(--text); font-weight: 700; }
+figure.plate.tight img { max-width: 420px; }
+
+.version-chip { display: inline-block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 4px 12px; margin: 0 0 18px; }
+.cite-box { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 18px 20px; margin: 22px 0; max-width: 66ch; box-shadow: var(--shadow); }
+.cite-box p { margin: 0 0 10px; }
+.cite-box .cite-text { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.84rem; background: var(--code-bg); padding: 12px 14px; border-radius: 8px; line-height: 1.5; }
+.pdf-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 700; border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 11px 18px; box-shadow: var(--shadow); color: var(--text); }
+.pdf-link:hover { border-color: var(--accent); }
+
 footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
 footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
 footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
@@ -266,6 +279,87 @@ footer a:hover { color: var(--accent-strong); }
     </p>
   </div>
 
+  <h2 id="two-dimensional-and-three">Two-dimensional, stereo, and volumetric</h2>
+  <p>
+    "DIC" names a family of techniques rather than one, and they differ in
+    what dimensions of movement they can see at all. The distinction
+    matters before anything else in this manual, because it decides which
+    questions a given measurement is even capable of answering.
+  </p>
+
+  <h3>Two-dimensional DIC: one camera, movement in the image plane</h3>
+  <p>
+    One camera looks squarely at a flat, or nearly flat, surface, and
+    measures how that surface moves <em>parallel to the image plane</em>:
+    two components of displacement, in-plane, at every point. This is what
+    everything else in this manual describes, and what SurView measures
+    today.
+  </p>
+  <p>
+    Its limitation is exactly its definition: it cannot see movement
+    <em>toward or away from</em> the camera. Worse, it cannot tell such
+    movement apart from real in-plane strain. A specimen that bows
+    slightly out of plane appears, to a single camera, to have stretched
+    - because the part of it that moved closer genuinely does image
+    larger. That is not an implementation flaw to be fixed; it is
+    information a single viewpoint does not contain. It is why a 2D
+    measurement wants a specimen that stays flat, and why out-of-plane
+    motion belongs on the list of things a noise floor cannot warn you
+    about (Chapter 9).
+  </p>
+
+  <h3>Stereo DIC: two cameras, movement in three directions</h3>
+  <p>
+    Two calibrated cameras viewing the same speckled surface from
+    different angles can triangulate each point, and so measure all three
+    components of its displacement, out-of-plane included. This is
+    universally called "3D DIC," and the name slightly overstates it:
+    what it measures is a <strong>surface</strong>, one depth per point of
+    the master camera's view, carrying a fully three-dimensional
+    displacement. The geometry is two-and-a-half dimensional; the
+    displacement on it is genuinely 3D. It cannot see inside the
+    material, only the face turned toward the cameras.
+  </p>
+
+  <h3>Volumetric DVC: correlation through the inside of a solid</h3>
+  <p>
+    Digital <em>volume</em> correlation applies the same idea to a
+    three-dimensional image of a specimen's interior, usually from X-ray
+    computed tomography: instead of subsets of pixels on a surface, it
+    follows subsets of <em>voxels</em> through the volume, and reports
+    displacement and strain inside the material rather than on its skin.
+    Natural texture in the material's own microstructure - porosity,
+    inclusions, grain contrast - takes the place of an applied speckle
+    pattern, since nothing can be painted onto an interior.
+  </p>
+
+  <div class="callout warn">
+    <p class="callout-label">Which one this manual covers</p>
+    <p>
+      <strong>Two-dimensional DIC only.</strong> That is what SurView
+      measures today, and the rest of this manual is written for it
+      throughout. Stereo and volumetric correlation are both real,
+      tracked work on
+      <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">the roadmap</a>
+      - the correlation engine underneath SurView already carries much of
+      what each needs - but neither has a workflow in the application yet,
+      and a chapter describing a screen that does not exist would be worse
+      than an honest gap. Read anything here about displacement, strain,
+      or reliability as in-plane unless it says otherwise.
+    </p>
+  </div>
+
+  <figure class="plate">
+    <img src="../assets/speckle-closeup.png" alt="A close view of a random speckle pattern: irregular black blobs of varying size scattered on a white background, with no repeating structure.">
+    <figcaption>
+      <b>A speckle pattern, closely cropped.</b> Random and non-periodic,
+      with strong local contrast at every scale a subset might span. Every
+      small window onto this pattern is different from every other one,
+      which is what lets a correlation search find exactly one convincing
+      match rather than several equally good ones.
+    </figcaption>
+  </figure>
+
   <h1 id="displacement-and-strain">2. Displacement is measured, strain is fitted</h1>
   <p class="lede">
     Displacement and strain are reported side by side and look like the
@@ -386,6 +480,18 @@ footer a:hover { color: var(--accent-strong); }
     frame would spend half its colour range on values that cannot occur if
     the scale were forced to straddle zero.
   </p>
+
+  <figure class="plate">
+    <img src="../assets/strain-rotation.png" alt="A strain field over a speckled specimen that was rotated rather than deformed. The map is near-uniform on a diverging scale centred on zero, running from -0.000457 to 0.000116.">
+    <figcaption>
+      <b>A rotation is not a strain.</b> This specimen was turned, not
+      stretched, and the correct answer is zero strain everywhere. The
+      fitted field reads -0.000457 to 0.000116 across the whole specimen:
+      zero, to within the method's own noise. A shape function that
+      mistook rotation for strain would read around 0.017 here, the sine
+      of the angle, and it would look entirely plausible on a colour map.
+    </figcaption>
+  </figure>
 
   <h1 id="absence-not-zero">3. A rejected point is not a zero</h1>
   <p class="lede">
@@ -536,7 +642,8 @@ footer a:hover { color: var(--accent-strong); }
     <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </div>
-  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+  <p>The SurView DIC Manual, version 2026.09.0 (2026-09-03).<br>
+  A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
 </footer>
 
 </body>

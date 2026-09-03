@@ -120,6 +120,19 @@ dl.glossary dd { margin: 4px 0 0; color: var(--text-dim); max-width: 62ch; }
 
 .status-note { font-size: 0.9rem; color: var(--text-dim); border: 1px dashed var(--border); border-radius: 10px; padding: 14px 18px; margin: 24px 0; max-width: 66ch; }
 
+figure.plate { margin: 26px 0 30px; max-width: 66ch; }
+figure.plate img { display: block; width: 100%; border: 1px solid var(--border); border-radius: 10px; box-shadow: var(--shadow); background: var(--surface); }
+figure.plate figcaption { font-size: 0.87rem; color: var(--text-dim); margin-top: 10px; line-height: 1.5; }
+figure.plate figcaption b { color: var(--text); font-weight: 700; }
+figure.plate.tight img { max-width: 420px; }
+
+.version-chip { display: inline-block; font-size: 0.78rem; font-weight: 700; letter-spacing: 0.03em; color: var(--accent-strong); background: var(--accent-soft); border-radius: 999px; padding: 4px 12px; margin: 0 0 18px; }
+.cite-box { border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 18px 20px; margin: 22px 0; max-width: 66ch; box-shadow: var(--shadow); }
+.cite-box p { margin: 0 0 10px; }
+.cite-box .cite-text { font-family: "SF Mono", Menlo, Consolas, monospace; font-size: 0.84rem; background: var(--code-bg); padding: 12px 14px; border-radius: 8px; line-height: 1.5; }
+.pdf-link { display: inline-flex; align-items: center; gap: 8px; text-decoration: none; font-weight: 700; border: 1px solid var(--border); background: var(--surface); border-radius: 10px; padding: 11px 18px; box-shadow: var(--shadow); color: var(--text); }
+.pdf-link:hover { border-color: var(--accent); }
+
 footer { border-top: 1px solid var(--border); padding: 34px 28px 44px; text-align: center; color: var(--text-dim); font-size: 0.86rem; }
 footer .footer-links { display: flex; gap: 18px; justify-content: center; flex-wrap: wrap; margin-bottom: 12px; }
 footer a { color: var(--text-dim); text-decoration: none; font-weight: 600; }
@@ -196,6 +209,30 @@ footer a:hover { color: var(--accent-strong); }
     illustration invented for the page.
   </p>
 
+  <p class="version-chip">Version 2026.09.0 &middot; 2026-09-03</p>
+
+  <p>
+    <a class="pdf-link" href="surview-dic-manual.pdf">Download as PDF</a>
+  </p>
+
+  <div class="callout warn">
+    <p class="callout-label">Scope: two-dimensional DIC</p>
+    <p>
+      This manual covers <strong>2D DIC</strong>: one camera, a flat or
+      nearly flat surface, and displacement measured in the plane of the
+      image. That is what SurView measures today. <strong>Stereo
+      ("3D") DIC</strong>, which adds out-of-plane movement using two
+      calibrated cameras, and <strong>volumetric DVC</strong>, which
+      correlates through the inside of a solid from tomography data, are
+      both tracked on
+      <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">the roadmap</a>
+      and neither has a workflow in the application yet.
+      <a href="part-1-what-dic-measures.html#two-dimensional-and-three">Chapter 1
+      explains the difference</a>, because it decides which questions a
+      measurement can answer at all.
+    </p>
+  </div>
+
   <h2>Who this is for</h2>
   <p>
     Someone technical who has never used digital image correlation, and
@@ -240,6 +277,26 @@ footer a:hover { color: var(--accent-strong); }
     for where those stand. This manual will grow as they land.
   </p>
 
+  <h2>How to cite this</h2>
+  <p>
+    The manual is documentation for the application rather than a separate
+    work, so cite SurView itself, at the version you actually used. The
+    repository carries a
+    <a href="https://github.com/katalystnord/SurView/blob/main/CITATION.cff">CITATION.cff</a>
+    that GitHub and reference managers read directly.
+  </p>
+  <div class="cite-box">
+    <p class="cite-text">Sandquist, D. (2026). SurView DIC (version 2026.09.0)<br>
+    [Computer software]. Katalyst Nord.<br>
+    https://github.com/katalystnord/SurView</p>
+    <p style="margin-bottom:0; font-size:0.88rem; color:var(--text-dim);">
+      State the version, because what a result means depends on it: the
+      recovery pass, reference updating and the reliability figures each
+      arrived in a specific version, and a reader reproducing your
+      measurement needs to know which behaviour they are matching.
+    </p>
+  </div>
+
   <div class="callout">
     <p class="callout-label">Where to start</p>
     <p>
@@ -265,7 +322,8 @@ footer a:hover { color: var(--accent-strong); }
     <a href="https://github.com/katalystnord/SurView/blob/main/ROADMAP.md">Roadmap</a>
     <a href="https://github.com/katalystnord/SurView">GitHub</a>
   </div>
-  <p>A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
+  <p>The SurView DIC Manual, version 2026.09.0 (2026-09-03).<br>
+  A Katalyst Nord project. Free and open source, LGPL-2.1-or-later.</p>
 </footer>
 
 </body>
