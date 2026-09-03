@@ -107,6 +107,67 @@ about, and the GUI's own authors write that "its function and usage
 experience are far from perfect at the moment." Nothing here needs changing
 on David's side.
 
+⚑ **AND THERE ARE SPECIFIC THINGS IN IT WE SHOULD TAKE.** David's read on
+seeing its DVC screen, and he is right: the licence and the platform are one
+question, and whether the interface does good things is a separate one. It
+does. In rough order of what we would gain:
+
+1. **A permanent coordinate-system legend on screen.** Their DVC view carries
+   a small panel drawing O, X, Y and Z with each of the three planes colour
+   coded and an "Eye" arrow showing the viewing direction. We have an entire
+   section of `CLAUDE.md` about the y-down trap and a chapter of the manual
+   about the same thing, and our answer has been to get it right internally
+   and then explain it in prose. Theirs is better: a picture of the axes,
+   always visible, removes the ambiguity instead of describing it. Cheap, and
+   it would serve the 2D viewport today, not only a future 3D one.
+
+2. **Three linked orthogonal slices with a shared crosshair**, plus a "Show
+   intersections" switch. X-Y at a chosen Z, Z-Y at a chosen X, X-Z at a
+   chosen Y, each with a slider, and green crosshairs marking the common
+   point in all three. This is the answer to "a volume renderer" in the
+   volumetric entry above, and a better first answer than a rendered volume:
+   slices are how people actually navigate tomography data, and it is far
+   less work than isosurfaces.
+
+3. **An ROI built from additive and subtractive primitives.** Six buttons:
+   +Rect, +Ellipse, +Polygon, -Rect, -Ellipse, -Polygon, with Clear and
+   Export. That is strictly more expressive than what we shipped on
+   2026-09-03 (one outer polygon plus polygon holes), and it makes a hole
+   the natural special case of subtraction rather than its own concept. Our
+   `RegionWithHoles2D` already models outer-minus-holes, so the gap is the
+   drawing UI and the shape variety, not the engine. Worth revisiting the
+   region model against this before building the 3D version.
+
+4. **A 3D region by drawing on one plane and bounding the third axis.**
+   "Plane to draw ROI: X-Y / Z-Y / X-Z" together with "Range in z-axis: 0 to
+   705 [voxel]". The volumetric entry above lists a 3D region as an open
+   problem; this is a concrete, buildable answer to it.
+
+5. **Draw the subset and the strain subregion on the image**, at the chosen
+   size, behind "Show subset" and "Show subregion" checkboxes. We do the
+   harder and arguably better thing already - we COUNT the neighbours a
+   subregion will actually hold and say so in words while the numbers are
+   being chosen - but "is this box big enough to contain distinct pattern"
+   is a visual question, and a drawn box answers it faster than any number.
+   Doing both would beat either.
+
+6. **A live readout under the cursor at all times**: "X = 489, Y = 382,
+   Z = 705; Grayvalue = 65". Ours reads out a measured point after a run;
+   theirs reads the raw image value always, which is what you want while
+   judging exposure, contrast and clipping before running anything.
+
+7. **Units on every numeric field**, [voxel], [pixel], [step], consistently.
+   We do this in places and not others.
+
+8. **A log with Copy and Filter**, not only auto-scroll. Both cheap, both
+   things a user of a long run actually reaches for.
+
+What we should NOT take: everything sits at one visual weight with no
+progressive disclosure, so there is no answer to "where do I start"; and
+there is no account of reliability anywhere in it. Their "ZNCC of reliable
+POIs >= 0.900" is a filter, not an uncertainty. Nothing states what a number
+cannot tell you. That remains ours.
+
 ⚑ **It is also the best available reference for our own stereo and DVC work.**
 Written by the engine's authors, its feature set shows how the engine is
 meant to be driven for the modes we have not built: `7_Software_with_GUI.md`
