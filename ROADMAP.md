@@ -350,6 +350,81 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   single-weight control layout, which answers nothing about where to start,
   and the absence of any reliability account. Those stay ours.
 
+- **Learned from the rest of the field, 2026-09-03.** The reasoning and
+  sources are in the screenshot pass above; this is the commitment to act on
+  it. Ordered by what it changes about the measurement, not by size.
+
+  1. ⚑ **Masked subsets at a boundary or a hole.** Correlate a straddling
+     subset on its valid pixels only, instead of on a full subset that
+     reaches into territory the region deliberately excluded. pyALDIC does
+     this and calls it window splitting; we had written it down in the manual
+     as impossible, which was wrong and is now corrected there.
+
+     This is the third option the region work never considered. It had two:
+     exclude a point whose subset reaches a hole, or count it and report it,
+     and we chose to report because applying a stricter rule at a hole than
+     at the outer boundary would be an unexplainable difference. Masking
+     dissolves that dilemma - the subset simply stops using pixels that are
+     not specimen, at both boundaries equally, and the count we currently
+     report becomes a count of points that were CORRECTED rather than a
+     caveat about points that were not.
+
+     Buildable rather than speculative: fork issue #14 already carries subset
+     masking as a data model on `Subset2D`, with phase 2, making it affect
+     the correlation, deferred at the time because it needed cross-cutting
+     work in the correlation kernel. This is the reason to finish it. It
+     matters most at a hole, where the excluded pixels are background that
+     does not move with the specimen at all and therefore drag the answer
+     toward zero.
+
+     Needs its own honest accounting: a masked subset has fewer pixels, so
+     its noise floor is genuinely worse than a full one's, and that has to
+     show up in the reliability figures rather than being hidden by the
+     repair. A point measured on half a subset is not as good as a point
+     measured on a whole one, and it should not claim to be.
+
+  2. ⚑ **Report SPATIAL resolution, not only displacement resolution.**
+     MatchID reports both. They are different quantities that trade directly
+     against each other - a larger subset resolves displacement more finely
+     and spatial detail more coarsely - and we report only the noise floor,
+     which is the displacement half. Reporting one of a trading pair is
+     exactly the failure our own "two questions, never one score" argument
+     warns about, one level up, and we are currently committing it.
+
+     Wants: a stated spatial resolution derived from the subset size and
+     step, shown beside the noise floor and in the run report, with the same
+     treatment every other number here gets - a sentence saying what it is
+     not. And Chapter 14 of the manual, which today discusses the trade
+     qualitatively without naming spatial resolution as a number a reader
+     could be told, should name it.
+
+  3. **Displacement as vector arrows over the field.** We offer magnitude, u
+     and v as three separate scalar maps, and direction is legible from none
+     of them. A quiver overlay makes a rotation or a shear obvious at a
+     glance. Needs the usual care: arrows only where a point was measured,
+     never a zero-length arrow standing in for a rejected point, and a
+     density that thins with zoom rather than turning the field black.
+
+  4. **Show the answer against the known answer, for the examples that have
+     one.** pyALDIC presents measured against ground truth side by side on a
+     shared colour scale with the RMSE in each panel's title. We ship six
+     synthetic sets with an exactly known answer, we carry `ground_truth.json`
+     beside them, and `test_measured_accuracy` already checks runs against it
+     - and a user who opens one of those examples is shown none of that. The
+     data and the arithmetic both exist; only the screen is missing. It is
+     also the most convincing thing the application could possibly show a
+     sceptical first-time user.
+
+  Considered from the same pass and NOT taken now, recorded so the decision
+  is visible rather than forgotten: a settings sweep in the manner of
+  MatchID's convergence study, where our live speckle estimate answers one
+  point of that space; an image-quality assessment as a step of its own
+  before correlation, most of which the Record panel already computes and
+  does not present as a verdict; batch mode; and comparison against an FEA
+  result, which is the other half of the loop our `.vtu` export exists to
+  serve and which is probably better done in ParaView than reimplemented
+  here.
+
 - **An optional multi-panel viewport, with linked panning and a shared
   crosshair.** David's, 2026-09-03, on seeing that upstream's own GUI labels
   its three-orthogonal-slice screen "Multi-view" against "Main view": those
