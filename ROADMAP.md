@@ -193,7 +193,83 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   heights. And a peak occludes what is behind it, including the holes we are
   careful to keep visible everywhere else, so the flat map has to stay one
   gesture away rather than being replaced.
-- **One visual language for four kinds of picture.** By the time the entries
+- **Sparse point tracking, alongside the dense field.** Tracking discrete
+  markers rather than a continuous speckle: locate each target and follow it,
+  instead of correlating subsets. A different algorithm class, not a degraded
+  one -- a well-formed circular target's centroid locates more precisely than a
+  subset does, and the trade is coverage for accuracy.
+
+  ⚑ **We are catching up here, not innovating.** Every commercial vendor sells
+  it: Dantec as Point Marker Tracking, ZEISS/GOM as PONTOS and inside ARAMIS,
+  Correlated Solutions as a VIC module that shows speckle and marker data
+  CONCURRENTLY in one dataset. No open DIC GUI has it. Two details worth taking
+  from them: GOM fits an ELLIPSE rather than a plain centroid, which is what
+  perspective foreshortening requires, and uses CODED markers so each carries a
+  unique identity across frames.
+
+  Four uses, all already on our own table:
+
+  1. **A cut or islanded sticker**, where the pattern is deliberately divided so
+     it cannot stiffen the specimen. Its islands move independently, which is
+     fatal to subset correlation and native to marker tracking.
+  2. **The datum for the multi-view work above**, which is the thing named there
+     as most likely to produce beautiful wrong numbers. Reference points known
+     not to move, on the fixture rather than the specimen, ARE markers.
+  3. **Camera drift over a long test.** Track fixed markers, subtract the
+     rigid-body part. Directly serves creep, where a rig sits for days.
+  4. **Where speckle cannot be applied or displacements are large** -- big
+     structures, dirty environments, which is the commercial pitch for it.
+
+  What we already have, checked rather than assumed: the fork's
+  `CameraCalibrator` carries DICe's dot-target path, with blob detection,
+  sub-pixel centroids and donut markers for origin and axis. And `Strain`
+  neighbours through nanoflann over the POIs' actual positions rather than over
+  a lattice, so a scattered cloud feeds the existing strain fit unchanged;
+  `RegionFit2D` likewise, so the recovery pass would work on markers too.
+
+  ⚑ What that inventory does NOT include, stated because it looks like more than
+  it is: that detector is tuned for a CALIBRATION BOARD -- a regular grid, a
+  known count, donut markers giving orientation. Tracking arbitrary markers on a
+  specimen through deformation needs identity persistence frame to frame and no
+  assumption of a grid, and that is the actual work.
+
+  And one open question worth settling before any of it: whether centroid
+  fitting is needed at all, or whether running the EXISTING correlation on
+  subsets centred at each marker gets most of the value for a fraction of the
+  work. The vendors fit ellipses, which suggests centroids win on accuracy; the
+  cheap version should still be measured before it is dismissed.
+
+  ⚑ The real cost is on our side, not the engine's: **SurView's result model is
+  lattice-shaped.** `CorrelationPoint::gridIndex`, `gridColumns`/`gridRows`,
+  `layoutField()` and the quad-cell mesh all assume a rectangle. Markers are a
+  point cloud. That is the same generalisation the stereo project model needs,
+  which is two independent reasons to do it once and deliberately.
+
+- **Registering a second image of the same specimen through its own speckle.**
+  A general capability, arrived at from a specific case: reading a colour
+  indicator layer that a monochrome DIC camera cannot resolve. Photograph or
+  scan the specimen separately, in colour and at leisure, and register that
+  image to the measurement by correlating the SPECKLE ITSELF. The pattern is
+  already a near-perfect registration target; that is what it was designed to
+  be. Any second modality then lands in the same coordinate frame as the strain
+  field with no fiducial hunting.
+
+  ⚑ **It registers to the FINAL frame, not the reference.** A scan taken after
+  the test shows the sticker deformed, so it corresponds to the last measured
+  state, and reaching reference coordinates means mapping back through the
+  displacement field we measured. That chain is only available because we
+  measured the deformation, and getting it backwards would put the second
+  modality in the wrong place by exactly the specimen's own displacement.
+
+  Two further things it is not: the registration is a WARP rather than a shift,
+  since a flatbed scan is orthographic and flat while a camera image carries
+  perspective, lens distortion and any curvature of the specimen. And a
+  registered field from another instrument does not deserve the same visual
+  authority as a measured one -- a pressure film good to about ten per cent
+  must not look like a strain field with a stated noise floor of 0.004 px. That
+  is the visual language entry below, extended to a fifth kind of picture.
+
+- **One visual language for the kinds of picture we will be drawing.** By the time the entries
   above land there will be four views that all look three-dimensional and mean
   quite different things: today's flat 2D field; the pseudo-3D surface, where
   height is not a measurement at all; stereo, a 2.5D surface carrying 3D
