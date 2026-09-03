@@ -16,11 +16,40 @@ quantity against frame with virtual extensometers, and export the result as
 `.vtu` or `.csv` with full provenance. Six synthetic example sets
 with an exactly known answer and three real ones.
 
-## Gaps against other DIC GUIs (reviewed 2026-09-01)
+
+## What we lack, against the rest of the field
 
 Measured against pyALDIC, iCorrVision-2D, Ncorr, and the commercial tools
 (VIC-2D, MatchID, GOM Correlate, LaVision DaVis). Our three-column shape is
 the idiom of the field, and these are what we do not have yet:
+
+
+- **Binaries.** Everyone else ships installers. We ship a build. `install()`
+  rules exist now, so this is packaging rather than plumbing.
+- **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
+  can; the application has no path to it.
+- **A line probe.** We plot against frame and have virtual extensometers;
+  reading a quantity along a line at one frame is still missing.
+- **Image acquisition.** iCorrVision has a frame grabber and drives the
+  camera. Out of scope for now, noted because it is a real difference.
+- **Export styling.** pyALDIC has a preview tab for colour map, fonts and
+  colour bar before writing a figure.
+
+
+Where we already differ, and should keep differing: per-point reliability
+qualified in words on screen (VIC-2D reports a sigma, but no tool found
+states what its number cannot see); provenance recorded per image with a
+SHA-256 and carried into the exported file; nothing unmeasured written as
+zero anywhere; and native VTK export, which one of eleven tools reviewed had.
+
+
+## What others do better, and what to take from it
+
+Reviewed 2026-09-01, then properly on 2026-09-03. Split from the list
+above because the two point in opposite directions and were confusing to
+read interleaved: that one is what we do not have, this one is what other
+people do better than we do it. Findings live here; the work they imply is
+tracked under Now, Next and Big.
 
 ⚑ **The most directly comparable tool belongs in this list and was not in it
 until 2026-09-03: OpenCorr's OWN GUI**, by the engine's authors (LI Rui, REN
@@ -180,16 +209,6 @@ walks through the stereo workflow step by step, including the calibration
 file it loads and the primary-view convention, which is exactly the shape
 the stereo entry below has to match.
 
-- **Binaries.** Everyone else ships installers. We ship a build. `install()`
-  rules exist now, so this is packaging rather than plumbing.
-- **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
-  can; the application has no path to it.
-- **A line probe.** We plot against frame and have virtual extensometers;
-  reading a quantity along a line at one frame is still missing.
-- **Image acquisition.** iCorrVision has a frame grabber and drives the
-  camera. Out of scope for now, noted because it is a real difference.
-- **Export styling.** pyALDIC has a preview tab for colour map, fonts and
-  colour bar before writing a figure.
 
 ### Screenshot pass, 2026-09-03
 
@@ -266,6 +285,7 @@ and licence-clean, and the specific practice of printing beside every number
 the sentence saying what it cannot tell you. Not caring about metrology.
 Nobody has a monopoly on that.
 
+
 ⚑ **THIS REVIEW IS A FEATURE COMPARISON, NOT AN INTERACTION ONE, AND THAT IS
 A GAP IN OUR OWN METHOD.** David asked on 2026-09-03 whether the commercial
 tools had been looked at the way upstream's GUI just was. They have not. The
@@ -301,13 +321,23 @@ Worth doing, and worth doing on the runnable ones first. The calibration
 findings above are the proof that this kind of pass yields concrete work
 rather than impressions.
 
-Where we already differ, and should keep differing: per-point reliability
-qualified in words on screen (VIC-2D reports a sigma, but no tool found
-states what its number cannot see); provenance recorded per image with a
-SHA-256 and carried into the exported file; nothing unmeasured written as
-zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
-## Next
+## Now
+
+Small, well understood, and each one changes what a person sees the next
+time they open the application. Days rather than weeks. Nothing here needs
+a design pass first.
+
+- **Show the answer against the known answer, for the examples that ship with
+  one.** Measured beside stated, on a SHARED colour scale, with the error
+  stated in each panel, as pyALDIC presents it. Six synthetic sets already
+  carry an exactly known answer, `ground_truth.json` already sits beside them,
+  and `test_measured_accuracy` already checks runs against it. The data, the
+  file and the arithmetic all exist; only the screen is missing.
+
+  In Now because of that, and because it is probably the most convincing
+  thing this application could put in front of somebody who has no reason yet
+  to believe a number it produced.
 
 - **Borrowed from upstream's GUI, smallest first.** David approved the whole
   list on 2026-09-03. The competitive section above says why each one is
@@ -336,23 +366,22 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
      not others, which is worse than either doing it everywhere or nowhere.
   5. **Copy and Filter on the log**, not only auto-scroll. A long sequence
      run produces a log worth searching and worth pasting into a note.
-  6. **An ROI of additive and subtractive primitives** - rectangle, ellipse
-     and polygon, each in a plus and a minus form. Strictly more expressive
-     than the outer polygon plus polygon holes shipped on 2026-09-03, and it
-     makes a hole the natural special case of subtraction rather than a
-     concept of its own. The largest item here, because it revisits a region
-     model that is days old and already has tests, serialisation and an
-     engine boundary built against it. Worth doing before the 3D region in
-     the volumetric entry, so that one generalises a good model rather than a
-     narrow one.
+
 
   What is deliberately NOT on this list, from the same review: their flat
   single-weight control layout, which answers nothing about where to start,
   and the absence of any reliability account. Those stay ours.
 
+## Next
+
+Things that change a measurement, or that everything after them depends on.
+Understood well enough to start, large enough to need their own care.
+
 - **Learned from the rest of the field, 2026-09-03.** The reasoning and
   sources are in the screenshot pass above; this is the commitment to act on
-  it. Ordered by what it changes about the measurement, not by size.
+  it. Ordered by what it changes about the measurement, not by size. The
+  fourth thing from that pass, showing measured against known for the shipped
+  examples, is small enough that it sits under Now instead.
 
   1. ⚑ **Masked subsets at a boundary or a hole.** Correlate a straddling
      subset on its valid pixels only, instead of on a full subset that
@@ -405,15 +434,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
      never a zero-length arrow standing in for a rejected point, and a
      density that thins with zoom rather than turning the field black.
 
-  4. **Show the answer against the known answer, for the examples that have
-     one.** pyALDIC presents measured against ground truth side by side on a
-     shared colour scale with the RMSE in each panel's title. We ship six
-     synthetic sets with an exactly known answer, we carry `ground_truth.json`
-     beside them, and `test_measured_accuracy` already checks runs against it
-     - and a user who opens one of those examples is shown none of that. The
-     data and the arithmetic both exist; only the screen is missing. It is
-     also the most convincing thing the application could possibly show a
-     sceptical first-time user.
 
   Considered from the same pass and NOT taken now, recorded so the decision
   is visible rather than forgotten: a settings sweep in the manner of
@@ -424,6 +444,19 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   result, which is the other half of the loop our `.vtu` export exists to
   serve and which is probably better done in ParaView than reimplemented
   here.
+
+- **An ROI of additive and subtractive primitives.** Rectangle, ellipse and
+  polygon, each in a plus and a minus form, as upstream's GUI offers them.
+  Strictly more expressive than the outer polygon plus polygon holes shipped
+  on 2026-09-03, and it makes a hole the natural special case of subtraction
+  rather than a concept of its own.
+
+  Sized out of Now deliberately: it revisits a region model that is days old
+  and already carries tests, serialisation, a drawing mode and an engine
+  boundary built against it. Worth doing before the 3D region in the
+  volumetric entry, so that one generalises a good model rather than a narrow
+  one, and before masked subsets above, which will want to ask the same
+  boundary a more detailed question.
 
 - **An optional multi-panel viewport, with linked panning and a shared
   crosshair.** David's, 2026-09-03, on seeing that upstream's own GUI labels
@@ -466,6 +499,116 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
   Shares its whole shape with the N-view project model recorded under stereo
   below: panels are a list, not a left and a right.
+
+- **A reference and target photographed in SEPARATE sessions.** Today the run
+  refuses a target whose pixel dimensions differ from the reference: "They must
+  describe the same pixel grid." That is right for a fixed rig, where a size
+  change means somebody altered the setup mid-test, and wrong for anything
+  photographed twice by hand.
+
+  The size check is the lesser half. Two sessions differ in scale, rotation and
+  perspective, and the first pass is an integer-pixel translation estimator that
+  cannot bridge any of it. What is needed is a coarse GLOBAL pre-alignment
+  before correlation: estimate a similarity or homography between the two
+  photographs, warp, then solve as usual. The fork already has the pieces --
+  `SIFT2D`, `FeatureAffine2D` and `ransacAffineFit` do exactly that step for
+  another purpose -- and printed fiducials would make it robust rather than
+  merely likely.
+
+  Unblocks the recovered-strip direction below, and hand-held or phone capture
+  generally.
+
+- **One visual language for the kinds of picture we will be drawing.** By the time the entries
+  above land there will be four views that all look three-dimensional and mean
+  quite different things: today's flat 2D field; the pseudo-3D surface, where
+  height is not a measurement at all; stereo, a 2.5D surface carrying 3D
+  displacement; and multi-view, the same but sometimes more. David's constraint
+  on the pseudo-3D surface was the first instance of a problem that needs one
+  scheme across all four rather than a rule invented per view.
+
+  What the scheme has to settle, once, before the second of them is built: which
+  views are shaded and textured and which are not, which carry a metric axis
+  triad and which carry a unitless one, what an exaggeration factor looks like
+  on screen, and what each view is called in words. The rule underneath is the
+  one this project already keeps everywhere else -- a picture must not be able
+  to be mistaken for a more trustworthy picture than it is.
+
+- **A pseudo-3D strain surface**, drawing the field as a height map with strain
+  as the height. VTK does the work with `vtkWarpScalar`, which we already link.
+  Worth having because the eye reads HEIGHT far better than colour for ordering
+  and for local gradient: a colour map flattens a plateau and a slow ramp into
+  nearly the same picture, and a surface separates them at a glance, which is
+  exactly what matters at a strain concentration or a crack tip. A standard
+  idiom elsewhere (ParaView's Warp By Scalar, MATLAB's `surf`), and absent from
+  the open DIC GUIs.
+
+  ⚑ **THE CONSTRAINT THIS HANGS ON, and it is David's: it must look VERY
+  DIFFERENT from a real stereo/3D view.** The height is strain drawn in pixels,
+  a quantity with no spatial meaning, and the picture it makes is a convincing
+  likeness of out-of-plane displacement, which is the one thing 2D DIC is blind
+  to and precisely what the stereo work above will really measure. Two views
+  that look alike and mean different things is the worst outcome available here,
+  and it gets worse once both exist in the same application.
+
+  Concrete means, to be settled when it is built rather than left to taste:
+
+  - The real stereo view is a SHADED SOLID with the photograph mapped onto it,
+    under a perspective camera, with a metric axis triad. The pseudo-3D surface
+    is none of those: an unshaded lattice or wireframe, orthographic, with no
+    photographic texture at all.
+  - Its vertical axis is labelled in the STRAIN's own units and never in
+    millimetres or pixels, and the exaggeration factor is stated on screen
+    beside it. Without that, two pictures of the same data look like two
+    different specimens, and the factor is a number nobody can infer.
+  - The words "out-of-plane" and "height" do not appear in its labels.
+
+  Two things to design around. Unmeasured points are not-a-number, and a
+  not-a-number height throws geometry to infinity, so the existing rule that a
+  cell exists where all four corners were ATTEMPTED needs a companion rule for
+  heights. And a peak occludes what is behind it, including the holes we are
+  careful to keep visible everywhere else, so the flat map has to stay one
+  gesture away rather than being replaced.
+
+- **A line probe.** Plots over the sequence and virtual extensometers exist now;
+  what is still missing is reading a quantity ALONG a line at one frame, which
+  is the other half of what commercial tools offer. The sampling it needs is
+  already built (`sampleFieldAt()` in `core/Series.h`), so this is a chart and a
+  placement mode rather than new arithmetic.
+
+- **Registering a second image of the same specimen through its own speckle.**
+  A general capability, arrived at from a specific case: reading a colour
+  indicator layer that a monochrome DIC camera cannot resolve. Photograph or
+  scan the specimen separately, in colour and at leisure, and register that
+  image to the measurement by correlating the SPECKLE ITSELF. The pattern is
+  already a near-perfect registration target; that is what it was designed to
+  be. Any second modality then lands in the same coordinate frame as the strain
+  field with no fiducial hunting.
+
+  ⚑ **It registers to the FINAL frame, not the reference.** A scan taken after
+  the test shows the sticker deformed, so it corresponds to the last measured
+  state, and reaching reference coordinates means mapping back through the
+  displacement field we measured. That chain is only available because we
+  measured the deformation, and getting it backwards would put the second
+  modality in the wrong place by exactly the specimen's own displacement.
+
+  Two further things it is not: the registration is a WARP rather than a shift,
+  since a flatbed scan is orthographic and flat while a camera image carries
+  perspective, lens distortion and any curvature of the specimen. And a
+  registered field from another instrument does not deserve the same visual
+  authority as a measured one -- a pressure film good to about ten per cent
+  must not look like a strain field with a stated noise floor of 0.004 px. That
+  is the visual language entry below, extended to a fifth kind of picture.
+
+- **Packaging.** `install()` rules exist, so the pieces are in place; what is
+  missing is an installer and release artifacts anyone can download. Everyone
+  else in this field ships binaries and we ship a build, which is the single
+  biggest thing standing between the tool and somebody trying it.
+
+## Big
+
+Weeks each, and each wants a design pass before any code. They are grouped
+here so that the two lists above stay readable as lists of work rather than
+as a backlog with everything in it.
 
 - **Stereo and 3D.** Now the largest gap in the tool, and the engine side of it
   is already done. Confirmed by reading the fork rather than our own notes:
@@ -522,6 +665,56 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
   Volumetric DVC is in the engine as well and is NOT part of this item; it wants
   volume data we have no way to load and a renderer of its own.
+
+- **Volumetric DVC, from tomography.** David's, 2026-09-03. Digital volume
+  correlation follows subsets of VOXELS through a three-dimensional image of a
+  specimen's interior, usually an X-ray CT reconstruction, and reports
+  displacement and strain inside the material rather than on its surface. The
+  material's own microstructure supplies the texture, since nothing can be
+  painted on an interior.
+
+  Genuinely different from everything above, and worth being clear about why:
+  stereo and multi-view both measure a SURFACE (2.5D geometry, 3D
+  displacement). This is the only entry that measures the inside, and it is
+  the only one where "3D" is the whole truth rather than a convention.
+
+  The engine carries real building blocks, checked rather than assumed:
+  `Image3D` loads a volume from a binary file or a multi-page TIFF, `POI3D`
+  carries a 3D deformation vector and a six-component 3D strain vector, there
+  is a `DVC` base class beside `DIC`, and `examples/dvc/` ships working
+  demos with real volume data (`al_foam4_0.bin`, a torus set) driven through
+  FFTCC plus ICGN, and a strain example. Upstream's own GUI already exposes
+  DVC, which tells us the library APIs are sufficient for a real workflow.
+
+  What is missing is ours, and it is more than the other entries need:
+
+  1. **Volume data in, with provenance.** Today the record pillar describes
+     2D images. A CT reconstruction is a stack or a volume file with its own
+     voxel spacing, bit depth and orientation conventions, and getting that
+     wrong is the volumetric version of the row-order trap: a volume read
+     with the wrong axis order gives a field that looks plausible and is
+     transposed. Formats worth supporting: multi-page TIFF and raw binary
+     (what the engine already reads), and probably DICOM, which is what a
+     scanner actually emits.
+  2. **A 3D region of interest.** A polygon with holes does not generalise to
+     a volume. This wants a box, or a mask volume, and the honest version of
+     "the subset must lie wholly inside the data" in three dimensions.
+  3. **A volume renderer.** VTK does this well and is already a dependency,
+     but showing a displacement field INSIDE a solid is a genuinely different
+     visualisation problem from drawing one on a photograph: slices, clipping
+     planes, isosurfaces, and the same care about never letting an unmeasured
+     voxel render as a measured zero.
+  4. **Cost.** A volume is not an image. A 1000-cubed volume is a billion
+     voxels, and a correlation over it is a different order of computation
+     from a 2D field. The chunked-progress-and-cancel trick still applies,
+     but memory does not: the engine's DVC API takes resident volumes.
+
+  Sequenced after stereo, for the same reason multi-view is: it reuses the
+  N-view project model, the calibration screen has nothing to do with it, and
+  the 3D view it needs is a superset of the one stereo builds. Worth writing
+  down now because it changes one decision early, exactly as multi-view did:
+  the record pillar should not assume an image is two-dimensional.
+
 - **Multi-view 3D from ONE camera, for slow or static tests.** David's, and the
   qualifier is the whole idea: stereo needs two synchronised cameras only
   because the specimen is moving. Take the motion away and synchronisation stops
@@ -584,90 +777,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   works on DYNAMIC tests, needs optics, and halves the resolution. A different
   answer to a different question, noted so the two are not conflated.
 
-- **Volumetric DVC, from tomography.** David's, 2026-09-03. Digital volume
-  correlation follows subsets of VOXELS through a three-dimensional image of a
-  specimen's interior, usually an X-ray CT reconstruction, and reports
-  displacement and strain inside the material rather than on its surface. The
-  material's own microstructure supplies the texture, since nothing can be
-  painted on an interior.
-
-  Genuinely different from everything above, and worth being clear about why:
-  stereo and multi-view both measure a SURFACE (2.5D geometry, 3D
-  displacement). This is the only entry that measures the inside, and it is
-  the only one where "3D" is the whole truth rather than a convention.
-
-  The engine carries real building blocks, checked rather than assumed:
-  `Image3D` loads a volume from a binary file or a multi-page TIFF, `POI3D`
-  carries a 3D deformation vector and a six-component 3D strain vector, there
-  is a `DVC` base class beside `DIC`, and `examples/dvc/` ships working
-  demos with real volume data (`al_foam4_0.bin`, a torus set) driven through
-  FFTCC plus ICGN, and a strain example. Upstream's own GUI already exposes
-  DVC, which tells us the library APIs are sufficient for a real workflow.
-
-  What is missing is ours, and it is more than the other entries need:
-
-  1. **Volume data in, with provenance.** Today the record pillar describes
-     2D images. A CT reconstruction is a stack or a volume file with its own
-     voxel spacing, bit depth and orientation conventions, and getting that
-     wrong is the volumetric version of the row-order trap: a volume read
-     with the wrong axis order gives a field that looks plausible and is
-     transposed. Formats worth supporting: multi-page TIFF and raw binary
-     (what the engine already reads), and probably DICOM, which is what a
-     scanner actually emits.
-  2. **A 3D region of interest.** A polygon with holes does not generalise to
-     a volume. This wants a box, or a mask volume, and the honest version of
-     "the subset must lie wholly inside the data" in three dimensions.
-  3. **A volume renderer.** VTK does this well and is already a dependency,
-     but showing a displacement field INSIDE a solid is a genuinely different
-     visualisation problem from drawing one on a photograph: slices, clipping
-     planes, isosurfaces, and the same care about never letting an unmeasured
-     voxel render as a measured zero.
-  4. **Cost.** A volume is not an image. A 1000-cubed volume is a billion
-     voxels, and a correlation over it is a different order of computation
-     from a 2D field. The chunked-progress-and-cancel trick still applies,
-     but memory does not: the engine's DVC API takes resident volumes.
-
-  Sequenced after stereo, for the same reason multi-view is: it reuses the
-  N-view project model, the calibration screen has nothing to do with it, and
-  the 3D view it needs is a superset of the one stereo builds. Worth writing
-  down now because it changes one decision early, exactly as multi-view did:
-  the record pillar should not assume an image is two-dimensional.
-
-- **A pseudo-3D strain surface**, drawing the field as a height map with strain
-  as the height. VTK does the work with `vtkWarpScalar`, which we already link.
-  Worth having because the eye reads HEIGHT far better than colour for ordering
-  and for local gradient: a colour map flattens a plateau and a slow ramp into
-  nearly the same picture, and a surface separates them at a glance, which is
-  exactly what matters at a strain concentration or a crack tip. A standard
-  idiom elsewhere (ParaView's Warp By Scalar, MATLAB's `surf`), and absent from
-  the open DIC GUIs.
-
-  ⚑ **THE CONSTRAINT THIS HANGS ON, and it is David's: it must look VERY
-  DIFFERENT from a real stereo/3D view.** The height is strain drawn in pixels,
-  a quantity with no spatial meaning, and the picture it makes is a convincing
-  likeness of out-of-plane displacement, which is the one thing 2D DIC is blind
-  to and precisely what the stereo work above will really measure. Two views
-  that look alike and mean different things is the worst outcome available here,
-  and it gets worse once both exist in the same application.
-
-  Concrete means, to be settled when it is built rather than left to taste:
-
-  - The real stereo view is a SHADED SOLID with the photograph mapped onto it,
-    under a perspective camera, with a metric axis triad. The pseudo-3D surface
-    is none of those: an unshaded lattice or wireframe, orthographic, with no
-    photographic texture at all.
-  - Its vertical axis is labelled in the STRAIN's own units and never in
-    millimetres or pixels, and the exaggeration factor is stated on screen
-    beside it. Without that, two pictures of the same data look like two
-    different specimens, and the factor is a number nobody can infer.
-  - The words "out-of-plane" and "height" do not appear in its labels.
-
-  Two things to design around. Unmeasured points are not-a-number, and a
-  not-a-number height throws geometry to infinity, so the existing rule that a
-  cell exists where all four corners were ATTEMPTED needs a companion rule for
-  heights. And a peak occludes what is behind it, including the holes we are
-  careful to keep visible everywhere else, so the flat map has to stay one
-  gesture away rather than being replaced.
 - **Sparse point tracking, alongside the dense field.** Tracking discrete
   markers rather than a continuous speckle: locate each target and follow it,
   instead of correlating subsets. A different algorithm class, not a degraded
@@ -719,75 +828,6 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   `layoutField()` and the quad-cell mesh all assume a rectangle. Markers are a
   point cloud. That is the same generalisation the stereo project model needs,
   which is two independent reasons to do it once and deliberately.
-
-- **A reference and target photographed in SEPARATE sessions.** Today the run
-  refuses a target whose pixel dimensions differ from the reference: "They must
-  describe the same pixel grid." That is right for a fixed rig, where a size
-  change means somebody altered the setup mid-test, and wrong for anything
-  photographed twice by hand.
-
-  The size check is the lesser half. Two sessions differ in scale, rotation and
-  perspective, and the first pass is an integer-pixel translation estimator that
-  cannot bridge any of it. What is needed is a coarse GLOBAL pre-alignment
-  before correlation: estimate a similarity or homography between the two
-  photographs, warp, then solve as usual. The fork already has the pieces --
-  `SIFT2D`, `FeatureAffine2D` and `ransacAffineFit` do exactly that step for
-  another purpose -- and printed fiducials would make it robust rather than
-  merely likely.
-
-  Unblocks the recovered-strip direction below, and hand-held or phone capture
-  generally.
-
-- **Registering a second image of the same specimen through its own speckle.**
-  A general capability, arrived at from a specific case: reading a colour
-  indicator layer that a monochrome DIC camera cannot resolve. Photograph or
-  scan the specimen separately, in colour and at leisure, and register that
-  image to the measurement by correlating the SPECKLE ITSELF. The pattern is
-  already a near-perfect registration target; that is what it was designed to
-  be. Any second modality then lands in the same coordinate frame as the strain
-  field with no fiducial hunting.
-
-  ⚑ **It registers to the FINAL frame, not the reference.** A scan taken after
-  the test shows the sticker deformed, so it corresponds to the last measured
-  state, and reaching reference coordinates means mapping back through the
-  displacement field we measured. That chain is only available because we
-  measured the deformation, and getting it backwards would put the second
-  modality in the wrong place by exactly the specimen's own displacement.
-
-  Two further things it is not: the registration is a WARP rather than a shift,
-  since a flatbed scan is orthographic and flat while a camera image carries
-  perspective, lens distortion and any curvature of the specimen. And a
-  registered field from another instrument does not deserve the same visual
-  authority as a measured one -- a pressure film good to about ten per cent
-  must not look like a strain field with a stated noise floor of 0.004 px. That
-  is the visual language entry below, extended to a fifth kind of picture.
-
-- **One visual language for the kinds of picture we will be drawing.** By the time the entries
-  above land there will be four views that all look three-dimensional and mean
-  quite different things: today's flat 2D field; the pseudo-3D surface, where
-  height is not a measurement at all; stereo, a 2.5D surface carrying 3D
-  displacement; and multi-view, the same but sometimes more. David's constraint
-  on the pseudo-3D surface was the first instance of a problem that needs one
-  scheme across all four rather than a rule invented per view.
-
-  What the scheme has to settle, once, before the second of them is built: which
-  views are shaded and textured and which are not, which carry a metric axis
-  triad and which carry a unitless one, what an exaggeration factor looks like
-  on screen, and what each view is called in words. The rule underneath is the
-  one this project already keeps everywhere else -- a picture must not be able
-  to be mistaken for a more trustworthy picture than it is.
-
-- **A line probe.** Plots over the sequence and virtual extensometers exist now;
-  what is still missing is reading a quantity ALONG a line at one frame, which
-  is the other half of what commercial tools offer. The sampling it needs is
-  already built (`sampleFieldAt()` in `core/Series.h`), so this is a chart and a
-  placement mode rather than new arithmetic.
-## Then
-
-- **Packaging.** `install()` rules exist, so the pieces are in place; what is
-  missing is an installer and release artifacts anyone can download. Everyone
-  else in this field ships binaries and we ship a build, which is the single
-  biggest thing standing between the tool and somebody trying it.
 
 ## Later
 
