@@ -191,6 +191,41 @@ the stereo entry below has to match.
 - **Export styling.** pyALDIC has a preview tab for colour map, fonts and
   colour bar before writing a figure.
 
+⚑ **THIS REVIEW IS A FEATURE COMPARISON, NOT AN INTERACTION ONE, AND THAT IS
+A GAP IN OUR OWN METHOD.** David asked on 2026-09-03 whether the commercial
+tools had been looked at the way upstream's GUI just was. They have not. The
+asymmetry is worth stating plainly, because it is about how we reviewed and
+not about what we found:
+
+- **Upstream's OpenCorr GUI** got a full interaction pass, and six adoptable
+  items came out of it. That happened because a screenshot of it running was
+  put in front of us, not because it was reviewed more diligently.
+- **Calibration** is the one area where a real interaction pass WAS done, in
+  the 2026-07-17 review of eleven GUIs, and it produced exactly this kind of
+  finding: live numeric pose coaching with variance thresholds and
+  colour-coded pass or fail (GOM/ZEISS), a visual coverage heat map
+  (MatchID), and drag-to-exclude an outlier on a live reprojection-error
+  chart (MATLAB Stereo Camera Calibrator and DuoDIC, described then as the
+  strongest single calibration screen found anywhere in the review). Those
+  are recorded in `CLAUDE.md` and still unbuilt.
+- **Everything else** across VIC-2D, MatchID, GOM Correlate and LaVision
+  DaVis was compared on CAPABILITY only: what they have that we lack. How
+  their screens actually work, what they show beside a number, what they do
+  while a run is in progress, how they get a novice to a first result - none
+  of that was studied.
+
+Two honest constraints on fixing it. We do not own any of the four commercial
+tools and cannot run them, so the evidence would be vendor manuals, published
+screenshots, training and webinar recordings, and screenshots inside papers:
+real, but weaker than a running application. The open tools are the opposite
+case and the better first target precisely because we CAN drive them - Ncorr
+in MATLAB, pyALDIC and iCorrVision in Python, and upstream's own GUI 2.0,
+which is freely downloadable with limited functions.
+
+Worth doing, and worth doing on the runnable ones first. The calibration
+findings above are the proof that this kind of pass yields concrete work
+rather than impressions.
+
 Where we already differ, and should keep differing: per-point reliability
 qualified in words on screen (VIC-2D reports a sigma, but no tool found
 states what its number cannot see); provenance recorded per image with a
