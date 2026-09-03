@@ -59,18 +59,105 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
      designed. From the 2026-07-17 competitive review, the parts worth having
      are live numeric pose coaching, a coverage heat map, and drag-to-exclude
      on a live reprojection-error chart.
-  2. **A stereo project model.** Today a project is one reference and a list of
-     targets. A stereo project is two synchronised sequences plus a calibration,
-     and every place that assumes a single image list has to learn the
-     difference. Pairing is a correctness matter of the same kind as frame
-     order: two views silently misaligned by one frame produce a plausible,
-     entirely wrong shape.
-  3. **A 3D view**, for a real out-of-plane measurement. See the constraint in
-     the pseudo-3D entry below, which binds this one too: whatever the real
-     stereo view looks like, the pseudo-3D surface must not look like it.
+  2. **A project model of N VIEWS, not "left and right".** Today a project is
+     one reference and a list of targets. A stereo project is several
+     synchronised sequences plus a calibration, and every place that assumes a
+     single image list has to learn the difference. Pairing is a correctness
+     matter of the same kind as frame order: two views silently misaligned by
+     one frame produce a plausible, entirely wrong shape.
+
+     ⚑ **Model it as N views from the start, and calibration as a camera
+     NETWORK rather than a pair.** Two cameras is then simply N = 2. This costs
+     nothing now and is a rewrite later, because the multi-view entry below
+     needs exactly that shape and would otherwise arrive as a parallel universe
+     beside the stereo one.
+
+  3. **What of the six strain components is actually MEASURED.** `POI2DS`
+     carries a `StrainVector3D` with exx, eyy, ezz, exy, eyz and ezx, but a
+     surface method cannot see through the thickness. Whether ezz is measured,
+     inferred from an incompressibility assumption, or simply left zero has to
+     be read out of the engine's own 3D strain code before any of it reaches a
+     screen. A slot in a struct is not a measurement, and under tenet 9 a
+     component we cannot substantiate must be absent rather than zero -- the
+     same rule already keeping unfitted strain out of the 2D field.
+  4. **A 3D view**, for a real out-of-plane measurement. Bound by the visual
+     language entry below, which governs this one and the pseudo-3D surface
+     together.
+
+  ⚑ **What this actually measures is 2.5D geometry with 3D displacement**, and
+  the engine says so in its own type name: `POI2DS` derives from `Point2D` and
+  carries a `Point3D` alongside. A stereo point is indexed by a 2D position in
+  the master view, so z is a FUNCTION of (x, y) and the surface is single-valued
+  by construction. The displacement on that surface is fully three-dimensional,
+  which is what lets it see out-of-plane motion at all. The field calls this
+  "3D DIC" and users will search for that term, so we should use it -- and say
+  plainly what it measures, the same way the noise floor states what it is not.
+  Genuinely volumetric measurement is DVC.
 
   Volumetric DVC is in the engine as well and is NOT part of this item; it wants
   volume data we have no way to load and a renderer of its own.
+- **Multi-view 3D from ONE camera, for slow or static tests.** David's, and the
+  qualifier is the whole idea: stereo needs two synchronised cameras only
+  because the specimen is moving. Take the motion away and synchronisation stops
+  mattering, so one camera moved to several positions and fired sequentially
+  gives the same thing. That is photogrammetry, and creep is close to an ideal
+  case -- the deformation timescale is hours and the capture takes minutes.
+
+  Not a lesser class than stereo. It is the SAME class -- 2.5D surface, 3D
+  displacement -- acquired differently, and in two respects it is better:
+
+  - **Redundancy.** A static specimen can be photographed from eight or ten
+    positions, and a bundle adjustment over ten views is better conditioned
+    than a single pair. This is a real accuracy advantage, not a compromise.
+  - **It can exceed 2.5D where stereo cannot.** A stereo pair sees one aspect.
+    A camera network can walk around a CURVED specimen -- a cylinder, a pressure
+    vessel, a wrapped panel -- and recover a surface that is not single-valued
+    from any direction. Stereo cannot do that at all, and it is exactly the
+    specimen geometry where creep testing is common.
+
+  What DIC adds over plain photogrammetry, and it is easy to lose: reconstructing
+  a surface before and after and differencing them measures surface-to-surface
+  DISTANCE, which cannot see in-plane sliding and cannot say which material point
+  went where. Speckle correlation gives dense material-point correspondence, so
+  the pipeline is bundle-adjust each state, reconstruct PER MATERIAL POINT by
+  correlating across views, and difference those.
+
+  ⚑ **THE DATUM IS WHAT WILL BITE, not the bundle adjustment.** A
+  structure-from-motion reconstruction is determined only up to an arbitrary
+  similarity transform. Comparing state A with state B means registering them,
+  and registering on the specimen surface ABSORBS THE DEFORMATION INTO THE
+  REGISTRATION and measures nothing at all -- while producing a clean, plausible
+  field. It needs reference points known not to move, fixed to the frame and off
+  the specimen. That is a rig requirement rather than a software one, and it is
+  the most likely way for this to yield beautiful wrong numbers. Scale is
+  unobservable from images alone for the same reason; a ChArUco board in the
+  scene settles datum and scale together.
+
+  ⚑ **"Slow" is a CHECKABLE precondition, not an assumption.** With creep rate r
+  and a capture lasting T, the within-state drift is r times T, and it has to be
+  small against the noise floor. Both numbers are the run's own, so we report it
+  rather than trust it, exactly as the noise floor is put against the movement it
+  qualifies.
+
+  Available today with no new dependency, which was the surprise:
+  `cv::multicalib::MultiCameraCalibration` (OpenCV ccalib) is a
+  bundle-adjustment camera-network calibration and is already installed; so are
+  ArUco and ChArUco for the datum, and `solvePnPRansac`, `findEssentialMat`,
+  `recoverPose` and `triangulatePoints` in calib3d. Ceres is packaged and
+  BSD-3-Clause, so licence-clean if a purpose-built adjustment is ever wanted.
+  OpenCorr has none of this and stops at two calibrated cameras.
+
+  ⚑ **After stereo, never instead of it.** This is stereo DIC plus a camera
+  network plus a registration datum -- strictly larger, and it reuses the
+  calibration screen, the 3D view and the N-view project model that stereo
+  builds. The one thing it changes TODAY is that constraint on the project
+  model, which is why it is written down now rather than when it is started.
+
+  Adjacent, and deliberately not this item: single-camera stereo through a
+  biprism or mirrors, which splits one sensor into two simultaneous views. That
+  works on DYNAMIC tests, needs optics, and halves the resolution. A different
+  answer to a different question, noted so the two are not conflated.
+
 - **A pseudo-3D strain surface**, drawing the field as a height map with strain
   as the height. VTK does the work with `vtkWarpScalar`, which we already link.
   Worth having because the eye reads HEIGHT far better than colour for ordering
@@ -106,6 +193,21 @@ zero anywhere; and native VTK export, which one of eleven tools reviewed had.
   heights. And a peak occludes what is behind it, including the holes we are
   careful to keep visible everywhere else, so the flat map has to stay one
   gesture away rather than being replaced.
+- **One visual language for four kinds of picture.** By the time the entries
+  above land there will be four views that all look three-dimensional and mean
+  quite different things: today's flat 2D field; the pseudo-3D surface, where
+  height is not a measurement at all; stereo, a 2.5D surface carrying 3D
+  displacement; and multi-view, the same but sometimes more. David's constraint
+  on the pseudo-3D surface was the first instance of a problem that needs one
+  scheme across all four rather than a rule invented per view.
+
+  What the scheme has to settle, once, before the second of them is built: which
+  views are shaded and textured and which are not, which carry a metric axis
+  triad and which carry a unitless one, what an exaggeration factor looks like
+  on screen, and what each view is called in words. The rule underneath is the
+  one this project already keeps everywhere else -- a picture must not be able
+  to be mistaken for a more trustworthy picture than it is.
+
 - **A line probe.** Plots over the sequence and virtual extensometers exist now;
   what is still missing is reading a quantity ALONG a line at one frame, which
   is the other half of what commercial tools offer. The sampling it needs is
