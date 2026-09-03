@@ -122,7 +122,9 @@ does. In rough order of what we would gain:
    it would serve the 2D viewport today, not only a future 3D one.
 
 2. **Three linked orthogonal slices with a shared crosshair**, plus a "Show
-   intersections" switch. X-Y at a chosen Z, Z-Y at a chosen X, X-Z at a
+   intersections" switch. Generalised into its own entry under Next, because
+   their own tabs call this "Multi-view" against "Main view" and it is a
+   viewport mode rather than anything to do with volumes. X-Y at a chosen Z, Z-Y at a chosen X, X-Z at a
    chosen Y, each with a slider, and green crosshairs marking the common
    point in all three. This is the answer to "a volume renderer" in the
    volumetric entry above, and a better first answer than a rendered volume:
@@ -193,6 +195,48 @@ SHA-256 and carried into the exported file; nothing unmeasured written as
 zero anywhere; and native VTK export, which one of eleven tools reviewed had.
 
 ## Next
+
+- **An optional multi-panel viewport, with linked panning and a shared
+  crosshair.** David's, 2026-09-03, on seeing that upstream's own GUI labels
+  its three-orthogonal-slice screen "Multi-view" against "Main view": those
+  are tabs on one viewport, not a feature of volumetric data. The same
+  abstraction serves every case we have or want:
+
+  | case | the panels are |
+  |---|---|
+  | 2D DIC, today | reference against target |
+  | Stereo, roadmap | view 1 against view 2, and N views after that |
+  | Volumetric DVC, roadmap | the X-Y, Z-Y and X-Z slices |
+
+  ⚑ **It earns its place on the 2D tool we already have, before either of
+  those lands.** A reference and a target side by side, panning and zooming
+  together, is how a person actually sees what went wrong on a hard frame:
+  lighting that shifted, a specimen that moved out of plane, a region that
+  decorrelated, a highlight that crossed the pattern. Today those can only be
+  inferred from a field full of holes, or found by flicking between two
+  images in the project tree and trying to remember what the last one looked
+  like.
+
+  **Optional, and a tab rather than a replacement.** A single large panel is
+  the right default for placing a region or reading a point, and the multi
+  panel view is for comparing. Upstream gets this right by making it a
+  toggle, and it is worth copying as a toggle rather than as a layout.
+
+  ⚑ **One thing we could do in it that they cannot, and it falls out of
+  having measured the field.** In a reference-against-target pair, a crosshair
+  at the same PIXEL in both panels is not the same material point: the point
+  moved, which is the entire subject of the measurement. Because the
+  displacement at that point is known, the crosshair can instead follow the
+  MATERIAL point - reference position in the left panel, reference plus
+  measured displacement in the right - so the two crosshairs sit on the same
+  piece of specimen rather than the same coordinate. Where the point was
+  rejected there is no displacement to follow, and the honest behaviour is to
+  say so rather than to leave the right-hand crosshair at the unmoved
+  coordinate, which would quietly assert a displacement of zero (Chapter 3 of
+  the manual, one interaction further out).
+
+  Shares its whole shape with the N-view project model recorded under stereo
+  below: panels are a list, not a left and a right.
 
 - **Stereo and 3D.** Now the largest gap in the tool, and the engine side of it
   is already done. Confirmed by reading the fork rather than our own notes:
