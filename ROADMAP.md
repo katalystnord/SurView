@@ -191,6 +191,81 @@ the stereo entry below has to match.
 - **Export styling.** pyALDIC has a preview tab for colour map, fonts and
   colour bar before writing a figure.
 
+### Screenshot pass, 2026-09-03
+
+David asked for the same treatment on the others, on the evidence available.
+What follows came from actually looking at pyALDIC's published screenshots and
+reading MatchID's own documentation. The commercial vendors gate their manuals
+and screenshots behind customer logins, so for those this is feature-level
+description rather than anything seen running, and it is marked as such.
+
+**pyALDIC** (open, and the strongest single find here):
+
+- ⚑ **It CLIPS a subset at a region boundary and correlates the valid pixels
+  only**, which it calls window splitting. Its screenshot draws the subsets
+  near a boundary, the boundary as a real curve, and a zoomed subset with its
+  pixels labelled "Valid" and "Masked". **This corrects something we had
+  written down as impossible**: the manual said a boundary's softness "is
+  unavoidable" and that "clipping the subset at the boundary would only
+  starve it." That was wrong and is now corrected. It is a genuine technique
+  with a genuine cost, not an impossibility.
+
+  Directly buildable: fork issue #14 already carries subset masking as a data
+  model on `Subset2D`, with phase 2 - making it actually affect the
+  correlation - deferred. This is the reason to finish it, and it is the real
+  third option beside the two the region work considered (exclude the point,
+  or count it and report). It matters most at a hole, where the pixels
+  outside are background that does not move with the specimen.
+- **Displacement drawn as vector arrows over the magnitude field.** We have no
+  vector view at all: displacement is offered as magnitude, u, or v, each a
+  separate scalar map. Direction is immediately legible from arrows and is
+  not legible from any scalar map, and a rotation or a shear reads instantly
+  in a quiver plot.
+- **Four channels shown at once**, in one figure, rather than switched between
+  with a selector. Another instance of the multi-panel viewport entry above,
+  with a third kind of content: not two views and not three slices, but the
+  channels of one field side by side.
+- **A ground-truth comparison presented in-app**: measured against stated,
+  side by side, on a SHARED colour scale, with the RMSE in each panel's own
+  title. We ship six synthetic sets with an exactly known answer and a
+  `ground_truth.json` beside them, and we check them in the test suite - but
+  a user who opens one of those examples is shown none of it. The data is
+  already there.
+
+**MatchID** (documentation only, not seen running):
+
+- ⚑ **It reports SPATIAL resolution as a quantity, not only displacement
+  resolution.** These are two different things that trade directly against
+  each other - a larger subset resolves displacement more finely and resolves
+  spatial detail more coarsely - and we report only the first, as the noise
+  floor. This is exactly the shape of the "two questions, never one score"
+  argument we already make about the noise floor and the conditioning, one
+  level up, and we are currently making the mistake we warn about. Chapter 14
+  of the manual discusses the trade qualitatively without naming spatial
+  resolution as a reportable number.
+- A **performance module** doing a "convergence study of signal versus noise
+  performance according to user settings": a systematic sweep of what the
+  settings do to the result, where our live speckle estimate answers a single
+  point of that space.
+- An **image quality assessment module** as a step of its own, before
+  correlation.
+- **Temperature import**, so a thermal field can be brought in alongside the
+  measurement. Independent commercial confirmation that the second-modality
+  registration entry above is a real need and not only ours.
+- An **FEA validation module** comparing measurement against simulation. Our
+  entire `.vtu` rationale is that loop, and we do the export half only.
+- **Batch mode** across 2D, stereo and calibration.
+
+⚑ **AND A CORRECTION TO WHAT WE CLAIMED ABOUT OURSELVES.** The upstream-GUI
+notes above end by saying an account of reliability "remains ours." Against
+upstream's GUI that holds. Against the commercial field it does not: MatchID
+sells specifically on metrology, listing confidence margins, resolution
+quantification, error evaluation and noise assessment. What is genuinely
+ours is narrower and should be stated narrowly - being open, cross-platform
+and licence-clean, and the specific practice of printing beside every number
+the sentence saying what it cannot tell you. Not caring about metrology.
+Nobody has a monopoly on that.
+
 ⚑ **THIS REVIEW IS A FEATURE COMPARISON, NOT AN INTERACTION ONE, AND THAT IS
 A GAP IN OUR OWN METHOD.** David asked on 2026-09-03 whether the commercial
 tools had been looked at the way upstream's GUI just was. They have not. The

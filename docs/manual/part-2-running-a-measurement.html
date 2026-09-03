@@ -227,13 +227,23 @@ footer a:hover { color: var(--accent-strong); }
   <h2>What a region actually restricts</h2>
   <p>
     A region decides where the <em>centres</em> of measurement points are
-    allowed to sit. It does not shrink the subset each point correlates
-    over: a point near the edge of a region still looks at a full subset
-    of pixels around it, some of which lie outside the region. That is
-    unavoidable - a correlation needs real texture to work with, and
-    clipping the subset at the boundary would only starve it - but
-    it means a boundary is a little softer than it looks: points close to
-    the edge are influenced by whatever sits just outside it.
+    allowed to sit. By itself it does not shrink the subset each point
+    correlates over: a point near the edge of a region still looks at a
+    full subset of pixels around it, some of which lie outside the
+    region. So a boundary is softer than it looks, and points close to
+    it are influenced by whatever sits just beyond it.
+  </p>
+  <p>
+    That softness is not inevitable, though it is what most tools do.
+    A correlation can instead be run on only the <em>valid</em> pixels of
+    a subset that straddles a boundary, masking out the rest, at the cost
+    of having fewer pixels to work with at exactly the places where the
+    measurement is already hardest. Whether that trade is worth making
+    depends on what lies outside the boundary: more specimen you simply
+    chose not to measure is fairly harmless to include, and a hole showing
+    the background behind the specimen is not. Ask of any tool which of
+    the two it does, because a full subset near a boundary and a masked
+    one produce different numbers there and neither is labelled.
   </p>
 
   <h2>A hole is not decoration</h2>
