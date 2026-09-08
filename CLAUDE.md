@@ -610,6 +610,17 @@ measurements to an engine that never made them. The configure-time check is
 advisory on purpose (see cmake/OpenCorrPin.cmake); this one is not, because a
 package leaves the machine.
 
+⚑ **`LDAI_UPDATE_INFORMATION` must be UNSET, not empty.** Exported empty it
+reaches appimagetool as `-u ""`, which it rejects -- and it rejects it at the
+very last instruction, after the squashfs is built, so it reads as a packaging
+failure rather than as an argument nobody meant to pass.
+
+Verified rather than assumed, 2026-09-08: the AppImage is 136 MB, and run with
+`env -i` on a virtual display it opens a shipped example, measures the
+four-frame translation sequence (682 points solved, strain fitted at 651) and
+plots the curve, with the Record panel naming its own mount point as the file's
+location. The bundle stands on its own.
+
 Three things worth not re-deriving:
 
 - **A Release build, always.** The debug build is around forty times slower on a

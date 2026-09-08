@@ -39,7 +39,10 @@ tools/make-appimage.sh --stage-only   # build and stage only, no packaging tools
 ```
 
 It needs `patchelf`, `linuxdeploy` and `linuxdeploy-plugin-qt` on PATH; the
-script names what is missing rather than substituting anything. The AppImage
+script names what is missing rather than substituting anything. The result is
+about 136 MB, and it has been run on this machine with a scrubbed environment:
+it opens a shipped example, measures a four-frame sequence and plots the curve
+without anything from the build tree. The AppImage
 carries Qt, VTK and OpenCV with it, so it runs on a machine that has never had
 them installed - which is the point, and also why it is large. It refuses to
 package against an OpenCorr checkout that is not the pinned commit: every field

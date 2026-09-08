@@ -131,7 +131,15 @@ mkdir -p "$dist"
 export QMAKE="${QMAKE:-/usr/lib/qt6/bin/qmake6}"
 export EXTRA_QT_PLUGINS="${EXTRA_QT_PLUGINS:-svg;imageformats}"
 export LDAI_OUTPUT="SurView-$version-x86_64.AppImage"
-export LDAI_UPDATE_INFORMATION="${LDAI_UPDATE_INFORMATION:-}"
+# ⚑ Only when there is one. Exported empty, this reaches appimagetool as -u ""
+# and the whole packaging step fails at the very last instruction with "the
+# provided updateinformation is not in a recognized format" -- after the
+# squashfs has been built, so it looks like a packaging failure rather than an
+# argument nobody meant to pass. Set it in the environment to publish an
+# update channel; leave it unset and the AppImage simply carries none.
+if [ -z "${LDAI_UPDATE_INFORMATION:-}" ]; then
+    unset LDAI_UPDATE_INFORMATION
+fi
 
 cd "$dist"
 linuxdeploy --appdir "$appdir" \
