@@ -216,11 +216,22 @@ def main():
         build = REPO / "build-mutants"
         configure = ["cmake", "-S", str(REPO), "-B", str(build), "-G", "Ninja"]
         default_files = sorted((REPO / "src" / "core").glob("*.cpp"))
-        # The walkthrough is ~3 s against ~0.03 s for the rest; excluded by
-        # default so a full run finishes in a sitting. Anything it alone would
-        # catch is reported as a survivor, which is honest but incomplete --
-        # --include-slow is the complete answer.
-        test_filter = [] if args.include_slow else ["-E", "workspace_walkthrough"]
+        # ⚑ The SLOW HALF IS EXCLUDED BY DEFAULT, and this is what decides
+        # whether a full sweep is possible at all. Measured 2026-09-08: the
+        # build of a mutant is 6.5 s with mold, and the suite that follows it
+        # is 90 -- of which test_measured_accuracy is 48 on its own, because it
+        # correlates real image pairs, and the walkthrough, solver-choices and
+        # sequence-runner cases are most of the rest. Left in, every mutant
+        # costs a minute and a half and the 1062 in core are a two-day job.
+        # Taken out, a full sweep fits in a night.
+        #
+        # The cost is honest and bounded: a mutant only those cases would have
+        # caught is reported as a SURVIVOR. That is the safe direction to be
+        # wrong in -- a false survivor is re-checked and dismissed, where a
+        # false kill would be a hole in the suite reported as covered. Re-run
+        # the survivors with --include-slow, which is the complete answer.
+        slow = "workspace_walkthrough|measured_accuracy|solver_choices|sequence_runner"
+        test_filter = [] if args.include_slow else ["-E", slow]
         ctest_dir = build
         ctest_cwd = build
 
@@ -258,6 +269,9 @@ def main():
         print("Linking with mold.")
 
     build_args = ["--parallel", str(args.jobs)] if args.jobs > 0 else []
+    # The cases left in are small and there are two dozen of them, so running
+    # them side by side is most of what makes a mutant cheap.
+    ctest_args = ["--parallel", str(args.jobs)] if args.jobs > 0 else []
     if args.jobs > 0:
         # The tests thread over POIs with OpenMP, so capping the build alone
         # still leaves ctest taking the whole machine.
@@ -269,7 +283,7 @@ def main():
                       stdout=subprocess.DEVNULL).returncode != 0:
         print("mutants.py: the tree does not build. Fix that first.", file=sys.stderr)
         return 2
-    baseline = run(["ctest", "--test-dir", str(ctest_dir)] + test_filter,
+    baseline = run(["ctest", "--test-dir", str(ctest_dir)] + ctest_args + test_filter,
                    ctest_cwd, args.timeout)
     if baseline != 0:
         print("mutants.py: the suite is RED before mutation. A run now would "
@@ -305,7 +319,7 @@ def main():
                 not_viable.append(m)
                 verdict = "not viable"
             else:
-                rc = run(["ctest", "--test-dir", str(ctest_dir)] + test_filter,
+                rc = run(["ctest", "--test-dir", str(ctest_dir)] + ctest_args + test_filter,
                          ctest_cwd, args.timeout)
                 if rc == 0:
                     survived.append(m)
