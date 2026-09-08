@@ -14,7 +14,9 @@ reference updating, repair the points the first solve could not measure, fit
 strain, report per-point reliability, read any point off the field, plot a
 quantity against frame with virtual extensometers, and export the result as
 `.vtu` or `.csv` with full provenance. Six synthetic example sets
-with an exactly known answer and three real ones.
+with an exactly known answer and three real ones, and on those, a screen putting
+the measured field, the stated answer and the difference between them side by
+side on one shared colour scale.
 
 
 ## What we lack, against the rest of the field
@@ -328,23 +330,13 @@ Small, well understood, and each one changes what a person sees the next
 time they open the application. Days rather than weeks. Nothing here needs
 a design pass first.
 
-- **Show the answer against the known answer, for the examples that ship with
-  one.** Measured beside stated, on a SHARED colour scale, with the error
-  stated in each panel, as pyALDIC presents it. Six synthetic sets already
-  carry an exactly known answer, `ground_truth.json` already sits beside them,
-  and `test_measured_accuracy` already checks runs against it. The data, the
-  file and the arithmetic all exist; only the screen is missing.
-
-  In Now because of that, and because it is probably the most convincing
-  thing this application could put in front of somebody who has no reason yet
-  to believe a number it produced.
-
 - **Borrowed from upstream's GUI, smallest first.** David approved the whole
   list on 2026-09-03. The competitive section above says why each one is
   better than what we do; this is the commitment to do them. Five of the six
-  are small, and the first is the one to do next.
+  are small. The first is DONE (2026-09-03); the second is the one to do next.
 
-  1. **A permanent coordinate-frame legend in the viewport.** A small panel
+  1. ~~**A permanent coordinate-frame legend in the viewport.**~~ DONE
+     2026-09-03. A small panel
      drawing the axes with their directions, always visible. We have a
      section of `CLAUDE.md` and a chapter of the manual devoted to the y-down
      trap, and our answer so far has been to get it right internally and
@@ -381,7 +373,8 @@ Understood well enough to start, large enough to need their own care.
   sources are in the screenshot pass above; this is the commitment to act on
   it. Ordered by what it changes about the measurement, not by size. The
   fourth thing from that pass, showing measured against known for the shipped
-  examples, is small enough that it sits under Now instead.
+  examples, was the smallest and is DONE (2026-09-08): Analysis > Compare with
+  the Known Answer, three panels on one shared colour scale.
 
   1. ⚑ **Masked subsets at a boundary or a hole.** Correlate a straddling
      subset on its valid pixels only, instead of on a full subset that

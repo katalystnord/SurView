@@ -8,6 +8,7 @@
 #include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
+#include "core/KnownAnswer.h"
 #include "core/Roi.h"
 
 #include <QMainWindow>
@@ -26,6 +27,7 @@ class QSpinBox;
 class QThread;
 class QTreeWidget;
 class QTreeWidgetItem;
+class ComparisonWindow;
 class ImageViewport;
 class PlotPanel;
 class PointPanel;
@@ -88,6 +90,11 @@ private slots:
     void runCorrelation();
     void exportField();
     void exportFieldCsv();
+
+    // Put the displayed frame beside the answer its example states, and the
+    // difference between them. Offered only where the data states an answer;
+    // see knownAnswerForDisplayedFrame().
+    void compareWithKnownAnswer();
     void showAbout();
 
     // Selecting an image in the project tree shows its record, and displays it
@@ -208,6 +215,16 @@ private:
     // Shut the worker thread down. One place, because it happens on three
     // different endings and a missed teardown leaks a thread per run.
     void tearDownWorker();
+
+    // The answer the displayed frame's own target image states about itself, or
+    // an invalid one where nothing beside the images states anything.
+    //
+    // ⚑ Read from the frame's PROVENANCE, which was captured when the run
+    // started, rather than from whatever the project tree currently selects.
+    // The two drift the moment a reader clicks another image, and comparing a
+    // measured field against another frame's answer produces a plausible error
+    // map of an experiment nobody ran.
+    KnownAnswer knownAnswerForDisplayedFrame() const;
 
     // Show one point of the displayed field, or the standing invitation when
     // there is nothing to show. One place, so hovering, pinning and a new
@@ -332,4 +349,9 @@ private:
     QAction *m_actClearRoi = nullptr;
     QAction *m_actExport = nullptr;
     QAction *m_actExportCsv = nullptr;
+    QAction *m_actCompare = nullptr;
+
+    // Built on first use and kept, so a reader who closes it and opens it again
+    // gets the same window rather than a second one.
+    ComparisonWindow *m_comparison = nullptr;
 };

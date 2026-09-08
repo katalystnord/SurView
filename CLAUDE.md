@@ -586,6 +586,68 @@ that was never measured is blank here, not zero: drawn as a zero it would take
 the same colour as a point the first solve got right, so every hole in the field
 would fill in with the most reassuring reading available.
 
+### Measured against the known answer (2026-09-08)
+
+The synthetic examples state the exact deformation of every frame they ship,
+and until now only the test suite ever read it. `Analysis > Compare with the
+Known Answer` puts three panels side by side: what SurView measured, what the
+example states, and the difference. `core/KnownAnswer.h` produces all three and
+`gui/ComparisonWindow` draws them, over the same `FieldView` and the same colour
+ramp (`gui/FieldColours.h`, factored out of the viewport for exactly this
+reason: a second ramp beside the first would eventually differ from it and show
+two correct fields as two different instruments).
+
+⚑ **The answer is exact by construction, not accurate to within a warp** --
+each frame is rendered afresh from an analytic pattern under a uniform
+deformation gradient, so no pixel is ever resampled. That is what makes the
+third panel an ERROR map rather than a disagreement between two estimates, and
+the screen quotes the file's own sentence saying so rather than asserting it in
+our words.
+
+Five rules, each with its own case and negative check:
+
+- ⚑ **ONE colour scale across measured and stated.** Ranged separately, two
+  fields look alike however far apart they are: a measurement wrong by half is
+  painted in exactly the colours of the answer it missed. `sharedColourRange()`.
+  The error map is centred on zero in EVERY channel, displacement included,
+  because zero error is the answer being right -- ranged over the errors
+  themselves, a field uniformly wrong by 0.4 to 0.5 px spends the whole scale on
+  that tenth of a pixel and reads as a field with a hole in it.
+- ⚑ **The stated answer is evaluated in the SAME strain measure the run used.**
+  The two measures genuinely disagree about the same deformation: a rigid
+  rotation of three degrees is exactly zero Green-Lagrange strain and
+  cos(3 deg) - 1 in the linear form. That is the linear form's own well-known
+  error, and evaluating truth in one measure and the run in the other would show
+  a difference of convention as an error of the instrument. Verified on screen:
+  on a seven-degree rotation the panel states -0.00745 and the run measures
+  -0.00745, mean error 7.3e-05.
+- **The stated panel covers every point the run ATTEMPTED, its failures
+  included**, while the difference covers only what was MEASURED. The answer is
+  known wherever the instrument was pointed; holding the two panels to the same
+  shape would hide the thing a reader is looking at the pair to see. And a
+  rejected point has no error of zero, the standing rule one map further out.
+- **A frame is matched to its answer by FILE NAME, never by position.** The set's
+  frames and the application's target list are two orderings of the same images
+  maintained in different places. Negative-checked by comparing against the
+  reference frame's answer instead: the same screen then reports a 2.5 px error
+  on a correct run.
+- **Only channels the answer can speak to are offered.** It states a
+  deformation, so it says nothing about a noise floor, a conditioning number or
+  a repair flag; setting one of those against it would be comparing two kinds of
+  thing and calling the difference an error.
+
+Two things found by looking at the screen, neither by a test:
+
+- **The heading said "frame 3" while the log said "frame 2", for the same
+  picture.** The stated answer counts frames from the set's own reference and
+  the project tree counts them from the first target. Two numbers for one thing
+  on one screen is worse than none: the heading names the FILE, which both agree
+  on.
+- **The scale bar title drew over its own topmost label**, and the widest error
+  label ran off the panel edge and lost a digit. A bar in a third of a window is
+  not the field bar in a whole viewport: it carries the unit only, since the
+  Quantity selector above names the channel for all three panels at once.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

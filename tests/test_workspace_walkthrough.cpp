@@ -20,6 +20,7 @@
 #include "gui/ImageViewport.h"
 #include "gui/PlotPanel.h"
 #include "gui/PointPanel.h"
+#include "gui/ComparisonWindow.h"
 #include "gui/MainWindow.h"
 
 #include <QAction>
@@ -258,6 +259,43 @@ std::optional<std::pair<double, double>> displacementLine(const QString &panel)
 // Aiming through the projection means this helper cannot, on its own, prove the
 // frame is the right way up -- so that is proved separately and independently,
 // by moving_down_and_right_on_screen_moves_down_and_right_in_the_image below.
+// One entry of the Open Example submenu, found by the name it shows. A test
+// that opened an example by path would be reaching past the interface into the
+// file system; this opens the one a reader can see and press.
+QAction *exampleNamed(QMainWindow *window, const QString &name)
+{
+    for (QAction *top : window->menuBar()->actions()) {
+        QMenu *menu = top->menu();
+        if (!menu)
+            continue;
+        for (QAction *action : menu->actions()) {
+            QMenu *examples = action->menu();
+            if (!examples || !action->text().contains(QStringLiteral("example"),
+                                                      Qt::CaseInsensitive))
+                continue;
+            for (QAction *entry : examples->actions()) {
+                if (entry->isEnabled() && !entry->isSeparator()
+                    && entry->text().contains(name, Qt::CaseInsensitive))
+                    return entry;
+            }
+        }
+    }
+    return nullptr;
+}
+
+// Everything a window's visible labels say, as one string. The captions of the
+// comparison screen are read this way for the same reason the point panel is:
+// what is asserted has to be what reaches a reader.
+QString visibleText(QWidget *root)
+{
+    QStringList parts;
+    for (QLabel *label : root->findChildren<QLabel *>()) {
+        if (label->isVisible())
+            parts << label->text();
+    }
+    return parts.join(QLatin1Char('\n'));
+}
+
 QPoint widgetPointForPixel(ImageViewport *viewport, double px, double py)
 {
     QPointF position;
@@ -318,6 +356,10 @@ private slots:
     void the_plot_panel_says_what_it_is_for_before_a_sequence_exists();
     void an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
+
+    void the_comparison_with_a_known_answer_says_why_it_is_unavailable_before_a_run();
+    void an_example_that_states_its_own_answer_is_measured_against_it_on_screen();
+    void a_dataset_that_states_no_answer_says_so_rather_than_offering_a_comparison();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -2123,6 +2165,122 @@ void TestWorkspaceWalkthrough::the_viewport_says_which_way_its_axes_run()
                                            "viewport, which is eating the picture")
                                 .arg(frame->height()).arg(viewport->height())));
     }
+}
+
+
+void TestWorkspaceWalkthrough::the_comparison_with_a_known_answer_says_why_it_is_unavailable_before_a_run()
+{
+    // ⚑ Visible before it is usable, and explaining itself while it is not. A
+    // capability that appears only once its preconditions happen to be met is
+    // one nobody can find on purpose -- the rule this suite is written under.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QAction *compare = menuActionLabelled(&window, QStringLiteral("known answer"));
+    QVERIFY2(compare, "no menu offers a comparison with the known answer");
+    QVERIFY(!compare->isEnabled());
+    QVERIFY2(compare->toolTip().contains(QStringLiteral("correlation"),
+                                         Qt::CaseInsensitive),
+             qPrintable(compare->toolTip()));
+}
+
+void TestWorkspaceWalkthrough::an_example_that_states_its_own_answer_is_measured_against_it_on_screen()
+{
+    // The claim this screen exists to make: what SurView measured, the answer
+    // the example states, and the difference between them, all visible at once.
+    MainWindow window;
+    window.resize(1400, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QAction *translation = exampleNamed(&window, QStringLiteral("Translation"));
+    QVERIFY2(translation, "the synthetic translation example is not on the menu");
+    translation->trigger();
+
+    // Coarse, from the control on screen: this case is about the comparison,
+    // not about how dense a field can be.
+    auto *gridStep = controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"));
+    QVERIFY(gridStep);
+    gridStep->setValue(20);
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    QVERIFY(waitForEnabled(run));
+    run->trigger();
+
+    QAction *compare = menuActionLabelled(&window, QStringLiteral("known answer"));
+    QVERIFY(compare);
+    QVERIFY2(waitForEnabled(compare, 120000),
+             qPrintable(QStringLiteral("the comparison stayed unavailable: %1")
+                            .arg(compare->toolTip())));
+    compare->trigger();
+
+    auto *comparison = window.findChild<ComparisonWindow *>();
+    QVERIFY2(comparison, "nothing opened");
+    QVERIFY(QTest::qWaitForWindowExposed(comparison));
+
+    const QString said = visibleText(comparison);
+
+    // It names the frame it is comparing, so a reader knows which answer this
+    // is. Without that the screen is three pictures of an unnamed experiment.
+    QVERIFY2(said.contains(QStringLiteral("translation_0")), qPrintable(said));
+
+    // All three panels are labelled, including the one whose meaning is least
+    // guessable.
+    QVERIFY2(said.contains(QStringLiteral("Measured minus stated")), qPrintable(said));
+    QVERIFY2(said.contains(QStringLiteral("Stated by the example")), qPrintable(said));
+
+    // ⚑ And it says why the stated answer is exact, in the example's own words.
+    // Without that sentence a reader has no reason to read the third panel as
+    // an ERROR rather than as a disagreement between two estimates.
+    QVERIFY2(said.contains(QStringLiteral("resampled")), qPrintable(said));
+
+    // The comparison the screen made, asserted as a measurement rather than as
+    // text: this example is a rigid sub-pixel translation, and SurView measures
+    // it to well inside a tenth of a pixel.
+    const AccuracyReport report = comparison->report();
+    QVERIFY2(report.valid, "the screen compared nothing");
+    QVERIFY2(report.compared > 100,
+             qPrintable(QStringLiteral("only %1 points compared").arg(report.compared)));
+    QVERIFY2(report.worstAbsolute < 0.1,
+             qPrintable(QStringLiteral("worst point %1 px from the stated answer")
+                            .arg(report.worstAbsolute)));
+
+    // The counts reach the screen too, not only the pictures.
+    QVERIFY2(said.contains(QString::number(report.compared)), qPrintable(said));
+}
+
+void TestWorkspaceWalkthrough::a_dataset_that_states_no_answer_says_so_rather_than_offering_a_comparison()
+{
+    // ⚑ The real examples are photographs of real specimens, and nothing states
+    // what they did. Offered a comparison anyway, against a default answer of no
+    // deformation, the screen would report the specimen's entire movement as the
+    // instrument's error -- a confident, plausible, completely wrong verdict.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    QVERIFY(waitForEnabled(run));
+    run->trigger();
+
+    QAction *exportAction = actionLabelled(&window, QStringLiteral("Export Results (.vtu)"));
+    QVERIFY(waitForEnabled(exportAction, 120000));
+
+    QAction *compare = menuActionLabelled(&window, QStringLiteral("known answer"));
+    QVERIFY(compare);
+    QVERIFY2(!compare->isEnabled(),
+             "a comparison was offered against data that states no answer");
+    QVERIFY2(compare->toolTip().contains(QStringLiteral("states no answer"),
+                                         Qt::CaseInsensitive)
+                 || compare->toolTip().contains(QStringLiteral("no stated answer"),
+                                                Qt::CaseInsensitive),
+             qPrintable(compare->toolTip()));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

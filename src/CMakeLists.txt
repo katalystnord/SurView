@@ -23,6 +23,8 @@ add_library(surview_core STATIC
     core/ImagePairing.h
     core/ImageRecord.cpp
     core/ImageRecord.h
+    core/KnownAnswer.cpp
+    core/KnownAnswer.h
     core/PoiGrid.cpp
     core/PoiGrid.h
     core/Project.cpp
@@ -61,6 +63,12 @@ target_link_libraries(surview_core PUBLIC
 add_library(surview_gui STATIC
     gui/MainWindow.cpp
     gui/MainWindow.h
+    gui/ComparisonWindow.cpp
+    gui/ComparisonWindow.h
+    gui/FieldColours.cpp
+    gui/FieldColours.h
+    gui/FieldView.cpp
+    gui/FieldView.h
     gui/ImageViewport.cpp
     gui/ImageViewport.h
     gui/PlotPanel.cpp

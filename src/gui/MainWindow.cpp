@@ -1,5 +1,6 @@
 #include "MainWindow.h"
 
+#include "ComparisonWindow.h"
 #include "ImageViewport.h"
 #include "PlotPanel.h"
 #include "PointPanel.h"
@@ -271,6 +272,19 @@ void MainWindow::createActions()
     m_actExportCsv->setStatusTip(
         tr("Write the same fields as a plain table any spreadsheet opens"));
     connect(m_actExportCsv, &QAction::triggered, this, &MainWindow::exportFieldCsv);
+
+    // ⚑ Present from the first window, disabled and explaining itself, not
+    // conjured once a synthetic example happens to be loaded. A capability that
+    // appears only after an invisible precondition is met is one nobody can
+    // find on purpose.
+    m_actCompare = new QAction(
+        style()->standardIcon(QStyle::SP_FileDialogInfoView),
+        tr("Compare with the Known Answer…"), this);
+    m_actCompare->setStatusTip(
+        tr("Put the measured field beside the answer the example states, and the "
+           "difference between them"));
+    connect(m_actCompare, &QAction::triggered, this,
+            &MainWindow::compareWithKnownAnswer);
 }
 
 void MainWindow::createMenus()
@@ -327,6 +341,8 @@ void MainWindow::createMenus()
     analysisMenu->addSeparator();
     analysisMenu->addAction(m_actRun);
     analysisMenu->addAction(m_actStop);
+    analysisMenu->addSeparator();
+    analysisMenu->addAction(m_actCompare);
 
     QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
     QAction *about = helpMenu->addAction(tr("&About SurView DIC"));
@@ -361,6 +377,7 @@ void MainWindow::createToolBar()
     toolbar->addAction(m_actStop);
     toolbar->addSeparator();
     toolbar->addAction(m_actExtensometer);
+    toolbar->addAction(m_actCompare);
 }
 
 // ---------------------------------------------------------------------------
@@ -2147,6 +2164,28 @@ void MainWindow::onFrameFinished(int frame, const CorrelationResult &result)
     displayFrame(frame);
 }
 
+KnownAnswer MainWindow::knownAnswerForDisplayedFrame() const
+{
+    if (!m_hasResult || m_displayedFrame < 0 || m_displayedFrame >= m_frames.size())
+        return {};
+    return knownAnswerFor(m_frames[m_displayedFrame].provenance.target.filePath);
+}
+
+void MainWindow::compareWithKnownAnswer()
+{
+    const KnownAnswer answer = knownAnswerForDisplayedFrame();
+    if (!answer.valid || !m_hasResult)
+        return;
+
+    if (!m_comparison)
+        m_comparison = new ComparisonWindow(this);
+    m_comparison->compare(m_result, answer, m_referenceRecord.filePath,
+                          m_frames[m_displayedFrame].provenance.target.fileName);
+    log(tr("Comparing frame %1 with the answer %2 states for it.")
+            .arg(m_displayedFrame + 1)
+            .arg(answer.frameFile));
+}
+
 void MainWindow::onSequenceFinished(int framesMeasured, bool cancelled)
 {
     const int planned = int(m_plannedFrames.size());
@@ -2169,6 +2208,18 @@ void MainWindow::onSequenceFinished(int framesMeasured, bool cancelled)
                             .arg(planned)
                       : tr("Sequence finished - %1 frames measured.")
                             .arg(framesMeasured));
+    }
+
+    // ⚑ Said in the log, where the run reports, rather than left for someone to
+    // notice that a menu entry has become available. The examples state an
+    // exact answer and nothing on screen ever mentioned it; a reader who does
+    // not know it is there cannot go and look for it.
+    const KnownAnswer answer = knownAnswerForDisplayedFrame();
+    if (answer.valid) {
+        log(tr("This example states its own exact answer for %1. Analysis > "
+               "Compare with the Known Answer puts the measured field, that "
+               "answer and the difference between them side by side.")
+                .arg(answer.frameFile));
     }
 
     m_stageLabel->setText(framesMeasured > 0 ? tr("Field measured")
@@ -2428,6 +2479,20 @@ void MainWindow::updateActionStates()
                            "provenance in a commented header. Anything that was "
                            "not measured is an empty cell, never a zero")
                       : tr("Run a correlation first: there is no field to export"));
+    const KnownAnswer answer = knownAnswerForDisplayedFrame();
+    m_actCompare->setEnabled(m_hasResult && answer.valid && !running);
+    m_actCompare->setToolTip(
+        running      ? tr("Wait for the correlation to finish")
+        : !m_hasResult ? tr("Run a correlation first: there is no field to "
+                            "compare with an answer")
+        : !answer.valid ? tr("This data states no answer of its own, so there is "
+                             "nothing to compare against. The synthetic examples "
+                             "that ship with SurView each carry a ground_truth.json "
+                             "beside their images")
+                        : tr("Put the measured field beside the answer %1 states "
+                             "for this frame, and the difference between them")
+                              .arg(answer.set));
+
     m_actExport->setToolTip(
         running    ? tr("Wait for the correlation to finish")
         : m_hasResult ? tr("Write the measured field to a VTK .vtu file, which "

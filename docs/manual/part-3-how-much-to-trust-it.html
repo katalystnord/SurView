@@ -184,15 +184,16 @@ footer a:hover { color: var(--accent-strong); }
 <div class="toc-label current-part">Part III. How much to trust it</div><ol>
 <li><a href="part-3-how-much-to-trust-it.html#two-questions" class="current">9. Two questions, never one score</a></li>
 <li><a href="part-3-how-much-to-trust-it.html#reading-critically" class="current">10. Reading a field critically</a></li>
+<li><a href="part-3-how-much-to-trust-it.html#known-answer" class="current">11. Checking against a known answer</a></li>
 </ol>
 <div class="toc-label">Part IV. Beyond one field</div><ol>
-<li><a href="part-4-beyond-one-field.html#sequence-as-curve">11. Reading a sequence as a curve</a></li>
-<li><a href="part-4-beyond-one-field.html#leaving-the-application">12. The field leaving the application</a></li>
+<li><a href="part-4-beyond-one-field.html#sequence-as-curve">12. Reading a sequence as a curve</a></li>
+<li><a href="part-4-beyond-one-field.html#leaving-the-application">13. The field leaving the application</a></li>
 </ol>
 <div class="toc-label">Part V. Practice</div><ol>
-<li><a href="part-5-practice.html#speckling">13. Speckling a specimen</a></li>
-<li><a href="part-5-practice.html#subset-and-step">14. Choosing subset radius and grid step</a></li>
-<li><a href="part-5-practice.html#lighting-and-imaging">15. Lighting and imaging</a></li>
+<li><a href="part-5-practice.html#speckling">14. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">15. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">16. Lighting and imaging</a></li>
 </ol>
 <div class="toc-label">Reference</div><ol>
 <li><a href="appendix.html">Appendix</a></li>
@@ -374,6 +375,7 @@ footer a:hover { color: var(--accent-strong); }
     harder questions about.
   </p>
 
+
   <div class="callout">
     <p class="callout-label">The five-question pass</p>
     <p>
@@ -384,6 +386,92 @@ footer a:hover { color: var(--accent-strong); }
       actually get caught.
     </p>
   </div>
+
+  <h1 id="known-answer">11. Checking against a known answer</h1>
+  <p class="lede">
+    Every other chapter of this part is about reading a measurement whose
+    true answer nobody knows. On the synthetic examples that ship with
+    SurView, the true answer IS known - exactly, not approximately - and
+    the application will put it on screen beside what it measured, with
+    the difference between the two as a third map.
+  </p>
+
+  <h2>Why the answer is exact, and why that matters</h2>
+  <p>
+    The synthetic sets are not photographs that were warped. Each frame is
+    rendered from a list of Gaussian blobs under a uniform deformation
+    gradient, and a uniform deformation maps a Gaussian to another Gaussian
+    exactly - so every frame is drawn afresh from the pattern at its own
+    deformation, and no pixel is ever resampled. The displacement stated
+    beside the images is therefore the truth, not a very good estimate of
+    it. Sensor noise is added afterwards, and pixels are integrated by
+    supersampling, which is what a real sensor does.
+  </p>
+  <p>
+    That is what makes the third panel an <strong>error</strong> map rather
+    than a disagreement between two estimates. Against a real specimen the
+    same three panels could not be drawn at all: nothing states what the
+    specimen did.
+  </p>
+
+  <h2>What the three panels show</h2>
+  <ul>
+    <li>
+      <strong>Measured</strong> - the field SurView produced, exactly as
+      the main viewport draws it, blank wherever the run measured nothing.
+    </li>
+    <li>
+      <strong>Stated by the example</strong> - the same quantity from the
+      stated deformation, at every point the run <em>attempted</em>,
+      including the ones it could not measure. The two panels therefore
+      differ in shape wherever the measurement has holes, which is the
+      point: it shows what was missed as well as what was got wrong.
+    </li>
+    <li>
+      <strong>Measured minus stated</strong> - the difference, only where
+      something was measured. A point the solver rejected has no error of
+      zero: an error of zero is the answer being right, and painting it
+      over the points the instrument could not read would claim it did
+      best exactly where it did nothing.
+    </li>
+  </ul>
+  <p>
+    The first two panels share one colour scale, and the third is centred
+    on zero. The shared scale is what makes the comparison mean anything:
+    ranged separately, a field wrong by half would be painted in exactly
+    the colours of the answer it missed.
+  </p>
+
+  <h2>Strain is compared in the measure you chose</h2>
+  <p>
+    The two strain measures genuinely disagree about the same deformation.
+    A rigid rotation of three degrees is exactly zero strain in the
+    Green-Lagrange form, and about -0.0014 in the linear one - the linear
+    form's own well-known error on large rotations (Chapter 2), not a
+    fault in the measurement. So the stated answer is evaluated in
+    whichever measure the run used. Comparing a Cauchy run against a
+    Green-Lagrange truth would show that difference of convention as an
+    error of the instrument.
+  </p>
+  <p>
+    This is also the most direct way to see the trade for yourself: run the
+    rotation example both ways and watch which measure the difference panel
+    prefers.
+  </p>
+
+  <div class="callout">
+    <p class="callout-label">What the difference panel is not</p>
+    <p>
+      It is the error against one particular known deformation on one
+      particular synthetic pattern, at the settings currently in the
+      Analysis panel. It says what this configuration does on this data.
+      It is not a general accuracy figure for SurView, and it is not an
+      error bar you can carry over to a real specimen - a real speckle,
+      a real camera and a real load path all fail in ways a rendered
+      pattern cannot.
+    </p>
+  </div>
+
 
   <div class="chapter-nav">
 <a class="prev" href="part-2-running-a-measurement.html"><small>Previous</small>Part II: Running a measurement</a>

@@ -193,15 +193,16 @@ PARTS = [
     ("part-3-how-much-to-trust-it", "Part III. How much to trust it", [
         ("two-questions", "9. Two questions, never one score"),
         ("reading-critically", "10. Reading a field critically"),
+        ("known-answer", "11. Checking against a known answer"),
     ]),
     ("part-4-beyond-one-field", "Part IV. Beyond one field", [
-        ("sequence-as-curve", "11. Reading a sequence as a curve"),
-        ("leaving-the-application", "12. The field leaving the application"),
+        ("sequence-as-curve", "12. Reading a sequence as a curve"),
+        ("leaving-the-application", "13. The field leaving the application"),
     ]),
     ("part-5-practice", "Part V. Practice", [
-        ("speckling", "13. Speckling a specimen"),
-        ("subset-and-step", "14. Choosing subset radius and grid step"),
-        ("lighting-and-imaging", "15. Lighting and imaging"),
+        ("speckling", "14. Speckling a specimen"),
+        ("subset-and-step", "15. Choosing subset radius and grid step"),
+        ("lighting-and-imaging", "16. Lighting and imaging"),
     ]),
     ("appendix", "Appendix", None),
 ]
@@ -765,7 +766,7 @@ part1_body = """
       quantity had returned to zero.
     </li>
     <li>
-      <strong>An exported field</strong> (Chapter 12): the same absence has
+      <strong>An exported field</strong> (Chapter 13): the same absence has
       to survive leaving the application. A viewer that assumes every cell
       holds a number, and a format that cannot represent "not established",
       quietly turn every one of the cases above back into a lie the moment
@@ -1383,6 +1384,7 @@ part3_body = """
     harder questions about.
   </p>
 
+
   <div class="callout">
     <p class="callout-label">The five-question pass</p>
     <p>
@@ -1394,6 +1396,92 @@ part3_body = """
     </p>
   </div>
 
+  <h1 id="known-answer">11. Checking against a known answer</h1>
+  <p class="lede">
+    Every other chapter of this part is about reading a measurement whose
+    true answer nobody knows. On the synthetic examples that ship with
+    SurView, the true answer IS known - exactly, not approximately - and
+    the application will put it on screen beside what it measured, with
+    the difference between the two as a third map.
+  </p>
+
+  <h2>Why the answer is exact, and why that matters</h2>
+  <p>
+    The synthetic sets are not photographs that were warped. Each frame is
+    rendered from a list of Gaussian blobs under a uniform deformation
+    gradient, and a uniform deformation maps a Gaussian to another Gaussian
+    exactly - so every frame is drawn afresh from the pattern at its own
+    deformation, and no pixel is ever resampled. The displacement stated
+    beside the images is therefore the truth, not a very good estimate of
+    it. Sensor noise is added afterwards, and pixels are integrated by
+    supersampling, which is what a real sensor does.
+  </p>
+  <p>
+    That is what makes the third panel an <strong>error</strong> map rather
+    than a disagreement between two estimates. Against a real specimen the
+    same three panels could not be drawn at all: nothing states what the
+    specimen did.
+  </p>
+
+  <h2>What the three panels show</h2>
+  <ul>
+    <li>
+      <strong>Measured</strong> - the field SurView produced, exactly as
+      the main viewport draws it, blank wherever the run measured nothing.
+    </li>
+    <li>
+      <strong>Stated by the example</strong> - the same quantity from the
+      stated deformation, at every point the run <em>attempted</em>,
+      including the ones it could not measure. The two panels therefore
+      differ in shape wherever the measurement has holes, which is the
+      point: it shows what was missed as well as what was got wrong.
+    </li>
+    <li>
+      <strong>Measured minus stated</strong> - the difference, only where
+      something was measured. A point the solver rejected has no error of
+      zero: an error of zero is the answer being right, and painting it
+      over the points the instrument could not read would claim it did
+      best exactly where it did nothing.
+    </li>
+  </ul>
+  <p>
+    The first two panels share one colour scale, and the third is centred
+    on zero. The shared scale is what makes the comparison mean anything:
+    ranged separately, a field wrong by half would be painted in exactly
+    the colours of the answer it missed.
+  </p>
+
+  <h2>Strain is compared in the measure you chose</h2>
+  <p>
+    The two strain measures genuinely disagree about the same deformation.
+    A rigid rotation of three degrees is exactly zero strain in the
+    Green-Lagrange form, and about -0.0014 in the linear one - the linear
+    form's own well-known error on large rotations (Chapter 2), not a
+    fault in the measurement. So the stated answer is evaluated in
+    whichever measure the run used. Comparing a Cauchy run against a
+    Green-Lagrange truth would show that difference of convention as an
+    error of the instrument.
+  </p>
+  <p>
+    This is also the most direct way to see the trade for yourself: run the
+    rotation example both ways and watch which measure the difference panel
+    prefers.
+  </p>
+
+  <div class="callout">
+    <p class="callout-label">What the difference panel is not</p>
+    <p>
+      It is the error against one particular known deformation on one
+      particular synthetic pattern, at the settings currently in the
+      Analysis panel. It says what this configuration does on this data.
+      It is not a general accuracy figure for SurView, and it is not an
+      error bar you can carry over to a real specimen - a real speckle,
+      a real camera and a real load path all fail in ways a rendered
+      pattern cannot.
+    </p>
+  </div>
+
+
   {nav}
 </main>
 """
@@ -1402,7 +1490,7 @@ part3_body = """
 part4_body = """
 <main class="chapter">
   <p class="kicker">Part IV &middot; Beyond one field</p>
-  <h1 id="sequence-as-curve">11. Reading a sequence as a curve</h1>
+  <h1 id="sequence-as-curve">12. Reading a sequence as a curve</h1>
   <p class="lede">
     One field is a snapshot. What a loading test is actually for is a
     curve - strain against load step, elongation against time
@@ -1489,7 +1577,7 @@ part4_body = """
     </figcaption>
   </figure>
 
-  <h1 id="leaving-the-application">12. The field leaving the application</h1>
+  <h1 id="leaving-the-application">13. The field leaving the application</h1>
   <p class="lede">
     A result rarely stays where it was produced. It gets opened in
     another tool entirely - a general-purpose scientific viewer, a
@@ -1586,7 +1674,7 @@ part4_body = """
 part5_body = """
 <main class="chapter">
   <p class="kicker">Part V &middot; Practice</p>
-  <h1 id="speckling">13. Speckling a specimen</h1>
+  <h1 id="speckling">14. Speckling a specimen</h1>
   <p class="lede">
     Chapter 1 explained why a speckle pattern is necessary at all: a
     featureless surface has no unique texture to lock onto. This chapter
@@ -1621,7 +1709,7 @@ part5_body = """
       subset. A pattern with speckles far larger than the subset gives
       each subset too little variation to be unique; a pattern with
       speckles far smaller can blur together at the imaging resolution
-      actually being used. Chapter 14 covers choosing the subset itself;
+      actually being used. Chapter 15 covers choosing the subset itself;
       the two decisions have to be made together, not in either order
       alone.
     </li>
@@ -1658,7 +1746,7 @@ part5_body = """
     after the test is finished and cannot be repeated.
   </p>
 
-  <h1 id="subset-and-step">14. Choosing subset radius and grid step</h1>
+  <h1 id="subset-and-step">15. Choosing subset radius and grid step</h1>
   <p class="lede">
     Two numbers control almost every correlation: how large a patch of
     pixels each measurement point looks at, and how far apart the
@@ -1708,7 +1796,7 @@ part5_body = """
     value from an unrelated test.
   </p>
 
-  <h1 id="lighting-and-imaging">15. Lighting and imaging</h1>
+  <h1 id="lighting-and-imaging">16. Lighting and imaging</h1>
   <p class="lede">
     Everything in Parts I through IV assumes the two photographs differ
     only by the deformation being studied. Lighting, focus, and camera
