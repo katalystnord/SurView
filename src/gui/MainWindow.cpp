@@ -1,5 +1,7 @@
 #include "MainWindow.h"
 
+#include "CollapsibleSection.h"
+#include "NoteLabel.h"
 #include "ComparisonWindow.h"
 #include "ImageViewport.h"
 #include "PlotPanel.h"
@@ -141,6 +143,15 @@ MainWindow::MainWindow(QWidget *parent)
     setWindowIcon(QIcon(QStringLiteral(":/surview.svg")));
 
     setWindowTitle(tr("SurView DIC"));
+
+    // ⚑ The dividers between docks are draggable, and at Qt's default width
+    // they are four pixels of nothing: a reader has no way to know the panels
+    // can be resized at all, and hunting for the band that takes the cursor is
+    // a game. Wider, tinted, and brighter under the pointer -- the affordance
+    // is the point, not the decoration.
+    setStyleSheet(QStringLiteral(
+        "QMainWindow::separator { background: #c8cdd3; width: 7px; height: 7px; }"
+        "QMainWindow::separator:hover { background: #4aa3e0; }"));
     resize(1360, 860);
 
     m_viewport = new ImageViewport(this);
@@ -759,7 +770,14 @@ QWidget *MainWindow::createAnalysisPanel()
     auto *correlation = new QWidget(panel);
     auto *form = new QFormLayout(correlation);
     form->setContentsMargins(0, 0, 0, 0);
-    column->addWidget(correlation);
+    // ⚑ FOLDABLE, because the panel has grown to five groups and a reader
+    // looking for one control scrolls past four sets of settings they have
+    // already decided about. See gui/CollapsibleSection.h for the rule that
+    // makes folding safe: a folded section is still in force, so its header
+    // says what it is holding.
+    m_correlationSection = new CollapsibleSection(tr("Correlation"), panel);
+    m_correlationSection->setContent(correlation);
+    column->addWidget(m_correlationSection);
 
     // Built from offeredSolverChoices() rather than listed here, so the panel
     // cannot offer a solver that nothing measures: the tests walk the same list.
@@ -796,8 +814,7 @@ QWidget *MainWindow::createAnalysisPanel()
     // two things that decide what a run can resolve, they are both chosen right
     // here, and until now neither said anything until the correlation had been
     // sat through.
-    m_speckleAdvice = new QLabel;
-    m_speckleAdvice->setWordWrap(true);
+    m_speckleAdvice = new NoteLabel;
     m_speckleAdvice->setStyleSheet(
         QStringLiteral("color: #55616d; font-size: 11px;"));
     form->addRow(QString(), m_speckleAdvice);
@@ -842,7 +859,7 @@ QWidget *MainWindow::createAnalysisPanel()
     // Its own group, because it is a second measurement rather than another
     // correlation parameter: it runs after the solve, over the solve's own
     // output, and it has a neighbourhood and a failure mode of its own.
-    m_strainGroup = new QGroupBox(tr("Strain"), panel);
+    m_strainGroup = new QGroupBox(panel);
     auto *strainColumn = new QVBoxLayout(m_strainGroup);
 
     m_strainEnabled = new QCheckBox(tr("Fit strain from the displacement field"));
@@ -908,25 +925,25 @@ QWidget *MainWindow::createAnalysisPanel()
     // How many points that is, in words, beside the dots that are which ones.
     // The warning below only speaks when the subregion is too small; this says
     // the number whether or not anything is wrong with it.
-    m_subregionCount = new QLabel;
-    m_subregionCount->setWordWrap(true);
+    m_subregionCount = new NoteLabel;
     m_subregionCount->setStyleSheet(
         QStringLiteral("color: #55616d; font-size: 11px;"));
     strainColumn->addWidget(m_subregionCount);
 
     // The live warning. See updateStrainAdvice().
-    m_strainAdvice = new QLabel;
-    m_strainAdvice->setWordWrap(true);
+    m_strainAdvice = new NoteLabel;
     m_strainAdvice->setStyleSheet(
         QStringLiteral("color: #b9770e; border: 1px solid #b9770e;"
                        " border-radius: 4px; padding: 6px;"));
     m_strainAdvice->hide();
     strainColumn->addWidget(m_strainAdvice);
 
-    column->addWidget(m_strainGroup);
+    m_strainSection = new CollapsibleSection(tr("Strain"), panel);
+    m_strainSection->setContent(m_strainGroup);
+    column->addWidget(m_strainSection);
 
     // --- the reference a sequence measures against --------------------------
-    auto *referenceGroup = new QGroupBox(tr("Reference"), panel);
+    auto *referenceGroup = new QGroupBox(panel);
     auto *referenceColumn = new QVBoxLayout(referenceGroup);
 
     auto *referenceNote = new QLabel(
@@ -974,14 +991,20 @@ QWidget *MainWindow::createAnalysisPanel()
     reanchorCost->setFont(costFont);
     referenceColumn->addWidget(reanchorCost);
 
-    column->addWidget(referenceGroup);
+    m_referenceSection = new CollapsibleSection(tr("Reference"), panel);
+    m_referenceSection->setContent(referenceGroup);
+    // Folded to start with: it is a refinement with a stated default, and its
+    // header says what that default is. The two sections above are the ones a
+    // reader has come to the panel to set.
+    m_referenceSection->setCollapsed(true);
+    column->addWidget(m_referenceSection);
 
     // --- the second pass at points that failed ------------------------------
     // On by default, and on screen anyway. It changes how a run is conducted,
     // so a user who never opens this group still has to be able to find out
     // why their field is fuller than the solver alone would have made it -- and
     // the run report says how many points it repaired.
-    auto *recoveryGroup = new QGroupBox(tr("Points that failed"), panel);
+    auto *recoveryGroup = new QGroupBox(panel);
     auto *recoveryColumn = new QVBoxLayout(recoveryGroup);
 
     auto *recoveryNote = new QLabel(
@@ -1039,7 +1062,17 @@ QWidget *MainWindow::createAnalysisPanel()
     recoveryCost->setFont(costFont);
     recoveryColumn->addWidget(recoveryCost);
 
-    column->addWidget(recoveryGroup);
+    m_recoverySection = new CollapsibleSection(tr("Points that failed"), panel);
+    m_recoverySection->setContent(recoveryGroup);
+    // ⚑ NOT folded, unlike the Reference section above it, and the difference
+    // is the whole rule. Re-anchoring is OFF by default and cannot do anything
+    // without being unfolded first, so folding hides a choice nobody has made.
+    // The second pass is ON by default and changes the field: a reader who
+    // never unfolds it would get a fuller field than the solver alone produced
+    // and never learn that it happened, which is exactly the hidden behaviour
+    // this application forbids itself. Its own walkthrough case caught this
+    // when the section was folded with the rest.
+    column->addWidget(m_recoverySection);
     column->addStretch(1);
 
     connect(m_recoveryEnabled, &QCheckBox::toggled, this,
@@ -1077,6 +1110,7 @@ QWidget *MainWindow::createAnalysisPanel()
     // Found in a screenshot of the empty workspace, which is the one state the
     // walkthrough suite never looked at.
     updateSpeckleQuality();
+    updateSectionSummaries();
     return panel;
 }
 
@@ -1146,6 +1180,7 @@ void MainWindow::updateStrainAdvice()
 
     // The drawing is of these same numbers, so it follows them.
     updateSettingsPreview();
+    updateSectionSummaries();
 }
 
 void MainWindow::updateSettingsPreview()
@@ -1173,6 +1208,41 @@ void MainWindow::updateSettingsPreview()
             .arg(held)
             .arg(settings.gridStep));
     m_subregionCount->setVisible(settings.strainEnabled);
+}
+
+void MainWindow::updateSectionSummaries()
+{
+    if (!m_correlationSection)
+        return;
+
+    const CorrelationSettings settings = currentSettings();
+
+    m_correlationSection->setSummary(
+        tr("%1, %2 order, %3 px subset, %4 px step")
+            .arg(solverDisplayName(settings.solver))
+            .arg(settings.shapeOrder == 1 ? tr("first") : tr("second"))
+            .arg(settings.subsetRadius)
+            .arg(settings.gridStep));
+
+    m_strainSection->setSummary(
+        settings.strainEnabled
+            ? tr("%1, %2 px subregion")
+                  .arg(strainMeasureName(settings.strainMeasure))
+                  .arg(settings.strainRadius, 0, 'g', 4)
+            : tr("not fitted"));
+
+    const ReferenceUpdatePolicy policy = currentReferencePolicy();
+    m_referenceSection->setSummary(
+        policy.enabled
+            ? tr("re-anchors below %1% still tracking").arg(int(policy.percentile * 100.0))
+            : tr("always the original reference"));
+
+    m_recoverySection->setSummary(
+        settings.recovery.enabled
+            ? tr("second pass below %1, up to %2 rounds")
+                  .arg(settings.recovery.retryBelowZncc, 0, 'g', 2)
+                  .arg(settings.recovery.maxRounds)
+            : tr("no second pass"));
 }
 
 void MainWindow::updateSolverConstraints()

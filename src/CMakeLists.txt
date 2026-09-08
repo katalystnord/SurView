@@ -70,12 +70,15 @@ add_library(surview_gui STATIC
     surview.qrc
     gui/MainWindow.cpp
     gui/MainWindow.h
+    gui/CollapsibleSection.cpp
+    gui/CollapsibleSection.h
     gui/ComparisonWindow.cpp
     gui/ComparisonWindow.h
     gui/FieldColours.cpp
     gui/FieldColours.h
     gui/FieldView.cpp
     gui/FieldView.h
+    gui/NoteLabel.h
     gui/ImageViewport.cpp
     gui/ImageViewport.h
     gui/PlotPanel.cpp

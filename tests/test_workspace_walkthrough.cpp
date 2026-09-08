@@ -22,6 +22,7 @@
 #include "gui/ImageViewport.h"
 #include "gui/PlotPanel.h"
 #include "gui/PointPanel.h"
+#include "gui/CollapsibleSection.h"
 #include "gui/ComparisonWindow.h"
 #include "gui/MainWindow.h"
 
@@ -41,6 +42,7 @@
 #include <QSignalSpy>
 #include <QTest>
 #include <QToolBar>
+#include <QToolButton>
 #include <QDir>
 #include <QDoubleSpinBox>
 #include <QFile>
@@ -263,6 +265,18 @@ std::optional<std::pair<double, double>> displacementLine(const QString &panel)
 // Aiming through the projection means this helper cannot, on its own, prove the
 // frame is the right way up -- so that is proved separately and independently,
 // by moving_down_and_right_on_screen_moves_down_and_right_in_the_image below.
+// The foldable section with a given title, found the way a reader finds it:
+// by the words on its header.
+CollapsibleSection *sectionTitled(QWidget *root, const QString &title)
+{
+    for (CollapsibleSection *section : root->findChildren<CollapsibleSection *>()) {
+        auto *header = section->findChild<QToolButton *>();
+        if (header && header->text().contains(title, Qt::CaseInsensitive))
+            return section;
+    }
+    return nullptr;
+}
+
 // One entry of the Open Example submenu, found by the name it shows. A test
 // that opened an example by path would be reaching past the interface into the
 // file system; this opens the one a reader can see and press.
@@ -377,6 +391,8 @@ private slots:
     void the_window_carries_the_application_icon();
     void the_speckle_estimate_says_what_it_needs_before_any_image_exists();
     void the_empty_workspace_offers_the_examples_it_ships_with();
+    void a_panel_section_folds_away_and_says_what_it_still_holds();
+    void a_folded_section_still_governs_the_run();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -1173,6 +1189,25 @@ void TestWorkspaceWalkthrough::re_anchoring_is_offered_off_by_default_and_says_w
     QVERIFY2(!reanchor->isChecked(),
              "re-anchoring is on by default, which changes every sequence "
              "silently");
+
+    // ⚑ The section is FOLDED to start with, and that is allowed here for one
+    // reason: re-anchoring is off, so nothing can happen without unfolding it
+    // first, and unfolding is what puts the caution on screen. What a fold may
+    // never do is hide behaviour that is already running -- see the second
+    // pass, which stays open for exactly that reason. Folded, the header still
+    // states what the run will do.
+    CollapsibleSection *reference = sectionTitled(&window, QStringLiteral("Reference"));
+    QVERIFY2(reference, "the reference settings are in no findable section");
+    QVERIFY2(visibleText(reference).contains(QStringLiteral("original reference")),
+             qPrintable(QStringLiteral("a folded Reference section does not say "
+                                       "what the run does:\n%1")
+                            .arg(visibleText(reference))));
+
+    // Opened from its own header, as a reader opens it.
+    auto *header = reference->findChild<QToolButton *>();
+    QVERIFY(header);
+    QTest::mouseClick(header, Qt::LeftButton);
+    QVERIFY2(!reference->isCollapsed(), "pressing the header did not open the section");
 
     QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("original reference")),
              "nothing says what the reference is measured against by default");
@@ -2710,6 +2745,80 @@ void TestWorkspaceWalkthrough::the_empty_workspace_offers_the_examples_it_ships_
     window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
     QVERIFY2(!offer->isVisible(),
              "the first-run card stayed on screen over the image it invited");
+}
+
+void TestWorkspaceWalkthrough::a_panel_section_folds_away_and_says_what_it_still_holds()
+{
+    // The Analysis panel has five groups, and a reader looking for one control
+    // scrolls past four sets of settings they have already decided about.
+    MainWindow window;
+    window.resize(1200, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    const QList<CollapsibleSection *> sections =
+        window.findChildren<CollapsibleSection *>();
+    QVERIFY2(sections.size() >= 4,
+             qPrintable(QStringLiteral("only %1 foldable sections").arg(sections.size())));
+
+    // Every one of them is folded and unfolded from a control that SAYS it can
+    // be: a header nobody can see is a mode with no way in.
+    for (CollapsibleSection *section : sections) {
+        auto *header = section->findChild<QToolButton *>();
+        QVERIFY2(header, "a section has no header to press");
+        QVERIFY2(!header->text().isEmpty(), "a section header has no name");
+        QVERIFY2(!header->toolTip().isEmpty(), qPrintable(header->text()));
+    }
+
+    // ⚑ And a folded section says what it is holding. Folding away a 16 px
+    // subset must not make the panel read as though nothing had been chosen:
+    // the settings are still in force, out of sight.
+    CollapsibleSection *correlation = sections.first();
+    correlation->setCollapsed(true);
+    QVERIFY(correlation->isCollapsed());
+
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    QVERIFY(radius);
+    QVERIFY2(!radius->isVisible(), "folding the section left its controls on screen");
+
+    const QString said = visibleText(correlation);
+    QVERIFY2(said.contains(QString::number(radius->value())),
+             qPrintable(QStringLiteral("a folded section does not say what it holds:\n%1")
+                            .arg(said)));
+}
+
+void TestWorkspaceWalkthrough::a_folded_section_still_governs_the_run()
+{
+    // ⚑ THE CASE THAT MAKES FOLDING SAFE. Hiding a control does not change it,
+    // and must not: a run measured under settings that are out of sight is
+    // still measured under those settings. The opposite mistake -- a folded
+    // section quietly ceasing to apply -- would be the worst defect this
+    // application can have, a run conducted under settings nobody chose.
+    MainWindow window;
+    window.resize(1200, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(20);
+
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    radius->setValue(12);
+    for (CollapsibleSection *section : window.findChildren<CollapsibleSection *>())
+        section->setCollapsed(true);
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    QVERIFY(waitForEnabled(run));
+    run->trigger();
+    QVERIFY2(QTest::qWaitFor([&window] { return window.measuredFrames() >= 1; }, 120000),
+             "the run measured nothing");
+
+    const CorrelationResult &result = window.lastResult();
+    QVERIFY2(result.converged > 0, "a run under folded settings measured nothing");
+    QVERIFY2(result.strainRequested,
+             "the folded Strain section stopped being asked for");
+    QVERIFY2(result.strainFitted > 0, "no strain was fitted under folded settings");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

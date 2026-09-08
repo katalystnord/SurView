@@ -586,6 +586,48 @@ that was never measured is blank here, not zero: drawn as a zero it would take
 the same colour as a point the first solve got right, so every hole in the field
 would fill in with the most reassuring reading available.
 
+### Folding the panels, and the rule that makes it safe (2026-09-08)
+
+The Analysis panel had grown to five groups and a reader looking for one control
+scrolled past four sets of settings they had already decided about. Each group is
+now a `CollapsibleSection`: a header with an arrow, a rule under it, and a
+one-line summary of what it holds while it is folded.
+
+⚑ **A FOLDED SECTION IS STILL IN FORCE.** Hiding a control does not change it,
+and must not: a run measured under settings that are out of sight is still
+measured under those settings. That is why every header carries a summary --
+folding away a 31 px subset must not make the panel read as though nothing had
+been chosen. `a_folded_section_still_governs_the_run` measures a real
+correlation with every section folded and requires the strain the folded section
+asked for to be fitted. It is the same hazard as the mouse wheel silently
+editing a spin box, from the other side: there a setting changed without being
+seen, here one could be in force without being seen.
+
+⚑ **AND WHAT MAY BE FOLDED BY DEFAULT IS DECIDED BY WHETHER IT ACTS.** Reference
+updating is OFF by default and cannot do anything without being unfolded, so
+folding it hides a choice nobody has made. The second pass is ON by default and
+changes the field, so a reader who never unfolds it would get a fuller field
+than the solver alone produced and never learn that it happened -- the hidden
+behaviour this application forbids itself. It stays open. Two existing
+walkthrough cases went red when both were folded together, which is how the
+distinction was found rather than argued.
+
+⚑ **`NoteLabel`, because this trap has now bitten five panels.** A word-wrapped
+QLabel reports ONE line as its minimum in both directions, so any layout that
+can starve it will: the Analysis panel's notes were drawn over, the plot panel's
+explanation was painted under a native GL widget, the field bar grew over the
+specimen, the comparison window's captions had to be given room by hand, and
+folding the panel into sections clipped the speckle estimate through the middle.
+`gui/NoteLabel.h` answers the layout's question honestly -- `minimumSizeHint()`
+returning `heightForWidth()` -- which is what a plain QLabel does not do. Use it
+for any note from now on. Setting height-for-width on the size policy is NOT
+enough; that was tried first and the text stayed clipped.
+
+**The dock separators are 7 px and tinted**, brighter under the pointer. At Qt's
+default they are four pixels of nothing, so a reader has no way to know the
+panels can be resized at all. Verified by measuring the pixels, not by eye:
+bands of #c8cdd3 at both viewport edges.
+
 ### Packaging: the AppImage (2026-09-08)
 
 `tools/make-appimage.sh` builds a single-file AppImage. This is the gap the

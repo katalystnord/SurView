@@ -29,6 +29,7 @@ class QThread;
 class QTreeWidget;
 class QTreeWidgetItem;
 class ComparisonWindow;
+class CollapsibleSection;
 class ImageViewport;
 class PlotPanel;
 class PointPanel;
@@ -139,6 +140,10 @@ private slots:
     // of them that waited for the run would arrive after the decision it is
     // about.
     void updateSettingsPreview();
+
+    // Restate what each folded section of the Analysis panel is holding. One
+    // place, called from every control that changes any of it.
+    void updateSectionSummaries();
 
     // Keeps the strain warning on screen honest about the numbers currently in
     // the panel. Live, not on Run: the settings that make the fit impossible
@@ -309,6 +314,14 @@ private:
     QLabel *m_subregionCount = nullptr;
     QLabel *m_speckleAdvice = nullptr;
     QGroupBox *m_strainGroup = nullptr;
+
+    // The foldable sections of the Analysis panel, held so their summaries can
+    // be kept honest: a folded section still governs the run, so what it holds
+    // has to stay legible while its controls are out of sight.
+    CollapsibleSection *m_correlationSection = nullptr;
+    CollapsibleSection *m_strainSection = nullptr;
+    CollapsibleSection *m_referenceSection = nullptr;
+    CollapsibleSection *m_recoverySection = nullptr;
 
     QCheckBox *m_reanchorEnabled = nullptr;
     QDoubleSpinBox *m_reanchorThreshold = nullptr;
