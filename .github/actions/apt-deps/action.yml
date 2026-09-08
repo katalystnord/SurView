@@ -57,7 +57,12 @@ runs:
 
     - name: Install
       shell: bash
-      timeout-minutes: 25
+      # ⚑ NO timeout-minutes here, however much it belongs with the step it is
+      # about: a composite action's steps do not accept it, and the whole action
+      # fails to LOAD -- "Unexpected value 'timeout-minutes'" -- which reads as a
+      # broken action rather than as an unsupported key. The timeout lives on
+      # each caller's `uses:` step, where it is supported and still applies to
+      # everything this action does.
       env:
         DEBIAN_FRONTEND: noninteractive
         NEEDRESTART_MODE: a

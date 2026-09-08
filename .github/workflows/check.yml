@@ -74,6 +74,9 @@ jobs:
         # and a third caller (the AppImage release) was the moment to stop
         # copying it again. What each job still owns is its own package list.
         uses: ./SurView/.github/actions/apt-deps
+        # The download is the slowest thing in this workflow; the timeout has to
+        # live here, on the caller, because a composite action cannot carry one.
+        timeout-minutes: 25
         with:
           cache-key: apt-surview-26.04
           need-vtk-qt: 'true'
@@ -118,6 +121,9 @@ jobs:
 
       - name: Install dependencies
         uses: ./SurView/.github/actions/apt-deps
+        # The download is the slowest thing in this workflow; the timeout has to
+        # live here, on the caller, because a composite action cannot carry one.
+        timeout-minutes: 25
         with:
           cache-key: apt-engine-latest
           packages: >-
