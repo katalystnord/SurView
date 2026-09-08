@@ -1,0 +1,155 @@
+name: release
+
+# The AppImage, built where the tests are built.
+#
+# WHY THIS EXISTS. Every other DIC tool a working scientist might reach for
+# ships something they can download and run. tools/make-appimage.sh builds one,
+# but a package that exists only on the author's machine is not a release: it
+# cannot be pointed at, it carries whatever that machine happened to have
+# installed, and nobody else can reproduce it. This job builds it from a fresh
+# clone, against the pinned engine, and attaches it to a tag.
+#
+# ⚑ IT IS BUILT ON ubuntu-26.04, AND THAT SETS THE FLOOR FOR WHO CAN RUN IT.
+# An AppImage bundles its libraries but not the C library, so it needs a glibc
+# at least as new as the machine that built it -- and 26.04 is the FIRST runner
+# image whose VTK is built against Qt6 (see the note in check.yml, which found
+# that the hard way). Until VTK is built from source here, or an image with an
+# older glibc carries a Qt6 VTK, this package is for distributions of about that
+# vintage and newer. Said out loud in the release notes rather than discovered
+# by somebody whose machine says "GLIBC_2.4x not found".
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: Attach the AppImage to a draft release as well as to the run
+        type: boolean
+        default: false
+
+concurrency:
+  group: release-${{ github.ref }}
+  cancel-in-progress: false   # a release build is not worth cancelling halfway
+
+permissions:
+  contents: write   # needed to create the release a tag build attaches to
+
+jobs:
+  appimage:
+    name: AppImage (x86_64)
+    runs-on: ubuntu-26.04
+    steps:
+      - name: Check out SurView
+        uses: actions/checkout@v4
+        with:
+          path: SurView
+
+      - name: Read the engine pin
+        id: pin
+        # The same single source of truth CMake and tools/make-appimage.sh use.
+        # A release that tracked a branch would ship a package whose exported
+        # fields name a commit nobody chose.
+        run: |
+          . SurView/cmake/opencorr.pin
+          echo "sha=$SURVIEW_OPENCORR_PIN" >> "$GITHUB_OUTPUT"
+          echo "remote=$SURVIEW_OPENCORR_REMOTE" >> "$GITHUB_OUTPUT"
+          echo "Engine pin: $SURVIEW_OPENCORR_PIN"
+
+      - name: Check out the pinned engine
+        run: |
+          git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
+          git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
+
+      - name: Install dependencies
+        uses: ./SurView/.github/actions/apt-deps
+        with:
+          cache-key: apt-appimage-26.04
+          need-vtk-qt: 'true'
+          packages: >-
+            ninja-build cmake g++
+            qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev
+            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev
+            libomp-dev patchelf xvfb desktop-file-utils
+
+      - name: Fetch the packaging tools
+        # linuxdeploy and its Qt plugin are published as AppImages and are not
+        # in any distribution's archive. Pinned to a release rather than tracking
+        # "continuous": a packaging tool that changes under us changes the
+        # artefact without changing this repository.
+        env:
+          # ⚑ The two tools tag INDEPENDENTLY, and assuming one version covers
+          # both gives a 404 on the second download. Checked against the API
+          # rather than guessed. The linuxdeploy pin is the same build the first
+          # AppImage was made with by hand (build 331, 2025-11-07), so the
+          # packaged result is the artefact that was verified on a desktop.
+          LINUXDEPLOY_TAG: 1-alpha-20251107-1
+          LINUXDEPLOY_QT_TAG: 1-alpha-20250213-1
+        run: |
+          set -euo pipefail
+          base=https://github.com/linuxdeploy
+          curl -fsSL -o linuxdeploy \
+            "$base/linuxdeploy/releases/download/$LINUXDEPLOY_TAG/linuxdeploy-x86_64.AppImage"
+          curl -fsSL -o linuxdeploy-plugin-qt \
+            "$base/linuxdeploy-plugin-qt/releases/download/$LINUXDEPLOY_QT_TAG/linuxdeploy-plugin-qt-x86_64.AppImage"
+          chmod +x linuxdeploy linuxdeploy-plugin-qt
+          sudo mv linuxdeploy linuxdeploy-plugin-qt /usr/local/bin/
+
+      - name: Build the AppImage
+        env:
+          # ⚑ Runner images have no FUSE, so an AppImage cannot mount itself.
+          # Every AppImage in this job -- the two tools, and ours when it is
+          # tested below -- unpacks and runs instead.
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          QMAKE: /usr/lib/qt6/bin/qmake6
+        run: SurView/tools/make-appimage.sh --opencorr "$PWD/OpenCorr"
+
+      - name: Check that it runs
+        # ⚑ The one check that matters, and the one a build log cannot give: a
+        # package that builds and cannot start is a package that fails on
+        # somebody else's machine instead of on ours. Run with a scrubbed
+        # environment, so nothing from the build tree can be helping.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+        run: |
+          set -euo pipefail
+          image=$(ls SurView/dist/SurView-*-x86_64.AppImage)
+          echo "Built: $image ($(du -h "$image" | cut -f1))"
+          xvfb-run -a env -i HOME="$HOME" PATH=/usr/bin:/bin \
+            APPIMAGE_EXTRACT_AND_RUN=1 DISPLAY="$DISPLAY" \
+            "$PWD/$image" --version
+
+      - name: Keep it with the run
+        uses: actions/upload-artifact@v4
+        with:
+          name: SurView-AppImage-x86_64
+          path: SurView/dist/SurView-*-x86_64.AppImage
+          if-no-files-found: error
+
+      - name: Attach it to the release
+        if: startsWith(github.ref, 'refs/tags/v') || inputs.publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        # A DRAFT release. What goes out under a version number is a decision,
+        # not a consequence of a tag being pushed, and the notes below are a
+        # starting point for whoever makes it.
+        run: |
+          set -euo pipefail
+          cd SurView
+          tag="${GITHUB_REF_NAME}"
+          notes=$(cat <<NOTES
+          SurView DIC $tag, as a single-file AppImage for x86_64 Linux.
+
+          Download, \`chmod +x\`, run. It carries Qt, VTK and OpenCV with it, so
+          nothing needs installing first.
+
+          - Built on Ubuntu 26.04, so it needs a comparable or newer glibc. On an
+            older distribution it will refuse to start rather than misbehave.
+          - Engine: OpenCorr ${{ steps.pin.outputs.sha }}, the commit every field
+            this build exports names as its own provenance.
+          - The examples ship inside it: File > Open Example.
+          NOTES
+          )
+          gh release create "$tag" dist/SurView-*-x86_64.AppImage \
+            --draft --title "SurView DIC $tag" --notes "$notes" \
+            || gh release upload "$tag" dist/SurView-*-x86_64.AppImage --clobber

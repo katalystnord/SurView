@@ -27,10 +27,20 @@ the idiom of the field, and these are what we do not have yet:
 
 
 - **Binaries.** Everyone else ships installers. `tools/make-appimage.sh` builds
-  a single-file AppImage now, with a desktop entry and an icon, and refuses to
-  package against an engine that is not the pin. What is left: a `.deb`, which
-  needs a decision about which VTK and OpenCV versions the target distributions
-  actually carry, and a release workflow that publishes the AppImage on a tag.
+  a single-file AppImage, `.github/workflows/release.yml` builds and checks one
+  on every tag and attaches it to a draft release, and both refuse to package
+  against an engine that is not the pin.
+
+  ⚑ **What is left is REACH, not packaging.** The AppImage is built on Ubuntu
+  26.04, because that is the first runner image whose VTK is a Qt6 build, and an
+  AppImage needs a glibc at least as new as the machine that built it. So it
+  runs on distributions of about that vintage and newer, and refuses to start on
+  anything older. Fixing that means building Qt and VTK from source in CI on an
+  old image, which is a real piece of work and not yet worth it. Also still
+  open: a `.deb`, which needs a decision about which VTK and OpenCV versions the
+  target distributions actually carry, and Windows and macOS builds, each of
+  which is its own dependency problem (VTK has no MSVC binaries; a usable macOS
+  .dmg needs signing and notarisation).
 - **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
   can; the application has no path to it.
 - **A line probe.** We plot against frame and have virtual extensometers;

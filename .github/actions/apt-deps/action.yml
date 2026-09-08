@@ -1,0 +1,113 @@
+name: Install apt dependencies
+description: >
+  Install packages with the retry, caching and prompt-suppression hardening every
+  job here needs, and bank the downloads even when the install fails.
+
+# ⚑ THIS EXISTS BECAUSE THE TWO JOBS THAT NEEDED IT DRIFTED APART ONCE ALREADY.
+# The hardening added on 2026-08-18 went into one job and not the other, and the
+# one without it then died on an unretried `apt-get update` while its twin
+# survived the same outage. A third caller (the AppImage release) was the moment
+# to stop copying it a third time.
+#
+# What is shared is the MECHANISM -- retries, the cache, keeping the .debs,
+# saving on failure. What differs is the package list, which stays with the job
+# that knows why it needs those packages.
+
+inputs:
+  packages:
+    description: Packages to install, whitespace separated.
+    required: true
+  cache-key:
+    description: >
+      Prefix for the download cache, distinct per runner image and job. Keys
+      carry the run id as well, because a cache key is immutable: reusing one is
+      a warning and a discarded save, and the prefix in restore-keys is what
+      makes the most recent snapshot findable.
+    required: true
+  need-vtk-qt:
+    description: >
+      Also install VTK's Qt binding, found by search rather than by name: the
+      package carries its ABI version in the name and that version moves with
+      the runner image. A hard-coded name is a build that breaks on somebody
+      else's schedule.
+    required: false
+    default: 'false'
+
+runs:
+  using: composite
+  steps:
+    # ⚑ THE DEPENDENCY DOWNLOAD IS THE SLOWEST THING IN THIS PROJECT'S CI, and
+    # it cannot be made smaller: libvtkN-qt-dev pulls the entire VTK stack as
+    # hard Depends -- python3-vtk9, python3-mpi4py, the Qt5 libraries, the
+    # Wayland integration -- so --no-install-recommends, which is already set,
+    # has nothing left to trim. Two runs on 2026-08-19 spent 25 and 33 minutes
+    # here and one hit its own timeout while still downloading. So it is cached
+    # rather than shrunk.
+    #
+    # ⚑ RESTORE AND SAVE ARE SEPARATE, and the save runs even when the install
+    # fails. With a single cache step, a run that times out mid-download saves
+    # nothing, so the next run starts from zero and times out in the same place
+    # forever. Banking the partial download lets successive runs converge.
+    - name: Restore the dependency downloads
+      uses: actions/cache/restore@v4
+      with:
+        path: ~/apt-archives
+        key: ${{ inputs.cache-key }}-${{ hashFiles('**/.github/workflows/*.yml', '**/.github/actions/**') }}-${{ github.run_id }}
+        restore-keys: ${{ inputs.cache-key }}-${{ hashFiles('**/.github/workflows/*.yml', '**/.github/actions/**') }}-
+
+    - name: Install
+      shell: bash
+      timeout-minutes: 25
+      env:
+        DEBIAN_FRONTEND: noninteractive
+        NEEDRESTART_MODE: a
+      run: |
+        set -euo pipefail
+        mkdir -p "$HOME/apt-archives/partial"
+        apt_cached=(-o Acquire::Retries=3
+                    -o Dir::Cache::archives="$HOME/apt-archives"
+                    -o APT::Keep-Downloaded-Packages=true)
+        # Acquire::Retries because the runner's default mirror is not always
+        # reachable, and an outage should not read as a broken build.
+        sudo apt-get -o Acquire::Retries=3 update
+
+        packages="${{ inputs.packages }}"
+
+        if [ "${{ inputs.need-vtk-qt }}" = "true" ]; then
+          vtk_qt=$(apt-cache search --names-only '^libvtk[0-9.]+-qt-dev$' \
+                   | awk '{print $1}' | sort -V | tail -1)
+          if [ -z "$vtk_qt" ]; then
+            echo "No libvtkN-qt-dev package on this image. Candidates were:" >&2
+            apt-cache search --names-only '^libvtk' >&2 || true
+            exit 1
+          fi
+          # ⚑ Guard the TOOLKIT, not just the name: a VTK Qt binding built
+          # against Qt5 installs perfectly and fails much later, in a message
+          # about neither Qt nor VTK. DIRECT depends only -- Qt5 libraries do
+          # appear in the full install closure on these images without anything
+          # being wrong.
+          if apt-cache depends "$vtk_qt" | grep -q 'libqt5'; then
+            echo "$vtk_qt on this image is a Qt5 build; SurView is Qt6." >&2
+            echo "Use a runner image whose VTK is built against Qt6." >&2
+            exit 1
+          fi
+          echo "Using VTK Qt package: $vtk_qt"
+          packages="$packages $vtk_qt"
+        fi
+
+        sudo apt-get "${apt_cached[@]}" install -y --no-install-recommends $packages
+
+    # apt writes as root and the cache is saved as the runner user, so the chown
+    # is part of saving rather than of installing: it has to happen on the path
+    # where the install did NOT finish.
+    - name: Make the downloads readable
+      if: always()
+      shell: bash
+      run: sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
+
+    - name: Save the dependency downloads
+      if: always()
+      uses: actions/cache/save@v4
+      with:
+        path: ~/apt-archives
+        key: ${{ inputs.cache-key }}-${{ hashFiles('**/.github/workflows/*.yml', '**/.github/actions/**') }}-${{ github.run_id }}

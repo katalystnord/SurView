@@ -67,94 +67,21 @@ jobs:
           git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
           echo "Engine at $(git -C OpenCorr rev-parse --short HEAD)"
 
-      # ⚑ THE DEPENDENCY DOWNLOAD IS THE SLOWEST THING IN THIS WORKFLOW, and it
-      # cannot be made smaller. libvtkN-qt-dev pulls the entire VTK stack as
-      # hard Depends -- python3-vtk9, python3-mpi4py, the Qt5 libraries, the
-      # Wayland integration -- so --no-install-recommends, which is already set,
-      # has nothing left to trim. Two runs on 2026-08-19 spent 25 and 33 minutes
-      # here and one of them hit its own timeout while still downloading.
-      #
-      # So it is cached instead of shrunk. The key covers this file, because
-      # this file is where the package list lives: change the list and the cache
-      # is correctly missed.
-      # ⚑ RESTORE AND SAVE ARE SEPARATE STEPS, and the save runs even when the
-      # install fails. That is the whole point rather than a refinement: with a
-      # single cache step, a run that times out mid-download saves nothing, so
-      # the next run starts from zero and times out in exactly the same place,
-      # forever. Banking the partial download instead lets successive runs
-      # converge -- apt keeps every completed .deb and resumes the rest.
-      #
-      # Keys carry the run id because a cache key is immutable: reusing one is
-      # a warning and a discarded save. The prefix in restore-keys is what makes
-      # the most recent snapshot findable.
-      - name: Restore the dependency downloads
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/apt-archives
-          key: apt-surview-26.04-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
-          restore-keys: apt-surview-26.04-${{ hashFiles('SurView/.github/workflows/check.yml') }}-
-
       - name: Install dependencies
-        timeout-minutes: 25
-        run: |
-          # Downloads land in the cached directory rather than apt's own, and
-          # Keep-Downloaded-Packages stops apt deleting them the moment they are
-          # unpacked -- without it the cache would save an empty folder.
-          mkdir -p "$HOME/apt-archives/partial"
-          apt_cached=(-o Acquire::Retries=3
-                      -o Dir::Cache::archives="$HOME/apt-archives"
-                      -o APT::Keep-Downloaded-Packages=true)
-          # Acquire::Retries because the runner's default mirror
-          # (azure.archive.ubuntu.com) is not always reachable: a run on
-          # 2026-08-18 failed with every line of `apt-get update` ignored,
-          # fell back to archive.ubuntu.com, and then hit the step timeout.
-          # That is an outage, not a broken build, and it should not read as one.
-          sudo apt-get -o Acquire::Retries=3 update
-          # VTK's Qt binding package carries its ABI version in the name, and
-          # that version moves with the runner image. Discovered rather than
-          # written down: a hard-coded name is a build that breaks on somebody
-          # else's schedule, and the first two attempts here were both guesses.
-          vtk_qt=$(apt-cache search --names-only '^libvtk[0-9.]+-qt-dev$' \
-                   | awk '{print $1}' | sort -V | tail -1)
-          # Guard the toolkit, not just the name: a VTK Qt binding built against
-          # Qt5 installs perfectly and fails much later, in a message about
-          # neither Qt nor VTK.
-          #
-          # ⚑ DIRECT depends only, deliberately. Qt5 libraries DO appear in the
-          # full install closure on this image and that is not the fault this
-          # guard is looking for: a run on 2026-08-19 installed libqt5widgets5t64
-          # alongside libqt6widgets6 and built, configured and tested green
-          # against Qt6. Widening this to the resolved closure would fail every
-          # run for a reason that has never broken anything.
-          if apt-cache depends "$vtk_qt" | grep -q 'libqt5'; then
-            echo "$vtk_qt on this image is a Qt5 build; SurView is Qt6." >&2
-            echo "Use a runner image whose VTK is built against Qt6." >&2
-            exit 1
-          fi
-          if [ -z "$vtk_qt" ]; then
-            echo "No libvtkN-qt-dev package on this image. Candidates were:"
-            apt-cache search --names-only '^libvtk' || true
-            exit 1
-          fi
-          echo "Using VTK Qt package: $vtk_qt"
-          sudo apt-get "${apt_cached[@]}" install -y --no-install-recommends \
-            ninja-build cmake g++ \
-            qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev \
-            "$vtk_qt" \
-            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev \
-            libomp-dev xvfb
-
-      # apt writes as root and the cache is saved as the runner user, so the
-      # chown is part of saving rather than of installing -- it has to happen on
-      # the path where the install did NOT finish.
-      - name: Save the dependency downloads
-        if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
-      - uses: actions/cache/save@v4
-        if: always()
+        # ⚑ The hardening lives in one place now. These two jobs drifted apart
+        # once -- the retries added on 2026-08-18 went into one and not the
+        # other, and the one without them died on an outage its twin survived --
+        # and a third caller (the AppImage release) was the moment to stop
+        # copying it again. What each job still owns is its own package list.
+        uses: ./SurView/.github/actions/apt-deps
         with:
-          path: ~/apt-archives
-          key: apt-surview-26.04-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
+          cache-key: apt-surview-26.04
+          need-vtk-qt: 'true'
+          packages: >-
+            ninja-build cmake g++
+            qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev
+            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev
+            libomp-dev xvfb
 
       - name: Configure
         run: cmake -S SurView -B SurView/build-ninja -G Ninja
@@ -189,38 +116,13 @@ jobs:
           git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
           git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
 
-      - name: Restore the dependency downloads
-        uses: actions/cache/restore@v4
-        with:
-          path: ~/apt-archives
-          key: apt-engine-latest-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
-          restore-keys: apt-engine-latest-${{ hashFiles('SurView/.github/workflows/check.yml') }}-
-
-      # ⚑ Identical treatment to the SurView job above, and identical timeout.
-      # These two drifted once already: the hardening added on 2026-08-18 went
-      # into one job and not the other, and this one then died on an
-      # unretried `apt-get update` while its twin survived the same outage.
-      # Anything changed in one belongs in the other.
       - name: Install dependencies
-        timeout-minutes: 25
-        run: |
-          mkdir -p "$HOME/apt-archives/partial"
-          apt_cached=(-o Acquire::Retries=3
-                      -o Dir::Cache::archives="$HOME/apt-archives"
-                      -o APT::Keep-Downloaded-Packages=true)
-          sudo apt-get -o Acquire::Retries=3 update
-          sudo apt-get "${apt_cached[@]}" install -y --no-install-recommends \
-            ninja-build cmake g++ \
-            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev libomp-dev
-
-      - name: Save the dependency downloads
-        if: always()
-        run: sudo chown -R "$(id -u):$(id -g)" "$HOME/apt-archives" || true
-      - uses: actions/cache/save@v4
-        if: always()
+        uses: ./SurView/.github/actions/apt-deps
         with:
-          path: ~/apt-archives
-          key: apt-engine-latest-${{ hashFiles('SurView/.github/workflows/check.yml') }}-${{ github.run_id }}
+          cache-key: apt-engine-latest
+          packages: >-
+            ninja-build cmake g++
+            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev libomp-dev
 
       - name: Build the engine's smoke tests
         run: |
