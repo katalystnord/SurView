@@ -17,6 +17,7 @@
 #include "core/StrainFit.h"
 
 #include <QApplication>
+#include <QCursor>
 #include <QIcon>
 #include <QCoreApplication>
 #include <QPainter>
@@ -151,6 +152,17 @@ MainWindow::MainWindow(QWidget *parent)
             &MainWindow::onExtensometerPlaced);
     connect(m_viewport, &ImageViewport::extensometerPlacingChanged, this,
             [this](bool) { updateActionStates(); });
+    connect(m_viewport, &ImageViewport::openExampleRequested, this, [this] {
+        // The menu's own list, raised where the reader is standing. Built from
+        // what is on disk, so an AppImage that carries the examples offers them
+        // and a build that does not says so in the same words either way.
+        // ⚑ popup(), not exec(). exec() runs a nested event loop and blocks
+        // until the menu is dismissed, so anything that raises this from a
+        // button press -- a test included -- stops dead inside the click it was
+        // handling. popup() returns immediately and the menu still works.
+        if (m_exampleMenu)
+            m_exampleMenu->popup(QCursor::pos());
+    });
     connect(m_viewport, &ImageViewport::importReferenceRequested, this,
             &MainWindow::importReferenceImage);
     connect(m_viewport, &ImageViewport::fieldPointHovered, this,
@@ -331,8 +343,8 @@ void MainWindow::createMenus()
     // ⚑ Before the Import entries, not after the exports: opening an example is
     // the fastest way to have something on screen, and it is the entry a reader
     // with no speckle images of their own needs first.
-    QMenu *examples = fileMenu->addMenu(tr("Open Example"));
-    buildExampleMenu(examples);
+    m_exampleMenu = fileMenu->addMenu(tr("Open Example"));
+    buildExampleMenu(m_exampleMenu);
     fileMenu->addSeparator();
 
     fileMenu->addAction(m_actExport);
@@ -669,6 +681,13 @@ void MainWindow::createDockPanels()
     WheelGuard::protect(analysisPanel);
     analysis->setWidget(analysisPanel);
     analysis->setWidgetResizable(true);
+    // ⚑ The scrollbar is always there, whether or not it is needed. Left to
+    // appear on demand it takes its width out of a panel that has already laid
+    // its word-wrapped notes out, and the last line of the speckle estimate was
+    // clipped mid-word against the right edge -- text that is on screen and
+    // unreadable, which is worse than text that is absent. Reserving the space
+    // costs 15 px and cannot go wrong.
+    analysis->setVerticalScrollBarPolicy(Qt::ScrollBarAlwaysOn);
     analysis->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
     analysis->setFrameShape(QFrame::NoFrame);
     QDockWidget *analysisDock = addDock(tr("Analysis"), analysis,
@@ -1051,6 +1070,13 @@ QWidget *MainWindow::createAnalysisPanel()
 
     updateSolverConstraints();
     updateStrainAdvice();
+    // ⚑ And the speckle estimate's own standing invitation. Without this the
+    // line is empty until something else refreshes the panel, so a first-run
+    // window shows a blank gap where a line of guidance belongs -- and a blank
+    // gap reads as a layout fault rather than as a control waiting for input.
+    // Found in a screenshot of the empty workspace, which is the one state the
+    // walkthrough suite never looked at.
+    updateSpeckleQuality();
     return panel;
 }
 

@@ -270,6 +270,11 @@ private:
     QPlainTextEdit *m_log = nullptr;
     QLabel *m_stageLabel = nullptr;
 
+    // The Open Example submenu, kept so the empty workspace's own "or open an
+    // example" can raise the SAME list rather than a second copy of it: two
+    // lists of the examples on disk would eventually disagree about what ships.
+    QMenu *m_exampleMenu = nullptr;
+
     QTreeWidget *m_projectTree = nullptr;
     QTreeWidgetItem *m_referenceItem = nullptr;
     QTreeWidgetItem *m_targetsItem = nullptr;

@@ -117,6 +117,16 @@ ImageViewport::ImageViewport(QWidget *parent)
     connect(m_hintAction, &QPushButton::clicked, this,
             [this] { emit importReferenceRequested(); });
 
+    m_hintExample = new QPushButton(tr("or open an example…"), this);
+    m_hintExample->setCursor(Qt::PointingHandCursor);
+    m_hintExample->setFlat(true);
+    m_hintExample->setStyleSheet(QStringLiteral(
+        "QPushButton { background: transparent; color: #7fb8e6; border: none;"
+        " padding: 4px 10px; font-weight: 600; }"
+        "QPushButton:hover { color: #a9d2f2; text-decoration: underline; }"));
+    connect(m_hintExample, &QPushButton::clicked, this,
+            [this] { emit openExampleRequested(); });
+
     // Key events (Enter to close a boundary, Esc to abandon it) only reach a
     // widget that can take focus by clicking. They are accelerators throughout:
     // every one of them also has a button on the bar built below.
@@ -139,6 +149,8 @@ ImageViewport::ImageViewport(QWidget *parent)
     layout->addWidget(m_hint, 0, Qt::AlignCenter);
     layout->addSpacing(20);
     layout->addWidget(m_hintAction, 0, Qt::AlignCenter);
+    layout->addSpacing(6);
+    layout->addWidget(m_hintExample, 0, Qt::AlignCenter);
     layout->addStretch(1);
 }
 
@@ -1324,6 +1336,8 @@ bool ImageViewport::loadImage(const QString &path)
     refreshSettingsPreview();
     m_hint->hide();
     m_hintAction->hide();
+    if (m_hintExample)
+        m_hintExample->hide();
 
     // Shown only now there is a picture to orient. A coordinate convention with
     // nothing on screen to apply it to is trivia rather than guidance.
@@ -1681,6 +1695,8 @@ void ImageViewport::showMessage(const QString &text)
     m_hint->show();
     if (m_hintAction)
         m_hintAction->hide();
+    if (m_hintExample)
+        m_hintExample->hide();
 }
 
 QVector<double> ImageViewport::sampleImageAt(int x, int y) const

@@ -150,6 +150,13 @@ signals:
     // explained, which is the whole point of offering it there.
     void importReferenceRequested();
 
+    // ⚑ ...and the other way in, from the same card. A reader with no speckle
+    // images of their own cannot take step 1 at all, and nothing on the empty
+    // workspace said that a set of examples ships with the application. The
+    // File menu carries them, which is where a person looks to OPEN something;
+    // this is where a person is when they discover they have nothing to open.
+    void openExampleRequested();
+
     // Where the pointer is over the picture, in image pixels, and whether it is
     // over the picture at all. Emitted continuously, which is why this widget
     // tracks the mouse: a readout that only followed a drag would be a gesture
@@ -283,6 +290,7 @@ private:
 
     QLabel *m_hint = nullptr;
     QPushButton *m_hintAction = nullptr;
+    QPushButton *m_hintExample = nullptr;
     bool m_hasImage = false;
 
     // Kept so a pixel can be read back. The actor holds a reference of its own,

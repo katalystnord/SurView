@@ -375,6 +375,8 @@ private slots:
     void clicking_another_pixel_moves_the_pin_rather_than_releasing_it();
 
     void the_window_carries_the_application_icon();
+    void the_speckle_estimate_says_what_it_needs_before_any_image_exists();
+    void the_empty_workspace_offers_the_examples_it_ships_with();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -2646,6 +2648,68 @@ void TestWorkspaceWalkthrough::the_window_carries_the_application_icon()
     const QPixmap drawn = icon.pixmap(64, 64);
     QVERIFY2(!drawn.isNull() && drawn.width() > 0,
              "the window icon renders to nothing, so nothing will be drawn for it");
+}
+
+void TestWorkspaceWalkthrough::the_speckle_estimate_says_what_it_needs_before_any_image_exists()
+{
+    // ⚑ FOUND IN A SCREENSHOT OF THE ONE STATE NEVER SCREENSHOTTED: the empty
+    // workspace. The estimate's standing invitation was written and never set
+    // until something else refreshed the panel, so a first-run window showed a
+    // BLANK GAP where a line of guidance belongs -- and a blank gap is read as a
+    // layout fault rather than as a control waiting for input.
+    //
+    // Nothing else in this suite could see it: every other case loads an image
+    // first, which is exactly what fills the label in.
+    MainWindow window;
+    window.resize(1200, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("speckle")),
+             "the empty workspace says nothing about what the speckle estimate "
+             "needs");
+
+    // And an empty label may not sit there holding space either: a row with no
+    // text is a hole in the form.
+    for (QLabel *label : window.findChildren<QLabel *>()) {
+        if (label->isVisible() && label->text().isEmpty()) {
+            QVERIFY2(label->height() <= 1,
+                     qPrintable(QStringLiteral("an empty label is holding %1 px "
+                                               "of the panel open")
+                                    .arg(label->height())));
+        }
+    }
+}
+
+void TestWorkspaceWalkthrough::the_empty_workspace_offers_the_examples_it_ships_with()
+{
+    // ⚑ Step 1 of the first-run card is "import the reference image", and a
+    // reader who has no speckle images of their own cannot take it. The
+    // examples ship with the application and were reachable only from a menu
+    // nobody had a reason to open. The card says so now, where that reader is
+    // standing when they find out they have nothing to import.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *offer = byVisibleText<QPushButton>(&window, QStringLiteral("example"));
+    QVERIFY2(offer, "the empty workspace does not mention the examples it ships");
+    QVERIFY(offer->isVisible());
+
+    // And it raises the SAME list the File menu carries, not a second copy of
+    // it: two lists of what is on disk would eventually disagree.
+    QSignalSpy asked(window.findChild<ImageViewport *>(),
+                     &ImageViewport::openExampleRequested);
+    QVERIFY(asked.isValid());
+    QTest::mouseClick(offer, Qt::LeftButton);
+    QCOMPARE(asked.count(), 1);
+
+    // Once an image is loaded there is nothing left to offer, and the card goes
+    // with it rather than floating over the picture.
+    window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
+    QVERIFY2(!offer->isVisible(),
+             "the first-run card stayed on screen over the image it invited");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
