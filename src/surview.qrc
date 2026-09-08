@@ -1,15 +1,27 @@
 <!--
   The application icon, compiled into the binary.
 
-  ⚑ A resource rather than a file read from disk at start-up: the icon has to
-  be there whether SurView is running from an installed prefix, from an
-  AppImage's own mount point, or straight out of a developer's build tree, and
-  a path relative to the executable is a different path in each of those.
-  The packaged copy in share/icons is what the DESKTOP needs; this is what the
-  running window needs.
+  A resource rather than a file read from disk at start-up: the icon has to be
+  there whether SurView is running from an installed prefix, from an AppImage's
+  own mount point, or straight out of a developer's build tree, and a path
+  relative to the executable is a different path in each of those. The packaged
+  copy in share/icons is what the DESKTOP needs; this is what the window needs.
+
+  IT IS THE PNG, NOT THE SVG. Decoding SVG needs Qt's own SVG image format
+  plugin, which is not part of qt6-base: on a machine carrying only the base
+  package the icon renders to nothing and the window silently has none. Found by
+  CI, which is exactly that machine, against a developer box where the plugin
+  happened to be installed and every test passed. PNG is decoded by Qt itself,
+  everywhere, with nothing else installed. The SVG is still what is INSTALLED
+  for the desktop entry, where the desktop environment renders and scales it.
+
+  packaging/surview-256.png is rendered from packaging/surview.svg, which stays
+  the one source of the mark. tools/make-icon.sh runs the renderer; the command
+  is there rather than here because an XML comment cannot contain two dashes in
+  a row, and every one of its options begins with them.
 -->
 <RCC>
   <qresource prefix="/">
-    <file alias="surview.svg">../packaging/surview.svg</file>
+    <file alias="surview.png">../packaging/surview-256.png</file>
   </qresource>
 </RCC>

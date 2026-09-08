@@ -140,7 +140,7 @@ MainWindow::MainWindow(QWidget *parent)
     // namespace scope, so there it resolved to a symbol nothing defines and the
     // link failed outright. Here it names the one the resource compiler wrote.
     Q_INIT_RESOURCE(surview);
-    setWindowIcon(QIcon(QStringLiteral(":/surview.svg")));
+    setWindowIcon(QIcon(QStringLiteral(":/surview.png")));
 
     setWindowTitle(tr("SurView DIC"));
 

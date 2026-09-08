@@ -677,6 +677,17 @@ Three things worth not re-deriving:
   is invisible until a first-time reader opens that menu and finds nothing, and
   that reader is precisely who the package is for.
 
+⚑ **The window's icon is a PNG, and the desktop entry's is the SVG.** Decoding
+SVG needs Qt's own SVG image format plugin, which is NOT part of qt6-base: on a
+machine carrying only the base package the icon renders to nothing and the
+window silently has none. Found by CI, which is exactly that machine, against a
+developer box where the plugin happened to be installed and every test passed.
+PNG is decoded by Qt itself with nothing else installed; the SVG stays the
+source of the mark and the file a desktop environment renders.
+`tools/make-icon.sh` renders one from the other, and the command lives there
+rather than in the `.qrc` because an XML comment cannot contain two dashes in a
+row and every inkscape option begins with them.
+
 ⚑ **The icon is a Qt RESOURCE, and needs `Q_INIT_RESOURCE`.** It lives in a
 static library, and a linker discards any object of one that nothing references:
 without that call the icon compiles, packages, and is silently absent at run
