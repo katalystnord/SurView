@@ -33,6 +33,7 @@ set(SURVIEW_UNIT_TESTS
     test_point_readout
     test_examples
     test_known_answer
+    test_subset_overlay
     test_measured_accuracy
     test_project
     test_speckle_quality

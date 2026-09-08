@@ -14,24 +14,23 @@ QString tr(const char *text)
 
 }  // namespace
 
-PoiGrid buildPoiGrid(int imageWidth, int imageHeight, int subsetRadius,
-                     int gridStep, const RegionOfInterest &roi,
-                     const PoiInsideTest &inside)
+PoiGridExtent poiGridExtent(int imageWidth, int imageHeight, int subsetRadius,
+                            int gridStep, const RegionOfInterest &roi)
 {
-    PoiGrid grid;
-    grid.step = gridStep;
+    PoiGridExtent extent;
+    extent.step = gridStep;
 
     if (imageWidth <= 0 || imageHeight <= 0) {
-        grid.refusal = tr("The image has no pixels to measure.");
-        return grid;
+        extent.refusal = tr("The image has no pixels to measure.");
+        return extent;
     }
     if (subsetRadius <= 0) {
-        grid.refusal = tr("A subset radius must be at least 1 px.");
-        return grid;
+        extent.refusal = tr("A subset radius must be at least 1 px.");
+        return extent;
     }
     if (gridStep <= 0) {
-        grid.refusal = tr("A grid step must be at least 1 px.");
-        return grid;
+        extent.refusal = tr("A grid step must be at least 1 px.");
+        return extent;
     }
 
     // A subset must lie wholly inside the image, so no point may sit closer
@@ -42,37 +41,60 @@ PoiGrid buildPoiGrid(int imageWidth, int imageHeight, int subsetRadius,
     const int safeLastY  = imageHeight - 1 - subsetRadius;
 
     if (safeLastX < safeFirstX || safeLastY < safeFirstY) {
-        grid.refusal = tr("A subset radius of %1 px leaves no room for a single "
-                          "point in a %2×%3 image.")
-                           .arg(subsetRadius)
-                           .arg(imageWidth)
-                           .arg(imageHeight);
-        return grid;
+        extent.refusal = tr("A subset radius of %1 px leaves no room for a single "
+                            "point in a %2×%3 image.")
+                             .arg(subsetRadius)
+                             .arg(imageWidth)
+                             .arg(imageHeight);
+        return extent;
     }
 
-    int firstX = safeFirstX;
-    int firstY = safeFirstY;
-    int lastX  = safeLastX;
-    int lastY  = safeLastY;
+    extent.firstX = safeFirstX;
+    extent.firstY = safeFirstY;
+    extent.lastX  = safeLastX;
+    extent.lastY  = safeLastY;
 
-    grid.restricted = roi.isValid();
-    if (grid.restricted) {
+    if (roi.isValid()) {
         const QRect box = roi.bounds();
-        firstX = std::max(firstX, box.left());
-        firstY = std::max(firstY, box.top());
-        lastX  = std::min(lastX, box.right());
-        lastY  = std::min(lastY, box.bottom());
+        extent.firstX = std::max(extent.firstX, box.left());
+        extent.firstY = std::max(extent.firstY, box.top());
+        extent.lastX  = std::min(extent.lastX, box.right());
+        extent.lastY  = std::min(extent.lastY, box.bottom());
 
-        if (lastX < firstX || lastY < firstY) {
-            grid.refusal =
+        if (extent.lastX < extent.firstX || extent.lastY < extent.firstY) {
+            extent.refusal =
                 tr("The region of interest lies entirely within %1 px of the "
                    "image border, and a subset of that radius cannot be centred "
                    "there.")
                     .arg(subsetRadius);
-            return grid;
+            return extent;
         }
     }
 
+    extent.valid = true;
+    return extent;
+}
+
+PoiGrid buildPoiGrid(int imageWidth, int imageHeight, int subsetRadius,
+                     int gridStep, const RegionOfInterest &roi,
+                     const PoiInsideTest &inside)
+{
+    PoiGrid grid;
+    grid.step = gridStep;
+
+    const PoiGridExtent extent =
+        poiGridExtent(imageWidth, imageHeight, subsetRadius, gridStep, roi);
+    if (!extent.valid) {
+        grid.refusal = extent.refusal;
+        return grid;
+    }
+
+    const int firstX = extent.firstX;
+    const int firstY = extent.firstY;
+    const int lastX  = extent.lastX;
+    const int lastY  = extent.lastY;
+
+    grid.restricted = roi.isValid();
     grid.columns = (lastX - firstX) / gridStep + 1;
     grid.rows    = (lastY - firstY) / gridStep + 1;
     grid.originX = firstX;

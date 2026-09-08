@@ -53,6 +53,29 @@ struct PoiGrid
     int cellCount() const { return columns * rows; }
 };
 
+// Where a run can place points at all, without building the points themselves.
+//
+// Split out of buildPoiGrid() so the two cannot disagree: anything that needs
+// to know where the grid sits -- drawing a subset over the picture at the
+// position the run would measure it, for one -- asks this rather than repeating
+// the "a subset must lie wholly inside the image, and inside the region's
+// bounds" arithmetic somewhere else. A second copy of that would be wrong in a
+// way that still looks like a grid.
+struct PoiGridExtent
+{
+    bool valid = false;
+    QString refusal;   // why not, in words fit to show a user
+
+    int firstX = 0;
+    int firstY = 0;
+    int lastX  = 0;
+    int lastY  = 0;
+    int step   = 1;
+};
+
+PoiGridExtent poiGridExtent(int imageWidth, int imageHeight, int subsetRadius,
+                            int gridStep, const RegionOfInterest &roi);
+
 // True when the pixel is inside the region. Only consulted when the region is
 // valid.
 using PoiInsideTest = std::function<bool(int x, int y)>;

@@ -764,6 +764,20 @@ QWidget *MainWindow::createAnalysisPanel()
         QStringLiteral("color: #55616d; font-size: 11px;"));
     form->addRow(QString(), m_speckleAdvice);
 
+    // ⚑ The settings drawn at the size they will be measured at. The panel
+    // already says what a subset can resolve and how many points a subregion
+    // holds; those are the rigorous answers. "Is the pattern inside this box
+    // distinct" is a visual question, and only a box over the speckle answers
+    // it. Both, not either.
+    m_showSubset = new QCheckBox(tr("Show the subset on the image, at this size"));
+    m_showSubset->setToolTip(
+        tr("Draws the square the engine will correlate, 2 x radius + 1 px "
+           "across, at the nearest point the run would measure. It follows the "
+           "pointer over the image and stays where you leave it."));
+    connect(m_showSubset, &QCheckBox::toggled, this,
+            &MainWindow::updateSettingsPreview);
+    form->addRow(QString(), m_showSubset);
+
     m_maxIterations = new QSpinBox;
     m_maxIterations->setRange(1, 100);
     m_maxIterations->setValue(10);
@@ -841,6 +855,26 @@ QWidget *MainWindow::createAnalysisPanel()
     floorFont.setItalic(true);
     floorNote->setFont(floorFont);
     strainColumn->addWidget(floorNote);
+
+    m_showSubregion = new QCheckBox(
+        tr("Show the subregion on the image, with the points it fits from"));
+    m_showSubregion->setToolTip(
+        tr("Draws the circle the strain fit spans, at the nearest point the run "
+           "would measure. The points inside it are marked as well once the view "
+           "is zoomed in far enough to tell them apart; the count below is exact "
+           "either way."));
+    connect(m_showSubregion, &QCheckBox::toggled, this,
+            &MainWindow::updateSettingsPreview);
+    strainColumn->addWidget(m_showSubregion);
+
+    // How many points that is, in words, beside the dots that are which ones.
+    // The warning below only speaks when the subregion is too small; this says
+    // the number whether or not anything is wrong with it.
+    m_subregionCount = new QLabel;
+    m_subregionCount->setWordWrap(true);
+    m_subregionCount->setStyleSheet(
+        QStringLiteral("color: #55616d; font-size: 11px;"));
+    strainColumn->addWidget(m_subregionCount);
 
     // The live warning. See updateStrainAdvice().
     m_strainAdvice = new QLabel;
@@ -992,6 +1026,9 @@ QWidget *MainWindow::createAnalysisPanel()
     // The estimate depends on the radius and on the region, so it follows both.
     connect(m_subsetRadius, &QSpinBox::valueChanged, this,
             &MainWindow::updateSpeckleQuality);
+    // And so does the square drawn at that radius.
+    connect(m_subsetRadius, &QSpinBox::valueChanged, this,
+            &MainWindow::updateSettingsPreview);
 
     updateSolverConstraints();
     updateStrainAdvice();
@@ -1061,6 +1098,36 @@ void MainWindow::updateStrainAdvice()
     const QString advice = currentSettings().strainWarning();
     m_strainAdvice->setText(advice);
     m_strainAdvice->setVisible(!advice.isEmpty());
+
+    // The drawing is of these same numbers, so it follows them.
+    updateSettingsPreview();
+}
+
+void MainWindow::updateSettingsPreview()
+{
+    if (!m_viewport || !m_showSubset || !m_showSubregion)
+        return;
+
+    const CorrelationSettings settings = currentSettings();
+    m_viewport->setSettingsPreview(m_showSubset->isChecked(),
+                                   m_showSubregion->isChecked(),
+                                   settings.subsetRadius, settings.gridStep,
+                                   settings.strainEnabled, settings.strainRadius);
+
+    // ⚑ The count and the dots are the same fact stated twice, so they are
+    // produced from the same place: this is the number core/StrainFit.h counts,
+    // and core/SubsetOverlay.cpp walks the same lattice to decide which points
+    // to draw. The wording says "with grid all around it" because a point at an
+    // edge or beside a hole genuinely has fewer, and the picture shows that
+    // while this number cannot.
+    const int held = gridPointsInSubregion(settings.strainRadius, settings.gridStep);
+    m_subregionCount->setText(
+        tr("A %1 px subregion holds %2 points at a %3 px grid step, for a point "
+           "with grid all around it. Zoom in to see which ones.")
+            .arg(settings.strainRadius, 0, 'g', 4)
+            .arg(held)
+            .arg(settings.gridStep));
+    m_subregionCount->setVisible(settings.strainEnabled);
 }
 
 void MainWindow::updateSolverConstraints()

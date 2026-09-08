@@ -35,7 +35,9 @@
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
 #include <vtkScalarBarActor.h>
+#include <vtkCellData.h>
 #include <vtkTextProperty.h>
+#include <vtkUnsignedCharArray.h>
 
 #include <algorithm>
 #include <cmath>
@@ -472,12 +474,15 @@ void ImageViewport::showRoi(const RegionOfInterest &roi)
 {
     m_roiShown = roi.isValid() ? roi : RegionOfInterest();
     refreshRoiGeometry();
+    // The region moves the grid, so it moves where a subset can be previewed.
+    refreshSettingsPreview();
 }
 
 void ImageViewport::clearRoi()
 {
     m_roiShown = RegionOfInterest();
     refreshRoiGeometry();
+    refreshSettingsPreview();
 }
 
 void ImageViewport::refreshRoiGeometry()
@@ -774,6 +779,176 @@ void ImageViewport::refreshGaugeGeometry()
     m_renderWindow->Render();
 }
 
+double ImageViewport::gridStepOnScreen() const
+{
+    // Asked of the real projection, never worked out from the camera here: the
+    // walkthrough suite learned once already that a second copy of the framing
+    // arithmetic is wrong by a margin nobody can see.
+    QPointF origin;
+    QPointF stepAway;
+    if (!widgetPositionForImagePixel(QPointF(0.0, 0.0), origin)
+        || !widgetPositionForImagePixel(QPointF(m_previewGridStep, 0.0), stepAway)) {
+        return 0.0;
+    }
+    return std::abs(stepAway.x() - origin.x());
+}
+
+void ImageViewport::setSettingsPreview(bool showSubset, bool showSubregion,
+                                       int subsetRadius, int gridStep,
+                                       bool strainEnabled, double strainRadius)
+{
+    m_previewSubset = showSubset;
+    m_previewSubregion = showSubregion;
+    m_previewSubsetRadius = subsetRadius;
+    m_previewGridStep = gridStep;
+    m_previewStrainEnabled = strainEnabled;
+    m_previewStrainRadius = strainRadius;
+    refreshSettingsPreview();
+}
+
+void ImageViewport::refreshSettingsPreview()
+{
+    // In front of the field, which sits at -0.1: the preview is about the
+    // settings of the NEXT run, so it must stay readable over the last one.
+    constexpr double kPreviewDepth = -0.3;
+
+    m_preview = SubsetOverlay();
+    m_previewNeighboursDrawn = false;
+
+    const bool wanted = (m_previewSubset || m_previewSubregion) && m_hasImage;
+    if (wanted) {
+        // Before the pointer has been over the picture the box sits in the
+        // middle of it, so switching the preview on shows something rather than
+        // nothing at all.
+        const QPointF centre =
+            m_previewCentreChosen
+                ? m_previewCentre
+                : QPointF(m_record.width / 2.0, m_record.height / 2.0);
+        m_preview = subsetOverlayAt(centre.x(), centre.y(), m_record.width,
+                                    m_record.height, m_previewSubsetRadius,
+                                    m_previewGridStep, m_roiShown,
+                                    m_previewSubregion && m_previewStrainEnabled,
+                                    m_previewStrainRadius);
+    }
+
+    vtkNew<vtkPoints> points;
+    vtkNew<vtkCellArray> lines;
+
+    // ⚑ Two colours in one drawing, carried as cell data. The shapes being
+    // previewed -- the square and the circle -- are the answer; the crosses are
+    // the points inside one of them, and at a fine grid step there are dozens.
+    // In one colour the crosses drown the shapes they belong to.
+    vtkNew<vtkUnsignedCharArray> shades;
+    shades->SetNumberOfComponents(3);
+    const unsigned char kShape[3] = {255, 107, 219};
+    const unsigned char kNeighbour[3] = {178, 66, 152};
+
+    auto segment = [&lines, &shades](vtkIdType from, vtkIdType to,
+                                     const unsigned char *shade) {
+        const vtkIdType ends[2] = {from, to};
+        lines->InsertNextCell(2, ends);
+        shades->InsertNextTypedTuple(shade);
+    };
+
+    if (m_preview.valid && m_previewSubset) {
+        // ⚑ The square the engine will correlate: 2r + 1 px across, its own
+        // centre pixel included, so its edges sit half a pixel outside the
+        // outermost pixels it covers.
+        const double half = m_preview.subsetRadius + 0.5;
+        const double left = m_preview.centreX - half;
+        const double right = m_preview.centreX + half;
+        const double top = m_preview.centreY - half;
+        const double bottom = m_preview.centreY + half;
+
+        const vtkIdType corners[4] = {
+            points->InsertNextPoint(left, top, kPreviewDepth),
+            points->InsertNextPoint(right, top, kPreviewDepth),
+            points->InsertNextPoint(right, bottom, kPreviewDepth),
+            points->InsertNextPoint(left, bottom, kPreviewDepth),
+        };
+        for (int corner = 0; corner < 4; corner++)
+            segment(corners[corner], corners[(corner + 1) % 4], kShape);
+    }
+
+    if (m_preview.valid && m_preview.hasSubregion) {
+        constexpr int kSegments = 72;
+        vtkIdType first = -1;
+        vtkIdType previous = -1;
+        for (int step = 0; step < kSegments; step++) {
+            const double angle = 2.0 * M_PI * step / kSegments;
+            const vtkIdType id = points->InsertNextPoint(
+                m_preview.centreX + m_preview.subregionRadius * std::cos(angle),
+                m_preview.centreY + m_preview.subregionRadius * std::sin(angle),
+                kPreviewDepth);
+            if (previous >= 0)
+                segment(previous, id, kShape);
+            else
+                first = id;
+            previous = id;
+        }
+        if (first >= 0 && previous >= 0)
+            segment(previous, first, kShape);
+
+        // The points the fit would actually take its neighbours from. The
+        // Analysis panel states how many there are; these are which.
+        //
+        // ⚑ CROSSES SIZED IN IMAGE PIXELS, not dots sized in screen pixels, and
+        // drawn only while the grid is open enough on screen to tell them apart.
+        //
+        // Both halves were found by looking at the screen. As screen-sized dots
+        // the 81 points of a 25 px subregion at a 5 px step merged into one
+        // solid magenta disc, hiding the speckle underneath and the circle
+        // around it. Sized in image pixels they can no longer touch, but at a
+        // view fitted to the window that whole neighbourhood is 43 px wide, and
+        // 81 marks in 43 px is unreadable however they are drawn. So they
+        // appear as the view is zoomed in, and until then the circle and the
+        // count on the panel say what the picture cannot.
+        const double arm = std::max(0.5, std::min(m_previewGridStep * 0.3, 3.0));
+        m_previewNeighboursDrawn = !m_preview.neighbours.isEmpty()
+                                   && gridStepOnScreen() >= kLegibleSpacing;
+        for (const QPointF &neighbour :
+             m_previewNeighboursDrawn ? m_preview.neighbours : QVector<QPointF>()) {
+            const vtkIdType left = points->InsertNextPoint(
+                neighbour.x() - arm, neighbour.y(), kPreviewDepth);
+            const vtkIdType right = points->InsertNextPoint(
+                neighbour.x() + arm, neighbour.y(), kPreviewDepth);
+            const vtkIdType top = points->InsertNextPoint(
+                neighbour.x(), neighbour.y() - arm, kPreviewDepth);
+            const vtkIdType bottom = points->InsertNextPoint(
+                neighbour.x(), neighbour.y() + arm, kPreviewDepth);
+            segment(left, right, kNeighbour);
+            segment(top, bottom, kNeighbour);
+        }
+    }
+
+    if (points->GetNumberOfPoints() == 0) {
+        if (m_previewActorAdded) {
+            m_renderer->RemoveActor(m_previewActor);
+            m_previewActorAdded = false;
+        }
+        m_renderWindow->Render();
+        return;
+    }
+
+    m_previewGeometry->SetPoints(points);
+    m_previewGeometry->SetLines(lines);
+    m_previewGeometry->GetCellData()->SetScalars(shades);
+    m_previewGeometry->Modified();
+
+    m_previewMapper->SetInputData(m_previewGeometry);
+    m_previewMapper->SetScalarModeToUseCellData();
+    m_previewMapper->ScalarVisibilityOn();
+    m_previewActor->SetMapper(m_previewMapper);
+    m_previewActor->GetProperty()->SetLineWidth(1.6);
+    m_previewActor->GetProperty()->SetLighting(false);
+
+    if (!m_previewActorAdded) {
+        m_renderer->AddActor(m_previewActor);
+        m_previewActorAdded = true;
+    }
+    m_renderWindow->Render();
+}
+
 double ImageViewport::grabReachInPixels(const QPointF &position) const
 {
     constexpr double kScreenReach = 11.0;
@@ -987,6 +1162,19 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
         }
     }
 
+    // The preview follows the pointer, and stays where it last was when the
+    // pointer leaves the picture: a box that vanished with the cursor could
+    // never be put over a patch of speckle and then looked at.
+    if (m_previewSubset || m_previewSubregion) {
+        QPoint pixel;
+        bool inside = false;
+        if (widgetToImagePixel(event->position(), pixel, &inside) && inside) {
+            m_previewCentre = QPointF(pixel);
+            m_previewCentreChosen = true;
+            refreshSettingsPreview();
+        }
+    }
+
     if (!m_roiDrawing) {
         // Reported whether or not it lands on the picture: "off the field" is
         // an answer a readout has to be able to give, and going silent instead
@@ -1066,6 +1254,17 @@ void ImageViewport::keyPressEvent(QKeyEvent *event)
     QVTKOpenGLNativeWidget::keyPressEvent(event);
 }
 
+void ImageViewport::wheelEvent(QWheelEvent *event)
+{
+    QVTKOpenGLNativeWidget::wheelEvent(event);
+    // Zooming changes how far apart the grid is ON SCREEN, which is what
+    // decides whether its points can be drawn as points. Without this the marks
+    // appear only when the pointer next moves, which reads as the drawing being
+    // slow to catch up rather than as a rule.
+    if (m_previewSubregion)
+        refreshSettingsPreview();
+}
+
 void ImageViewport::resizeEvent(QResizeEvent *event)
 {
     QVTKOpenGLNativeWidget::resizeEvent(event);
@@ -1073,6 +1272,9 @@ void ImageViewport::resizeEvent(QResizeEvent *event)
     positionGaugeBar();
     positionFieldBar();
     positionFrameLegend();
+    // A resize refits the view, so it too changes the spacing on screen.
+    if (m_previewSubregion)
+        refreshSettingsPreview();
 }
 
 void ImageViewport::showEvent(QShowEvent *event)
@@ -1116,6 +1318,9 @@ bool ImageViewport::loadImage(const QString &path)
     m_renderWindow->Render();
 
     m_record = record;
+    // A new picture is a new grid, and the pointer has not been over this one.
+    m_previewCentreChosen = false;
+    refreshSettingsPreview();
     m_hint->hide();
     m_hintAction->hide();
 

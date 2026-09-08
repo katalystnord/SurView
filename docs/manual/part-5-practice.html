@@ -324,6 +324,37 @@ footer a:hover { color: var(--accent-strong); }
     value from an unrelated test.
   </p>
 
+  <h2>Seeing the numbers on the specimen</h2>
+  <p>
+    Both settings can also be drawn over the reference image, at the size
+    they will actually be measured at, from the switches beside them on
+    the Analysis panel. The square is the subset the correlation will
+    solve - two radii plus one pixel across, its own centre pixel
+    included - and the circle is the subregion the strain fit will span.
+    Both are placed at the nearest point the run would really measure,
+    and they follow the pointer over the image, so a candidate setting can
+    be put over the part of the pattern that worries you and looked at.
+  </p>
+  <p>
+    This answers a question no number can: whether the pattern inside the
+    square is <em>distinct</em> - whether there is enough unique texture
+    in that particular patch of speckle for the correlation to have
+    anything to lock onto. It does not replace the reliability figures
+    above. The noise floor is the rigorous answer to how finely this
+    subset could resolve; the box is the fast answer to whether it is
+    looking at a pattern at all.
+  </p>
+  <p>
+    The points the strain fit would use are marked inside the circle, and
+    the panel states how many there are. At a fine grid step there can be
+    dozens of them inside a circle a few dozen pixels across, so the marks
+    themselves appear only once the view is zoomed in far enough to tell
+    them apart - the count beside the switch is exact either way. Near
+    the edge of the image, and beside a hole, you will see genuinely
+    fewer: the fit has fewer there too, which is the same lopsidedness
+    Chapter 2 describes.
+  </p>
+
   <h1 id="lighting-and-imaging">16. Lighting and imaging</h1>
   <p class="lede">
     Everything in Parts I through IV assumes the two photographs differ

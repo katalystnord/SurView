@@ -46,6 +46,8 @@ add_library(surview_core STATIC
     core/RoiDetect.cpp
     core/RoiDetect.h
     core/SpeckleQuality.h
+    core/SubsetOverlay.cpp
+    core/SubsetOverlay.h
     core/StrainFit.cpp
     core/StrainFit.h
 )

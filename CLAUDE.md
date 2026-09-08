@@ -586,6 +586,59 @@ that was never measured is blank here, not zero: drawn as a zero it would take
 the same colour as a point the first solve got right, so every hole in the field
 would fill in with the most reassuring reading available.
 
+### The settings drawn at the size they will be measured (2026-09-08)
+
+Subset radius, grid step and strain subregion are three numbers in a panel, and
+the question a person has about them is visual: is this square big enough to
+hold distinct pattern, and how much of the specimen does the strain fit average
+over? Two switches on the Analysis panel draw the square and the circle over the
+reference image, at the nearest point the run would actually measure.
+`core/SubsetOverlay.h` decides what is drawn, `ImageViewport` draws it.
+
+⚑ **IN ADDITION to counting the neighbours, not instead of it.** The count is
+the rigorous answer to "will the fit have enough points"; the drawing is the
+fast answer to "is the pattern in here distinct". The panel now states that
+count whether or not anything is wrong with it -- before, only the warning
+spoke -- and the marks on the image are which points those are. The same fact is
+therefore on screen twice, so they come from one lattice walk and
+`the_points_drawn_in_the_subregion_are_the_ones_the_panel_counts` holds them to
+the same number in the panel's own words.
+
+Rules, each with a case and a negative check:
+
+- **The square is 2r + 1 px across**, its own centre pixel included, which is
+  the subset the engine correlates.
+- ⚑ **Snapped to the grid the run will lay out**, not left under the pointer.
+  The marks are only the points the fit would really use if the centre is one of
+  them, and a box floating between grid points shows a neighbourhood that
+  cannot occur. `poiGridExtent()` was split out of `buildPoiGrid()` so the two
+  cannot disagree about where points can go; a second copy of that arithmetic
+  would be wrong in a way that still looks like a grid.
+- **Clamped, never refused**: a pointer at the border still asks a real question,
+  and gets the nearest box the run could place. Settings that can place nothing
+  draw nothing and give the grid's own refusal, in the same words the run will.
+- **Near an edge, and beside a hole, only the neighbours that exist are drawn.**
+  The fit genuinely has fewer there, and a hole is where a reader is most likely
+  to be looking.
+
+Two things found by looking at the screen, neither by a test:
+
+- ⚑ **The subregion was a solid magenta blob.** 81 points at a 5 px step drawn
+  as screen-sized dots merged into a disc that hid both the speckle underneath
+  and the circle around it -- a correct drawing, unreadable. Marks are now
+  crosses sized in IMAGE pixels, so they cannot touch at any zoom, and they are
+  drawn only while the grid is at least 5 widget px open. At a view fitted to
+  the window a whole neighbourhood is 43 px wide, and 81 marks in 43 px is
+  unreadable however they are drawn; they appear as the view is zoomed in, and
+  the panel's count is exact either way. The gate measures the spacing through
+  the renderer's own projection, never through a second copy of the camera
+  arithmetic.
+- **A one-off walkthrough failure on a loaded machine** turned out to be a real
+  race in an older case: it waited for the frame counter to reach two and then
+  asserted on the project line, which is written when the SEQUENCE ends. It now
+  waits for the run to be finished. The same lesson `waitForEnabled()` was
+  written for, in a case that had not learned it.
+
 ### Measured against the known answer (2026-09-08)
 
 The synthetic examples state the exact deformation of every frame they ship,

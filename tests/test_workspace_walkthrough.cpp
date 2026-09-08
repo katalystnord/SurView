@@ -15,6 +15,8 @@
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/PointReadout.h"
+#include "core/StrainFit.h"
+#include "core/SubsetOverlay.h"
 #include "core/Sequence.h"
 #include "core/Roi.h"
 #include "gui/ImageViewport.h"
@@ -360,6 +362,10 @@ private slots:
     void the_comparison_with_a_known_answer_says_why_it_is_unavailable_before_a_run();
     void an_example_that_states_its_own_answer_is_measured_against_it_on_screen();
     void a_dataset_that_states_no_answer_says_so_rather_than_offering_a_comparison();
+
+    void the_subset_can_be_seen_at_its_real_size_before_any_run();
+    void the_points_drawn_in_the_subregion_are_the_ones_the_panel_counts();
+    void the_drawn_subset_follows_the_radius_that_will_be_measured();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -1045,6 +1051,16 @@ void TestWorkspaceWalkthrough::every_frame_of_a_sequence_is_measured_and_listed(
              "frame 0 should be the reference against itself, which does not move");
     QVERIFY2(qAbs(meanU(window.frameResult(1)) - 3.0) < 0.1,
              "frame 1 should be the +3 px target");
+
+    // ⚑ Wait for the RUN to be finished, not merely for the last frame to have
+    // arrived. The frames counter rises as each frame lands; the project line
+    // below is written when the sequence ends, so between the two there is a
+    // window where two frames are measured and the tree still says "none".
+    // Seen as a one-off failure on a loaded machine, 2026-09-08 -- the same
+    // lesson waitForEnabled() above was written for, in a case that had not
+    // learned it.
+    QVERIFY(waitForEnabled(actionLabelled(&window, QStringLiteral("Run Correlation")),
+                           30000));
 
     // And the project says so, with both frames on it rather than one result.
     QVERIFY2(projectLine(&window, QStringLiteral("Results"))
@@ -2281,6 +2297,134 @@ void TestWorkspaceWalkthrough::a_dataset_that_states_no_answer_says_so_rather_th
                  || compare->toolTip().contains(QStringLiteral("no stated answer"),
                                                 Qt::CaseInsensitive),
              qPrintable(compare->toolTip()));
+}
+
+
+void TestWorkspaceWalkthrough::the_subset_can_be_seen_at_its_real_size_before_any_run()
+{
+    // ⚑ BEFORE a run, which is the whole point: the question it answers -- is
+    // this square big enough to hold distinct pattern -- has to be answerable
+    // while the settings are being chosen, not after a correlation has been sat
+    // through.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    QVERIFY(viewport);
+    QVERIFY2(!viewport->settingsPreview().valid,
+             "the subset was drawn before anything asked for it");
+
+    // Found the way a reader finds it: by the words on the switch.
+    auto *show = byVisibleText<QCheckBox>(&window, QStringLiteral("Show the subset"));
+    QVERIFY2(show, "nothing on the panel offers to show the subset");
+    QVERIFY(!show->isChecked());
+    QVERIFY(!show->toolTip().isEmpty());
+
+    show->setChecked(true);
+
+    const SubsetOverlay drawn = viewport->settingsPreview();
+    QVERIFY2(drawn.valid, "the switch was turned on and nothing was drawn");
+
+    // The square is the subset the engine will correlate: 2r + 1 px across.
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    QVERIFY(radius);
+    QCOMPARE(drawn.subsetRadius, radius->value());
+    QCOMPARE(drawn.subsetSide(), 2.0 * radius->value() + 1.0);
+}
+
+void TestWorkspaceWalkthrough::the_drawn_subset_follows_the_radius_that_will_be_measured()
+{
+    // A preview that kept the size it was switched on at would be the most
+    // misleading thing on the screen: it would show one subset while the run
+    // measured another, and look right doing it.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    auto *show = byVisibleText<QCheckBox>(&window, QStringLiteral("Show the subset"));
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    QVERIFY(viewport && show && radius);
+
+    show->setChecked(true);
+    radius->setValue(9);
+    QCOMPARE(viewport->settingsPreview().subsetRadius, 9);
+    QCOMPARE(viewport->settingsPreview().subsetSide(), 19.0);
+
+    radius->setValue(24);
+    QCOMPARE(viewport->settingsPreview().subsetRadius, 24);
+}
+
+void TestWorkspaceWalkthrough::the_points_drawn_in_the_subregion_are_the_ones_the_panel_counts()
+{
+    // ⚑ THE CASE THIS FEATURE MOST NEEDS. The panel states how many points the
+    // strain fit has in words and the image draws them as dots, so the same
+    // fact is now on screen twice. Two statements of one number that can
+    // disagree are worse than one, because a reader has no way to tell which is
+    // lying.
+    MainWindow window;
+    window.resize(1200, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    auto *show = byVisibleText<QCheckBox>(&window, QStringLiteral("Show the subregion"));
+    QVERIFY(viewport);
+    QVERIFY2(show, "nothing on the panel offers to show the strain subregion");
+
+    auto *radius = controlLabelled<QDoubleSpinBox>(&window,
+                                                   QStringLiteral("Subregion radius"));
+    auto *step = controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"));
+    QVERIFY(radius && step);
+    // Wide enough that the neighbourhood is several rings, and a step that
+    // divides it unevenly, so a count that was estimated rather than walked
+    // would differ.
+    step->setValue(7);
+    radius->setValue(30.0);
+    show->setChecked(true);
+
+    const SubsetOverlay drawn = viewport->settingsPreview();
+    QVERIFY(drawn.valid);
+    QVERIFY(drawn.hasSubregion);
+    QVERIFY(!drawn.neighbours.isEmpty());
+
+    // The number the panel states, read off the panel rather than recomputed.
+    const int stated = gridPointsInSubregion(30.0, 7);
+    QVERIFY2(somethingOnScreenSays(&window, QString::number(stated)),
+             "the panel does not say how many points the subregion holds");
+    QCOMPARE(int(drawn.neighbours.size()), stated);
+
+    // ⚑ The marks appear only while the grid is open enough on screen to tell
+    // them apart. At a fine step a subregion holds dozens of points inside a
+    // circle a few dozen pixels wide, and drawing them all turned the
+    // neighbourhood into one solid blob that hid the speckle it was drawn over.
+    // Found by looking at the screen; pinned here through the two states one
+    // screen can be in rather than by re-deriving the projection.
+    step->setValue(40);
+    QVERIFY2(viewport->settingsPreviewShowsNeighbours(),
+             "a wide-open grid still refused to mark its points");
+    step->setValue(2);
+    QVERIFY2(!viewport->settingsPreviewShowsNeighbours(),
+             "a grid too fine to tell apart was drawn point by point anyway");
+    // The count on the panel is exact either way, which is what makes hiding
+    // the marks honest rather than a loss.
+    QVERIFY(somethingOnScreenSays(&window, QString::number(gridPointsInSubregion(30.0, 2))));
+
+    step->setValue(7);
+
+    // And switching strain off takes the subregion with it: a circle drawn
+    // while nothing will be fitted would show a neighbourhood nobody averages
+    // over.
+    auto *strain = byVisibleText<QCheckBox>(&window, QStringLiteral("Fit strain"));
+    QVERIFY(strain);
+    strain->setChecked(false);
+    QVERIFY(!viewport->settingsPreview().hasSubregion);
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

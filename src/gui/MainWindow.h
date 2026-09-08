@@ -132,6 +132,13 @@ private slots:
     // arrive after the decision it is about.
     void updateSpeckleQuality();
 
+    // Redraw the subset and subregion over the image at the sizes now in the
+    // panel. Live, like the speckle estimate and the strain warning, and for
+    // the same reason: these numbers are being chosen right here, and a picture
+    // of them that waited for the run would arrive after the decision it is
+    // about.
+    void updateSettingsPreview();
+
     // Keeps the strain warning on screen honest about the numbers currently in
     // the panel. Live, not on Run: the settings that make the fit impossible
     // are chosen here, and a warning that waited for the run would arrive after
@@ -280,6 +287,9 @@ private:
     QSpinBox *m_strainMinPoints = nullptr;
     QComboBox *m_strainMeasure = nullptr;
     QLabel *m_strainAdvice = nullptr;
+    QCheckBox *m_showSubset = nullptr;
+    QCheckBox *m_showSubregion = nullptr;
+    QLabel *m_subregionCount = nullptr;
     QLabel *m_speckleAdvice = nullptr;
     QGroupBox *m_strainGroup = nullptr;
 

@@ -333,7 +333,8 @@ a design pass first.
 - **Borrowed from upstream's GUI, smallest first.** David approved the whole
   list on 2026-09-03. The competitive section above says why each one is
   better than what we do; this is the commitment to do them. Five of the six
-  are small. The first is DONE (2026-09-03); the second is the one to do next.
+  are small. The first two are DONE (2026-09-03 and 2026-09-08); the live
+  readout of the raw image value is the one to do next.
 
   1. ~~**A permanent coordinate-frame legend in the viewport.**~~ DONE
      2026-09-03. A small panel
@@ -343,12 +344,14 @@ a design pass first.
      explain it in prose. A picture of the axes removes the ambiguity instead
      of describing it, and it serves the 2D viewport today. Small, and the
      best ratio of value to work on this list.
-  2. **Draw the subset and the strain subregion at their chosen size**,
-     behind their own switches, over the reference image. ⚑ IN ADDITION to
+  2. ~~**Draw the subset and the strain subregion at their chosen size**,
+     behind their own switches, over the reference image.~~ DONE 2026-09-08.
+     ⚑ IN ADDITION to
      counting the neighbours a subregion will hold, which we already do and
      they do not: the count is the rigorous answer and the drawn box is the
      fast one, and "is this big enough to contain distinct pattern" is a
-     visual question. Neither replaces the other.
+     visual question. Neither replaces the other. The panel now states the
+     count at all times rather than only when it is too small.
   3. **A live readout of the raw image value under the cursor**, before and
      independent of any run. Ours reports a measured point after a
      correlation; this reports what the camera recorded, which is what a

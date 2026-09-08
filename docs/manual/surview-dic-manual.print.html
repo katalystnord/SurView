@@ -100,7 +100,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     github.com/katalystnord/SurView
   </div>
 </div>
-<div class="contents"><h2>Contents</h2><div class="part">Part I. What DIC measures</div><ol><li><span class="pg">3</span><a href="#the-idea">1. Two photographs and a question</a></li><li><span class="pg">6</span><a href="#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li><li><span class="pg">9</span><a href="#absence-not-zero">3. A rejected point is not a zero</a></li><li><span class="pg">11</span><a href="#coordinate-frame">4. One coordinate frame</a></li></ol><div class="part">Part II. Running a measurement</div><ol><li><span class="pg">13</span><a href="#region-and-holes">5. The region, and what a hole means</a></li><li><span class="pg">16</span><a href="#sequences">6. Sequences: order matters, reference matters</a></li><li><span class="pg">17</span><a href="#reference-updating">7. When the reference goes stale</a></li><li><span class="pg">19</span><a href="#recovery">8. Points that fail, and the pass that repairs them</a></li></ol><div class="part">Part III. How much to trust it</div><ol><li><span class="pg">22</span><a href="#two-questions">9. Two questions, never one score</a></li><li><span class="pg">25</span><a href="#reading-critically">10. Reading a field critically</a></li><li><span class="pg">27</span><a href="#known-answer">11. Checking against a known answer</a></li></ol><div class="part">Part IV. Beyond one field</div><ol><li><span class="pg">29</span><a href="#sequence-as-curve">12. Reading a sequence as a curve</a></li><li><span class="pg">31</span><a href="#leaving-the-application">13. The field leaving the application</a></li></ol><div class="part">Part V. Practice</div><ol><li><span class="pg">33</span><a href="#speckling">14. Speckling a specimen</a></li><li><span class="pg">35</span><a href="#subset-and-step">15. Choosing subset radius and grid step</a></li><li><span class="pg">36</span><a href="#lighting-and-imaging">16. Lighting and imaging</a></li></ol><div class="part">Reference</div><ol><li><span class="pg">37</span><a href="#glossary">Glossary</a></li><li><span class="pg">39</span><a href="#on-screen">Where to find it on screen</a></li><li><span class="pg">40</span><a href="#not-yet">What is not in this manual yet</a></li></ol></div>
+<div class="contents"><h2>Contents</h2><div class="part">Part I. What DIC measures</div><ol><li><span class="pg">3</span><a href="#the-idea">1. Two photographs and a question</a></li><li><span class="pg">6</span><a href="#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li><li><span class="pg">9</span><a href="#absence-not-zero">3. A rejected point is not a zero</a></li><li><span class="pg">11</span><a href="#coordinate-frame">4. One coordinate frame</a></li></ol><div class="part">Part II. Running a measurement</div><ol><li><span class="pg">13</span><a href="#region-and-holes">5. The region, and what a hole means</a></li><li><span class="pg">16</span><a href="#sequences">6. Sequences: order matters, reference matters</a></li><li><span class="pg">17</span><a href="#reference-updating">7. When the reference goes stale</a></li><li><span class="pg">19</span><a href="#recovery">8. Points that fail, and the pass that repairs them</a></li></ol><div class="part">Part III. How much to trust it</div><ol><li><span class="pg">22</span><a href="#two-questions">9. Two questions, never one score</a></li><li><span class="pg">25</span><a href="#reading-critically">10. Reading a field critically</a></li><li><span class="pg">27</span><a href="#known-answer">11. Checking against a known answer</a></li></ol><div class="part">Part IV. Beyond one field</div><ol><li><span class="pg">29</span><a href="#sequence-as-curve">12. Reading a sequence as a curve</a></li><li><span class="pg">31</span><a href="#leaving-the-application">13. The field leaving the application</a></li></ol><div class="part">Part V. Practice</div><ol><li><span class="pg">33</span><a href="#speckling">14. Speckling a specimen</a></li><li><span class="pg">35</span><a href="#subset-and-step">15. Choosing subset radius and grid step</a></li><li><span class="pg">37</span><a href="#lighting-and-imaging">16. Lighting and imaging</a></li></ol><div class="part">Reference</div><ol><li><span class="pg">38</span><a href="#glossary">Glossary</a></li><li><span class="pg">40</span><a href="#on-screen">Where to find it on screen</a></li><li><span class="pg">41</span><a href="#not-yet">What is not in this manual yet</a></li></ol></div>
 
 <div class="part-body">
   <p class="kicker">Part I &middot; What DIC measures</p>
@@ -1466,6 +1466,37 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     Chapter 9, computed live against the settings under consideration
     - rather than picking a subset radius by habit or by copying a
     value from an unrelated test.
+  </p>
+
+  <h2>Seeing the numbers on the specimen</h2>
+  <p>
+    Both settings can also be drawn over the reference image, at the size
+    they will actually be measured at, from the switches beside them on
+    the Analysis panel. The square is the subset the correlation will
+    solve - two radii plus one pixel across, its own centre pixel
+    included - and the circle is the subregion the strain fit will span.
+    Both are placed at the nearest point the run would really measure,
+    and they follow the pointer over the image, so a candidate setting can
+    be put over the part of the pattern that worries you and looked at.
+  </p>
+  <p>
+    This answers a question no number can: whether the pattern inside the
+    square is <em>distinct</em> - whether there is enough unique texture
+    in that particular patch of speckle for the correlation to have
+    anything to lock onto. It does not replace the reliability figures
+    above. The noise floor is the rigorous answer to how finely this
+    subset could resolve; the box is the fast answer to whether it is
+    looking at a pattern at all.
+  </p>
+  <p>
+    The points the strain fit would use are marked inside the circle, and
+    the panel states how many there are. At a fine grid step there can be
+    dozens of them inside a circle a few dozen pixels across, so the marks
+    themselves appear only once the view is zoomed in far enough to tell
+    them apart - the count beside the switch is exact either way. Near
+    the edge of the image, and beside a hole, you will see genuinely
+    fewer: the fit has fewer there too, which is the same lopsidedness
+    Chapter 2 describes.
   </p>
 
   <h1 id="lighting-and-imaging">16. Lighting and imaging</h1>
