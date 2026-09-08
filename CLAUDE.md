@@ -586,6 +586,61 @@ that was never measured is blank here, not zero: drawn as a zero it would take
 the same colour as a point the first solve got right, so every hole in the field
 would fill in with the most reassuring reading available.
 
+### What the camera recorded, at one pixel (2026-09-08)
+
+The point panel answered what a CORRELATION found and had nothing to say until
+a run had been sat through. The question that comes first is about the
+photograph -- is this exposed properly, does the speckle here carry contrast --
+and the Record panel answers it for the image as a whole and cannot answer it
+anywhere in particular. Hovering now reads out the pixel under the pointer from
+the moment an image is loaded, and a click pins it, exactly as it does for a
+measured point. `core/PixelReadout.h` decides what the numbers mean;
+`ImageViewport::sampleImageAt()` is the only thing holding the decoded pixels,
+so the sampling lives there.
+
+- ⚑ **THE NUMBER IS THE FILE'S OWN, NOT THE ONE ON SCREEN.** The viewport
+  stretches the intensity window so a 16-bit image sitting in 0-5000 is not
+  rendered nearly black; what a reader sees is a mapping and what correlation
+  uses is the file's value. The stretch is stated beside the number rather than
+  left to be discovered.
+- ⚑ **A PIXEL AT AN EXTREME IS A WARNING, NOT A VALUE.** Every pixel that ran
+  out of range holds the same number, so a subset over them has no gradient at
+  all and the correlation has nothing to lock onto -- and it reads on screen as
+  an ordinary bright pixel. Judged against the extremes the image ACTUALLY
+  holds as well as the type's own limits, for the reason `ImageRecord` already
+  gives: 12-bit data in a 16-bit file clips at 4095 while the type allows 65535.
+  The share of the image at that value is stated with it, because a handful of
+  pixels is ordinary and a third of the picture is a wrong exposure.
+- **Every channel of a colour pixel, and no luminance**, which would be a number
+  the file does not contain.
+- **Off the picture reads as absent**, not as a pixel of zero.
+
+Two things found by driving the application, neither by a test:
+
+- ⚑ **CLICKING A SECOND PIXEL RELEASED THE PIN INSTEAD OF MOVING IT.** The
+  release rule asked "is this the pinned POINT", and with no field measured
+  every point index is -1, so any two pixels compared equal: clicking around
+  the picture toggled one reading on and off while appearing to respond. The
+  pixel is what identifies a camera reading; the point index means something
+  only once there is a field to index into.
+- **The camera reading is ONE row, not two.** A row of its own for the position
+  put two coordinate pairs in one panel -- the pixel under the pointer and the
+  GRID point the measurement below reports on -- which is the "two numbers for
+  one thing" confusion in the one place a reader is comparing numbers. The
+  position lives in the row's note.
+- **The measurement leads once there is one.** With the camera row first, its
+  three lines pushed the displacement off the bottom of a dock a few lines tall,
+  so a reader who had just run a correlation had to scroll to see what it
+  measured. Before a run the camera reading is the only thing there is and leads
+  by default.
+
+⚑ **And one gap a negative check exposed.** The walkthrough case compared what
+the panel says against what the viewport samples, so a sampler that scaled every
+value satisfied both halves and stayed green. `the_pixel_read_out_is_the_one_
+the_file_holds_at_that_position` takes its expectation from the marker FIXTURE
+instead -- 255 at the top-left block, 128 at the top-right -- which is also the
+only case that can catch a reading taken from a flipped image.
+
 ### The settings drawn at the size they will be measured (2026-09-08)
 
 Subset radius, grid step and strain subregion are three numbers in a panel, and

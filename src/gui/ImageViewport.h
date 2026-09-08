@@ -8,6 +8,7 @@
 #include "core/SubsetOverlay.h"
 
 #include <QSize>
+#include <QVector>
 #include <QVTKOpenGLNativeWidget.h>
 #include <vtkNew.h>
 #include <vtkSmartPointer.h>
@@ -130,6 +131,15 @@ public:
     // False when there is no image to point at.
     bool widgetPositionForImagePixel(const QPointF &pixel,
                                      QPointF &position) const;
+
+    // What the file holds at one pixel, one value per channel, empty when the
+    // position is not over the picture or nothing is displayed.
+    //
+    // ⚑ The DECODED values, which are what correlation uses -- not the
+    // stretched intensities on screen. The viewport is the only thing holding
+    // the pixels, so the sampling lives here; what the numbers mean is
+    // core/PixelReadout.h's business.
+    QVector<double> sampleImageAt(int x, int y) const;
 
     // Provenance and pixel facts for the currently displayed image.
     const ImageRecord &record() const { return m_record; }
@@ -274,6 +284,11 @@ private:
     QLabel *m_hint = nullptr;
     QPushButton *m_hintAction = nullptr;
     bool m_hasImage = false;
+
+    // Kept so a pixel can be read back. The actor holds a reference of its own,
+    // but reaching into an actor for data is how a renderer's internals end up
+    // being an API.
+    vtkSmartPointer<vtkImageData> m_imagePixels;
     bool m_hasField = false;
     ImageRecord m_record;
 

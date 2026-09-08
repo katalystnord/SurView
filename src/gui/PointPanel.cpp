@@ -53,22 +53,37 @@ PointPanel::PointPanel(QWidget *parent)
     clear();
 }
 
-void PointPanel::setInstruction(bool pinned, bool haveField)
+void PointPanel::setInstruction(bool pinned, bool haveField, bool haveImage)
 {
     if (pinned) {
         // The way out of a mode is stated in the mode, never remembered.
-        m_instruction->setText(tr("Pinned. Click the field again to release it, "
-                                  "or click another point to pin that one."));
+        m_instruction->setText(tr("Pinned. Click again to release it, or click "
+                                  "another point to pin that one."));
+        return;
+    }
+    if (!haveImage) {
+        // Both gestures named before either is needed: a capability nobody can
+        // see is one nobody can find on purpose.
+        m_instruction->setText(tr("Import an image, then move the pointer over it "
+                                  "to read what the camera recorded at any pixel. "
+                                  "Click to pin a reading so it stays while you "
+                                  "look away. After a run this reads the "
+                                  "measurement at the same point as well."));
         return;
     }
     if (!haveField) {
-        m_instruction->setText(tr("Measure a field, then move the pointer over "
-                                  "it to read any point. Click to pin a point "
-                                  "so it stays while you look away."));
+        // ⚑ The panel is no longer dead before a run. What the camera recorded
+        // is readable from the moment an image is on screen, which is when the
+        // question about exposure and contrast is actually being asked.
+        m_instruction->setText(tr("Move the pointer over the image to read what "
+                                  "the camera recorded there. Measure a field to "
+                                  "read displacement and strain at the same "
+                                  "point. Click to pin a reading so it stays "
+                                  "while you look away."));
         return;
     }
-    m_instruction->setText(tr("Move the pointer over the field to read a point. "
-                              "Click to pin it."));
+    m_instruction->setText(tr("Move the pointer over the image to read the pixel "
+                              "and the measurement there. Click to pin it."));
 }
 
 void PointPanel::clearRows()
@@ -82,15 +97,28 @@ void PointPanel::clearRows()
 void PointPanel::clear()
 {
     clearRows();
-    setInstruction(false, false);
+    setInstruction(false, false, false);
 }
 
-void PointPanel::showReadout(const PointReadout &readout, bool pinned)
+void PointPanel::showReading(const QVector<ReadoutLine> &camera,
+                             const PointReadout &field, bool haveField, bool pinned)
 {
     clearRows();
-    setInstruction(pinned, true);
+    setInstruction(pinned, haveField, !camera.isEmpty());
 
-    for (const ReadoutLine &line : readout.lines) {
+    // ⚑ THE MEASUREMENT LEADS ONCE THERE IS ONE. Found by looking at the
+    // screen: the camera row is three lines with its note, and putting it first
+    // pushed the displacement off the bottom of the dock, so a reader who had
+    // just run a correlation had to scroll to see what it measured. Before a
+    // run the camera reading is the only thing there is, and leads by default.
+    if (haveField)
+        addRows(field.lines);
+    addRows(camera);
+}
+
+void PointPanel::addRows(const QVector<ReadoutLine> &lines)
+{
+    for (const ReadoutLine &line : lines) {
         auto *row = new QWidget;
         auto *rowLayout = new QVBoxLayout(row);
         rowLayout->setContentsMargins(0, 0, 0, 0);

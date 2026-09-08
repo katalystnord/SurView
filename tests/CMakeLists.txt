@@ -31,6 +31,7 @@ set(SURVIEW_UNIT_TESTS
     test_strain_measure
     test_uncertainty_measure
     test_point_readout
+    test_pixel_readout
     test_examples
     test_known_answer
     test_subset_overlay

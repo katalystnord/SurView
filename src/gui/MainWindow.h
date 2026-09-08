@@ -9,6 +9,7 @@
 #include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
 #include "core/KnownAnswer.h"
+#include "core/PixelReadout.h"
 #include "core/Roi.h"
 
 #include <QMainWindow>
@@ -233,10 +234,11 @@ private:
     // map of an experiment nobody ran.
     KnownAnswer knownAnswerForDisplayedFrame() const;
 
-    // Show one point of the displayed field, or the standing invitation when
-    // there is nothing to show. One place, so hovering, pinning and a new
+    // Show what is under the pointer -- the pixel the camera recorded, and the
+    // measured point if a run has produced one -- or the standing invitation
+    // when there is nothing to show. One place, so hovering, pinning and a new
     // frame arriving cannot describe the same state in different words.
-    void showPoint(int index);
+    void showPoint(int index, const QPoint &pixel, bool pixelValid);
 
     // Put one measured frame on screen, and say in the project which one.
     void displayFrame(int frame);
@@ -255,6 +257,16 @@ private:
     // would read out a different point of a different frame while looking
     // exactly as authoritative.
     int m_pinnedPoint = -1;
+
+    // Where the pointer is over the picture, and where a pinned reading was
+    // taken. Held as a PIXEL rather than only as a field index, because the
+    // camera half of the readout exists before any field does -- and because a
+    // pinned reading has to keep reporting the pixel it was taken at, not
+    // whichever one the pointer has since wandered to.
+    QPoint m_hoveredPixel;
+    bool m_hoveredPixelValid = false;
+    QPoint m_pinnedPixel;
+    bool m_pinned = false;
     QPlainTextEdit *m_log = nullptr;
     QLabel *m_stageLabel = nullptr;
 

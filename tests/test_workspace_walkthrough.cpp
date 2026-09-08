@@ -366,6 +366,11 @@ private slots:
     void the_subset_can_be_seen_at_its_real_size_before_any_run();
     void the_points_drawn_in_the_subregion_are_the_ones_the_panel_counts();
     void the_drawn_subset_follows_the_radius_that_will_be_measured();
+
+    void what_the_camera_recorded_is_readable_before_any_correlation();
+    void a_camera_reading_can_be_pinned_without_a_field_to_read();
+    void the_pixel_read_out_is_the_one_the_file_holds_at_that_position();
+    void clicking_another_pixel_moves_the_pin_rather_than_releasing_it();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -2425,6 +2430,198 @@ void TestWorkspaceWalkthrough::the_points_drawn_in_the_subregion_are_the_ones_th
     QVERIFY(strain);
     strain->setChecked(false);
     QVERIFY(!viewport->settingsPreview().hasSubregion);
+}
+
+
+void TestWorkspaceWalkthrough::what_the_camera_recorded_is_readable_before_any_correlation()
+{
+    // ⚑ BEFORE a run. The point panel could say nothing at all until a
+    // correlation had been sat through, and the question that comes first is
+    // about the photograph: is this exposed properly, does the speckle here
+    // carry contrast? The Record panel answers that for the image as a whole
+    // and cannot answer it anywhere in particular.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    // The panel names the gesture before there is anything to use it on.
+    QVERIFY2(pointPanelText(&window).contains(QStringLiteral("camera"),
+                                              Qt::CaseInsensitive),
+             qPrintable(pointPanelText(&window)));
+
+    window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    QVERIFY(viewport);
+    const ImageRecord &record = viewport->record();
+    QVERIFY(record.isValid());
+
+    // Point at the middle of the picture, with no correlation anywhere.
+    const QPoint at = widgetPointForPixel(viewport, record.width / 2.0,
+                                          record.height / 2.0);
+    QTest::mouseMove(viewport, at);
+    QTest::qWait(80);
+    QTest::mouseMove(viewport, at + QPoint(1, 0));
+    QTest::qWait(80);
+
+    const QString said = pointPanelText(&window);
+
+    // The value the FILE holds, and the type it is stored in -- not the
+    // stretched brightness on screen. Checked against the pixel read straight
+    // from the viewport, which is the same number correlation would use.
+    //
+    // ⚑ Sampled at the pixel the PANEL says it is reporting on, not at the one
+    // this case aimed for: a synthetic pointer lands on whichever pixel the
+    // projection puts under it, and comparing against a different pixel would
+    // make this case fail for a reason that has nothing to do with the readout.
+    static const QRegularExpression pixelLine(
+        QStringLiteral("[Aa]t pixel (\\d+), (\\d+)"));
+    int readX = -1;
+    int readY = -1;
+    const QRegularExpressionMatch match = pixelLine.match(said);
+    if (match.hasMatch()) {
+        readX = match.captured(1).toInt();
+        readY = match.captured(2).toInt();
+    }
+    QVERIFY2(readX >= 0, qPrintable(QStringLiteral("the panel names no pixel:\n%1")
+                                        .arg(said)));
+
+    const QVector<double> sampled = viewport->sampleImageAt(readX, readY);
+    QVERIFY2(!sampled.isEmpty(), "the viewport could not sample its own image");
+    QVERIFY2(said.contains(QString::number(qint64(sampled.first()))),
+             qPrintable(QStringLiteral("the panel does not report the file's own "
+                                       "value (%1):\n%2")
+                            .arg(sampled.first()).arg(said)));
+    QVERIFY2(said.contains(record.pixelTypeName()), qPrintable(said));
+
+    // And it says a field would add to this rather than replacing it, so the
+    // next step is visible from here.
+    QVERIFY2(said.contains(QStringLiteral("measure"), Qt::CaseInsensitive),
+             qPrintable(said));
+}
+
+void TestWorkspaceWalkthrough::a_camera_reading_can_be_pinned_without_a_field_to_read()
+{
+    // The panel invites a click from the moment an image is on screen. A click
+    // that did nothing until a correlation existed would be a gesture the panel
+    // offers and the window refuses.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("speckle_patch.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    const ImageRecord &record = viewport->record();
+    const QPoint at = widgetPointForPixel(viewport, record.width / 2.0,
+                                          record.height / 2.0);
+
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at);
+    QTest::qWait(80);
+    const QString pinned = pointPanelText(&window);
+    QVERIFY2(pinned.contains(QStringLiteral("pinned"), Qt::CaseInsensitive),
+             qPrintable(pinned));
+
+    // Leaving the picture does not disturb it -- which is the whole point.
+    QTest::mouseMove(viewport, QPoint(3, 3));
+    QTest::qWait(80);
+    const QString afterLeaving = pointPanelText(&window);
+    QVERIFY2(afterLeaving.contains(pinned.section(QLatin1Char('\n'), 1, 3)),
+             qPrintable(QStringLiteral("the pinned pixel changed when the pointer "
+                                       "left:\nwas:\n%1\nnow:\n%2")
+                            .arg(pinned, afterLeaving)));
+    QVERIFY2(afterLeaving.contains(QStringLiteral("release"), Qt::CaseInsensitive),
+             qPrintable(afterLeaving));
+}
+
+void TestWorkspaceWalkthrough::the_pixel_read_out_is_the_one_the_file_holds_at_that_position()
+{
+    // ⚑ WRITTEN BECAUSE A NEGATIVE CHECK EXPOSED A GAP. The case above compares
+    // what the panel says against what the viewport samples, so a sampler that
+    // scaled every value would satisfy both halves and stay green. The
+    // expectation here comes from the FIXTURE instead: row_order_marker.tif is
+    // 8x8 with a bright 3x3 block at the picture's TOP-LEFT and one mid-grey
+    // pixel at the TOP-RIGHT, asymmetric in both axes and independently checked
+    // in tests/test_image_decode.cpp.
+    //
+    // That also makes this the one case that can catch a reading taken from a
+    // flipped image: at (1, 1) the marker reads 255 and its mirror reads 0.
+    constexpr int kMarker = 255;   // top-left 3x3
+    constexpr int kTell = 128;     // single pixel, top-right
+
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("row_order_marker.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    QVERIFY(viewport);
+    QCOMPARE(viewport->record().width, 8);
+
+    QCOMPARE(viewport->sampleImageAt(1, 1), QVector<double>{double(kMarker)});
+    QCOMPARE(viewport->sampleImageAt(1, 6), QVector<double>{0.0});
+    QCOMPARE(viewport->sampleImageAt(7, 0), QVector<double>{double(kTell)});
+
+    // And the number a reader actually sees is that one. Clicked rather than
+    // hovered: a click names the pixel it landed on without racing the X
+    // server's own pointer.
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, 1.0, 1.0));
+    QTest::qWait(80);
+    const QString said = pointPanelText(&window);
+    QVERIFY2(said.contains(QString::number(kMarker)), qPrintable(said));
+
+    // The brightest value the type allows is also the top of this image's own
+    // range, so the readout warns rather than reporting it as an ordinary
+    // brightness.
+    QVERIFY2(said.contains(QStringLiteral("gradient"), Qt::CaseInsensitive),
+             qPrintable(QStringLiteral("a saturated pixel was reported without "
+                                       "saying what that costs:\n%1").arg(said)));
+}
+
+void TestWorkspaceWalkthrough::clicking_another_pixel_moves_the_pin_rather_than_releasing_it()
+{
+    // ⚑ FOUND BY DRIVING THE APPLICATION. With no field measured, every point
+    // index is -1, so a release rule that compared indices treated any two
+    // pixels as the same reading: clicking around the picture toggled one
+    // reading on and off instead of moving it, and the panel kept showing the
+    // first pixel clicked while appearing to respond.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("row_order_marker.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    QVERIFY(viewport);
+
+    // Two pixels the fixture states different values for: the bright block at
+    // the top left, and a dark one lower down.
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, 1.0, 1.0));
+    QTest::qWait(60);
+    const QString first = pointPanelText(&window);
+    QVERIFY2(first.contains(QStringLiteral("255")), qPrintable(first));
+
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, 1.0, 6.0));
+    QTest::qWait(60);
+    const QString second = pointPanelText(&window);
+    QVERIFY2(second.contains(QStringLiteral("pinned"), Qt::CaseInsensitive),
+             qPrintable(QStringLiteral("clicking another pixel released the pin "
+                                       "instead of moving it:\n%1").arg(second)));
+    QVERIFY2(second.contains(QStringLiteral("At pixel 1, 6")), qPrintable(second));
+
+    // And clicking the same pixel again does release it, which is the way out
+    // the panel names.
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, 1.0, 6.0));
+    QTest::qWait(60);
+    QVERIFY2(!pointPanelText(&window).contains(QStringLiteral("Pinned"),
+                                               Qt::CaseSensitive),
+             qPrintable(pointPanelText(&window)));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

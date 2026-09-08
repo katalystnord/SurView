@@ -1879,6 +1879,36 @@ part5_body = """
     way to tell the two apart after the fact.
   </p>
 
+  <h2>Reading the exposure off the picture itself</h2>
+  <p>
+    All of the above is judged from the photograph, and the point panel
+    reads it out pixel by pixel from the moment an image is loaded, before
+    any correlation exists. Moving the pointer over the image reports what
+    the camera actually recorded there: the value the file holds, the type
+    it is stored in, and the range that type allows. Clicking pins the
+    reading so it can be looked at rather than chased.
+  </p>
+  <p>
+    The number is the <em>file's</em> own, not the brightness on screen.
+    Scientific images routinely occupy a small part of their type's range
+    - a 16-bit image sitting in 0 to 5000 would render very nearly black
+    - so the viewport stretches the intensity window for display. What
+    correlation works from is the file's value, so that is what is
+    reported, with the stretch stated beside it.
+  </p>
+  <div class="callout warn">
+    <p class="callout-label">A pixel at the extreme is a warning, not a value</p>
+    <p>
+      Where the sensor ran out of range, the speckle in those pixels is
+      gone rather than merely bright or dark: every clipped pixel holds
+      the same number, so a subset covering them carries no gradient at
+      all and the correlation there has nothing to lock onto. The readout
+      says so, along with how much of the image shares that value - a
+      handful of pixels is ordinary, a large share means the exposure is
+      wrong and no amount of care later will recover the pattern.
+    </p>
+  </div>
+
   <div class="status-note">
     This chapter covers the fundamentals that apply regardless of
     equipment. It does not yet cover camera and lens selection, or the

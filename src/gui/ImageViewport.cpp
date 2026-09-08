@@ -1308,6 +1308,7 @@ bool ImageViewport::loadImage(const QString &path)
         return false;
 
     m_imageActor->SetInputData(image);
+    m_imagePixels = image;
     applyDisplayMapping(record);
 
     if (!m_hasImage) {
@@ -1671,6 +1672,7 @@ void ImageViewport::showMessage(const QString &text)
 
     if (m_hasImage) {
         m_renderer->RemoveActor(m_imageActor);
+        m_imagePixels = nullptr;
         m_hasImage = false;
         m_renderWindow->Render();
     }
@@ -1679,6 +1681,26 @@ void ImageViewport::showMessage(const QString &text)
     m_hint->show();
     if (m_hintAction)
         m_hintAction->hide();
+}
+
+QVector<double> ImageViewport::sampleImageAt(int x, int y) const
+{
+    QVector<double> components;
+    if (!m_hasImage || !m_imagePixels)
+        return components;
+
+    int extent[6] = {0, 0, 0, 0, 0, 0};
+    m_imagePixels->GetExtent(extent);
+    if (x < extent[0] || x > extent[1] || y < extent[2] || y > extent[3])
+        return components;   // off the picture: absent, never zero
+
+    const int channels = m_imagePixels->GetNumberOfScalarComponents();
+    components.reserve(channels);
+    for (int channel = 0; channel < channels; channel++) {
+        components.append(
+            m_imagePixels->GetScalarComponentAsDouble(x, y, extent[4], channel));
+    }
+    return components;
 }
 
 void ImageViewport::applyDisplayMapping(ImageRecord &record)

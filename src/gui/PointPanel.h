@@ -27,16 +27,24 @@ class PointPanel : public QWidget
 public:
     explicit PointPanel(QWidget *parent = nullptr);
 
-    // Show what one point has to say. `pinned` changes only how the panel
-    // describes itself: the reading is the same either way.
-    void showReadout(const PointReadout &readout, bool pinned);
+    // Show what is under the pointer: what the CAMERA recorded there, and --
+    // once a run has produced one -- what the correlation MEASURED there.
+    //
+    // ⚑ The two are different claims and are never merged into one number. The
+    // camera lines are the photograph's own values, available from the moment
+    // an image is loaded; the field lines are a measurement, and exist only
+    // after a run. `pinned` changes only how the panel describes itself: the
+    // reading is the same either way.
+    void showReading(const QVector<ReadoutLine> &camera, const PointReadout &field,
+                     bool haveField, bool pinned);
 
-    // Back to the standing invitation, with no field to read.
+    // Back to the standing invitation, with no image to read at all.
     void clear();
 
 private:
-    void setInstruction(bool pinned, bool haveField);
+    void setInstruction(bool pinned, bool haveField, bool haveImage);
     void clearRows();
+    void addRows(const QVector<ReadoutLine> &lines);
 
     QLabel *m_instruction = nullptr;
     QWidget *m_rows = nullptr;

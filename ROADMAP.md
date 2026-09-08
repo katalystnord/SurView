@@ -333,8 +333,8 @@ a design pass first.
 - **Borrowed from upstream's GUI, smallest first.** David approved the whole
   list on 2026-09-03. The competitive section above says why each one is
   better than what we do; this is the commitment to do them. Five of the six
-  are small. The first two are DONE (2026-09-03 and 2026-09-08); the live
-  readout of the raw image value is the one to do next.
+  are small. The first three are DONE (2026-09-03 and 2026-09-08); units on
+  every numeric field is the one to do next.
 
   1. ~~**A permanent coordinate-frame legend in the viewport.**~~ DONE
      2026-09-03. A small panel
@@ -352,8 +352,8 @@ a design pass first.
      fast one, and "is this big enough to contain distinct pattern" is a
      visual question. Neither replaces the other. The panel now states the
      count at all times rather than only when it is too small.
-  3. **A live readout of the raw image value under the cursor**, before and
-     independent of any run. Ours reports a measured point after a
+  3. ~~**A live readout of the raw image value under the cursor**, before and
+     independent of any run.~~ DONE 2026-09-08. Ours reports a measured point after a
      correlation; this reports what the camera recorded, which is what a
      person wants while judging exposure, contrast and clipping. Pairs with
      the clipping figures the Record panel already computes.

@@ -487,6 +487,8 @@ void MainWindow::newProject()
     m_result = CorrelationResult();
     m_hasResult = false;
     m_pinnedPoint = -1;
+    m_pinned = false;
+    m_hoveredPixelValid = false;
 
     m_viewport->clearField();
     m_viewport->clearRoi();
@@ -1567,6 +1569,13 @@ void MainWindow::displayRecord(const ImageRecord &record)
         m_viewport->clearRoi();
 
     m_record->setRecord(shown);
+
+    // A different picture is a different set of pixels, so a reading taken on
+    // the last one says nothing about this one. The panel goes back to its
+    // invitation, which now names the gesture that works immediately.
+    m_pinned = false;
+    m_hoveredPixelValid = false;
+    showPoint(-1, QPoint(), false);
 }
 
 void MainWindow::rebuildTargetList(QVector<QTreeWidgetItem *> pending)
@@ -1608,51 +1617,87 @@ const CorrelationResult &MainWindow::frameResult(int frame) const
     return m_frames.at(frame).result;
 }
 
-void MainWindow::showPoint(int index)
+void MainWindow::showPoint(int index, const QPoint &pixel, bool pixelValid)
 {
-    if (!m_hasResult) {
+    // The camera half. Available from the moment an image is on screen, which
+    // is before any correlation exists and is when the question it answers --
+    // is this exposed properly, does the speckle here carry contrast -- is
+    // actually being asked.
+    QVector<ReadoutLine> camera;
+    if (m_viewport->hasImage()) {
+        const QVector<double> values =
+            pixelValid ? m_viewport->sampleImageAt(pixel.x(), pixel.y())
+                       : QVector<double>();
+        camera = pixelReadoutLines(
+            pixelReading(m_viewport->record(), pixel.x(), pixel.y(), values),
+            m_viewport->record());
+    }
+
+    if (camera.isEmpty() && !m_hasResult) {
         m_point->clear();
         return;
     }
-    m_point->showReadout(pointReadout(m_result, index), m_pinnedPoint >= 0);
+    m_point->showReading(camera, m_hasResult ? pointReadout(m_result, index)
+                                             : PointReadout(),
+                         m_hasResult, m_pinned);
 }
 
 void MainWindow::onFieldPointHovered(const QPointF &imagePixel, bool insideImage)
 {
+    m_hoveredPixel = imagePixel.toPoint();
+    m_hoveredPixelValid = insideImage;
+
     // A pinned reading is not disturbed by the pointer. That is the whole
     // point of pinning: a readout that follows the pointer cannot be read and
     // written down at the same time, because looking away erases it.
-    if (m_pinnedPoint >= 0)
+    if (m_pinned)
         return;
 
     if (!insideImage) {
-        showPoint(-1);
+        showPoint(-1, imagePixel.toPoint(), false);
         return;
     }
     showPoint(pointNearestTo(m_result, float(imagePixel.x()),
-                             float(imagePixel.y())));
+                             float(imagePixel.y())),
+              imagePixel.toPoint(), true);
 }
 
 void MainWindow::onFieldPointPicked(const QPointF &imagePixel)
 {
-    if (!m_hasResult)
+    // ⚑ Pinning needs an IMAGE, not a result. The camera reading is worth
+    // holding still for exactly the same reason a measured one is, and a click
+    // that did nothing until a correlation had been run would be a gesture the
+    // panel invites and the window refuses.
+    if (!m_viewport->hasImage())
         return;
 
-    const int index = pointNearestTo(m_result, float(imagePixel.x()),
-                                     float(imagePixel.y()));
+    const QPoint pixel = imagePixel.toPoint();
+    const int index = m_hasResult ? pointNearestTo(m_result, float(imagePixel.x()),
+                                                   float(imagePixel.y()))
+                                  : -1;
 
-    // Clicking the pinned point again releases it; clicking a different one
-    // moves the pin there. Clicking away from the field releases too, which is
-    // the reading that matches what a user just did: they pointed somewhere
-    // there is no measurement.
-    if (m_pinnedPoint >= 0 && (index < 0 || index == m_pinnedPoint)) {
+    // Clicking the pinned reading again releases it; clicking elsewhere moves
+    // the pin there.
+    //
+    // ⚑ FOUND BY DRIVING THE APPLICATION, not by a test. Asking "is this the
+    // pinned POINT" alone made every click release the pin while no field
+    // existed: with nothing measured both indices are -1, so any two pixels
+    // compared equal and clicks merely toggled the same reading on and off.
+    // The pixel is what identifies a camera reading; the point index only means
+    // anything once there is a field for it to index into.
+    const bool sameReading =
+        pixel == m_pinnedPixel || (m_hasResult && index >= 0 && index == m_pinnedPoint);
+    if (m_pinned && sameReading) {
+        m_pinned = false;
         m_pinnedPoint = -1;
-        showPoint(index);
+        showPoint(index, pixel, true);
         return;
     }
 
+    m_pinned = true;
+    m_pinnedPixel = pixel;
     m_pinnedPoint = index;
-    showPoint(index);
+    showPoint(index, pixel, true);
 }
 
 void MainWindow::displayFrame(int frame)
@@ -1681,7 +1726,8 @@ void MainWindow::displayFrame(int frame)
     // different point of a different frame.
     if (frameChanged) {
         m_pinnedPoint = -1;
-        showPoint(-1);
+        m_pinned = false;
+        showPoint(-1, m_hoveredPixel, m_hoveredPixelValid);
     }
 
     updateActionStates();
@@ -1735,7 +1781,10 @@ void MainWindow::discardStaleResult()
     m_result = CorrelationResult();
     m_viewport->clearField();
     m_pinnedPoint = -1;
-    m_point->clear();
+    m_pinned = false;
+    // Not clear(): the image is still on screen, so what the camera recorded
+    // is still readable. Only the measurement is gone.
+    showPoint(-1, m_hoveredPixel, m_hoveredPixelValid);
     m_resultsItem->setText(0, tr("Results - none"));
     m_resultsItem->setToolTip(0, QString());
     log(tr("Previous displacement field discarded - it was measured over a "
