@@ -26,8 +26,11 @@ Measured against pyALDIC, iCorrVision-2D, Ncorr, and the commercial tools
 the idiom of the field, and these are what we do not have yet:
 
 
-- **Binaries.** Everyone else ships installers. We ship a build. `install()`
-  rules exist now, so this is packaging rather than plumbing.
+- **Binaries.** Everyone else ships installers. `tools/make-appimage.sh` builds
+  a single-file AppImage now, with a desktop entry and an icon, and refuses to
+  package against an engine that is not the pin. What is left: a `.deb`, which
+  needs a decision about which VTK and OpenCV versions the target distributions
+  actually carry, and a release workflow that publishes the AppImage on a tag.
 - **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
   can; the application has no path to it.
 - **A line probe.** We plot against frame and have virtual extensometers;

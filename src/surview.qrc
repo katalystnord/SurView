@@ -1,0 +1,15 @@
+<!--
+  The application icon, compiled into the binary.
+
+  ⚑ A resource rather than a file read from disk at start-up: the icon has to
+  be there whether SurView is running from an installed prefix, from an
+  AppImage's own mount point, or straight out of a developer's build tree, and
+  a path relative to the executable is a different path in each of those.
+  The packaged copy in share/icons is what the DESKTOP needs; this is what the
+  running window needs.
+-->
+<RCC>
+  <qresource prefix="/">
+    <file alias="surview.svg">../packaging/surview.svg</file>
+  </qresource>
+</RCC>

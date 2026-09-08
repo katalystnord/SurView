@@ -65,6 +65,9 @@ target_link_libraries(surview_core PUBLIC
 
 # --- gui: the widgets ------------------------------------------------------
 add_library(surview_gui STATIC
+    # The application icon, compiled in. See surview.qrc for why it is a
+    # resource rather than a file found beside the binary.
+    surview.qrc
     gui/MainWindow.cpp
     gui/MainWindow.h
     gui/ComparisonWindow.cpp
@@ -118,6 +121,15 @@ vtk_module_autoinit(
 include(GNUInstallDirs)
 
 install(TARGETS SurView RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR})
+
+# ⚑ The desktop entry and the icon are what turn an installed tree into an
+# application a desktop can OFFER, rather than a binary somebody has to know the
+# path of. Both are also what an AppImage is built from: linuxdeploy reads the
+# .desktop for the name and the Exec line, and takes the icon from here.
+install(FILES ${CMAKE_SOURCE_DIR}/packaging/surview.desktop
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/applications)
+install(FILES ${CMAKE_SOURCE_DIR}/packaging/surview.svg
+        DESTINATION ${CMAKE_INSTALL_DATADIR}/icons/hicolor/scalable/apps)
 
 install(DIRECTORY ${CMAKE_SOURCE_DIR}/examples/
         DESTINATION ${CMAKE_INSTALL_DATADIR}/surview/examples)

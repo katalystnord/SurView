@@ -28,6 +28,24 @@ sent upstream are actually present in the fork's source:
 tools/check-engine.sh [path-to-OpenCorr-checkout]
 ```
 
+## Packaging
+
+A single-file AppImage, which is how somebody who did not build SurView gets to
+run it:
+
+```sh
+tools/make-appimage.sh          # dist/SurView-<version>-x86_64.AppImage
+tools/make-appimage.sh --stage-only   # build and stage only, no packaging tools needed
+```
+
+It needs `patchelf`, `linuxdeploy` and `linuxdeploy-plugin-qt` on PATH; the
+script names what is missing rather than substituting anything. The AppImage
+carries Qt, VTK and OpenCV with it, so it runs on a machine that has never had
+them installed - which is the point, and also why it is large. It refuses to
+package against an OpenCorr checkout that is not the pinned commit: every field
+SurView exports states that commit, and a package built against something else
+would attribute measurements to an engine that did not make them.
+
 ## Status
 
 Working, and narrow. Import a reference image and a sequence of targets, draw or

@@ -586,6 +586,55 @@ that was never measured is blank here, not zero: drawn as a zero it would take
 the same colour as a point the first solve got right, so every hole in the field
 would fill in with the most reassuring reading available.
 
+### Packaging: the AppImage (2026-09-08)
+
+`tools/make-appimage.sh` builds a single-file AppImage. This is the gap the
+competitive review named first: every other tool a working scientist might reach
+for ships something they can download and run, and we shipped a build. That is
+reasonable to ask of a contributor and unreasonable to ask of the colleague they
+want to hand the tool to, who is the person this project exists for.
+
+⚑ **AppImage before .deb, deliberately.** SurView links VTK 9.5 and OpenCV
+4.10. A `.deb` would name them as dependencies and install only on
+distributions carrying those exact major versions, which is a small and
+shrinking set; an AppImage carries them, so it runs on a machine that has never
+heard of VTK. The price is a large file and a bundle that must be rebuilt to
+pick up a security fix in anything inside it, and both are stated rather than
+left to be discovered. The `.deb` still wants doing, and wants a survey of what
+the target distributions actually ship first.
+
+⚑ **IT REFUSES TO PACKAGE AGAINST AN ENGINE THAT IS NOT THE PIN.**
+`SURVIEW_OPENCORR_PIN` is compiled in and every exported `.vtu` states it, so a
+package built from a drifted checkout would hand out files attributing
+measurements to an engine that never made them. The configure-time check is
+advisory on purpose (see cmake/OpenCorrPin.cmake); this one is not, because a
+package leaves the machine.
+
+Three things worth not re-deriving:
+
+- **A Release build, always.** The debug build is around forty times slower on a
+  real correlation, which is the difference between a tool and a demo.
+- **`--stage-only` exists so the half that can go wrong quietly is checkable
+  without the packaging tools**: what lands in the staged tree, and whether the
+  application finds its own examples from it. `exampleSearchPaths()` looks for
+  `../share/surview/examples` beside the binary, which is exactly the AppDir
+  layout -- verified by running the staged binary and reading the Open Example
+  menu off the screen, not by assuming.
+- **The staged tree is checked before it is sealed.** A missing examples folder
+  is invisible until a first-time reader opens that menu and finds nothing, and
+  that reader is precisely who the package is for.
+
+⚑ **The icon is a Qt RESOURCE, and needs `Q_INIT_RESOURCE`.** It lives in a
+static library, and a linker discards any object of one that nothing references:
+without that call the icon compiles, packages, and is silently absent at run
+time out of an entirely ordinary-looking build. Found by
+`the_window_carries_the_application_icon`, which asks for the icon's PIXELS
+rather than for the QIcon being non-null -- a QIcon built from something nothing
+can decode is perfectly non-null and draws nothing, which is how a missing
+image-format plugin would slip through. And the macro must NOT sit in an
+anonymous namespace: it declares the generated function at the enclosing
+namespace scope, so there it names a symbol nothing defines and the link fails.
+
 ### What the camera recorded, at one pixel (2026-09-08)
 
 The point panel answered what a CORRELATION found and had nothing to say until

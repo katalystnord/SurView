@@ -1,0 +1,13 @@
+[Desktop Entry]
+Type=Application
+Version=1.0
+Name=SurView DIC
+GenericName=Digital Image Correlation
+Comment=Measure displacement and strain from speckle images
+Exec=SurView %F
+Icon=surview
+Terminal=false
+Categories=Science;Physics;Engineering;
+Keywords=DIC;strain;displacement;speckle;correlation;metrology;
+MimeType=image/tiff;image/png;image/jpeg;image/bmp;
+StartupNotify=true

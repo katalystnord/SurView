@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  SurView DIC application icon.
+
+  The same mark the manual and the project pages carry, kept in one place and
+  installed rather than redrawn: a speckle pattern is what this application
+  measures, so the icon is a speckle pattern - dots of varying size and colour
+  on the dark ground the workspace itself uses. Scalable, because a desktop
+  entry is rendered at whatever size the shell asks for.
+-->
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 32 32">
+  <rect x="1" y="1" width="30" height="30" rx="7" fill="#0f1720"/>
+  <circle cx="9" cy="9" r="2" fill="#4aa3e0"/>
+  <circle cx="16" cy="10" r="1.4" fill="#8fd3c8"/>
+  <circle cx="23" cy="8" r="1.8" fill="#d9d94a"/>
+  <circle cx="10" cy="17" r="1.5" fill="#2bb8a6"/>
+  <circle cx="17" cy="18" r="2.2" fill="#e8b13c"/>
+  <circle cx="24" cy="16" r="1.5" fill="#e8743c"/>
+  <circle cx="8" cy="24" r="1.7" fill="#4aa3e0"/>
+  <circle cx="16" cy="24" r="1.4" fill="#8fd3c8"/>
+  <circle cx="24" cy="23" r="2" fill="#d9531e"/>
+</svg>

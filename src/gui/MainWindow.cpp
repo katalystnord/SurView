@@ -17,6 +17,7 @@
 #include "core/StrainFit.h"
 
 #include <QApplication>
+#include <QIcon>
 #include <QCoreApplication>
 #include <QPainter>
 #include <QMenu>
@@ -122,6 +123,22 @@ enum RecordKind { None = 0, Reference = 1, Target = 2, Frame = 3 };
 MainWindow::MainWindow(QWidget *parent)
     : QMainWindow(parent)
 {
+    // The window carries the application's own icon, from the resource compiled
+    // into the binary. Set here rather than only in main(): a window is what a
+    // desktop's task list shows, and this is also the only place a test can ask
+    // whether it was set at all.
+    //
+    // ⚑ Q_INIT_RESOURCE FIRST, and it is not ceremony. The resource lives in a
+    // STATIC library, and a linker discards any object of one that nothing
+    // references -- so without this the icon is compiled, packaged, and then
+    // silently absent at run time, out of a perfectly ordinary-looking build.
+    // ⚑ ...and NOT from inside an anonymous namespace, which is where this
+    // first went: the macro declares the generated function at the enclosing
+    // namespace scope, so there it resolved to a symbol nothing defines and the
+    // link failed outright. Here it names the one the resource compiler wrote.
+    Q_INIT_RESOURCE(surview);
+    setWindowIcon(QIcon(QStringLiteral(":/surview.svg")));
+
     setWindowTitle(tr("SurView DIC"));
     resize(1360, 860);
 

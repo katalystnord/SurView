@@ -31,6 +31,8 @@
 #include <QCheckBox>
 #include <QWheelEvent>
 #include <QComboBox>
+#include <QIcon>
+#include <QPixmap>
 #include <QFrame>
 #include <QLabel>
 #include <QMenu>
@@ -371,6 +373,8 @@ private slots:
     void a_camera_reading_can_be_pinned_without_a_field_to_read();
     void the_pixel_read_out_is_the_one_the_file_holds_at_that_position();
     void clicking_another_pixel_moves_the_pin_rather_than_releasing_it();
+
+    void the_window_carries_the_application_icon();
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
@@ -2622,6 +2626,26 @@ void TestWorkspaceWalkthrough::clicking_another_pixel_moves_the_pin_rather_than_
     QVERIFY2(!pointPanelText(&window).contains(QStringLiteral("Pinned"),
                                                Qt::CaseSensitive),
              qPrintable(pointPanelText(&window)));
+}
+
+void TestWorkspaceWalkthrough::the_window_carries_the_application_icon()
+{
+    // ⚑ A desktop entry names an icon and a task list shows one; an application
+    // that ships an icon file and never sets it looks, on screen, exactly like
+    // one that has none. Asked of the icon's own PIXELS rather than of the
+    // QIcon being non-null: a QIcon built from a path nothing can decode is
+    // perfectly non-null and draws nothing, which is how a missing image-format
+    // plugin would slip through.
+    MainWindow window;
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    const QIcon icon = window.windowIcon();
+    QVERIFY2(!icon.isNull(), "the window has no icon at all");
+
+    const QPixmap drawn = icon.pixmap(64, 64);
+    QVERIFY2(!drawn.isNull() && drawn.width() > 0,
+             "the window icon renders to nothing, so nothing will be drawn for it");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
