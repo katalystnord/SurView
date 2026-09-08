@@ -178,6 +178,13 @@ def main():
     ap.add_argument("--include-slow", action="store_true",
                     help="do not exclude the slow tests")
     ap.add_argument("--timeout", type=int, default=600)
+    ap.add_argument("--jobs", type=int, default=0,
+                    help="build with this many parallel jobs, and run the tests "
+                         "with this many OpenMP threads. Default: however many "
+                         "the tools choose, which is every core on the machine. "
+                         "Give a number when something else is using the "
+                         "machine too -- a mutation run is hours of full load "
+                         "and it is a poor neighbour at its natural width.")
     ap.add_argument("--json", help="write the full result to this file")
     args = ap.parse_args()
 
@@ -241,9 +248,24 @@ def main():
         print(dirty, file=sys.stderr)
         return 2
 
+    # ⚑ mold, when it is on the machine. Nearly all of a mutant's cost here is
+    # not compiling the one file that changed: it is relinking the application
+    # and every test executable against VTK, Qt and the engine. Measured on this
+    # project, the linker is the difference between a full sweep being an
+    # overnight job and a two-day one.
+    if shutil.which("mold"):
+        configure.append("-DCMAKE_EXE_LINKER_FLAGS=-fuse-ld=mold")
+        print("Linking with mold.")
+
+    build_args = ["--parallel", str(args.jobs)] if args.jobs > 0 else []
+    if args.jobs > 0:
+        # The tests thread over POIs with OpenMP, so capping the build alone
+        # still leaves ctest taking the whole machine.
+        os.environ["OMP_NUM_THREADS"] = str(args.jobs)
+
     print("=== Baseline: the suite must be green before anything is broken ===")
     subprocess.run(configure, check=True, stdout=subprocess.DEVNULL)
-    if subprocess.run(["cmake", "--build", str(build)],
+    if subprocess.run(["cmake", "--build", str(build)] + build_args,
                       stdout=subprocess.DEVNULL).returncode != 0:
         print("mutants.py: the tree does not build. Fix that first.", file=sys.stderr)
         return 2
@@ -276,7 +298,7 @@ def main():
         backup = path.read_text()
         try:
             path.write_text(m["mutated"])
-            built = subprocess.run(["cmake", "--build", str(build)],
+            built = subprocess.run(["cmake", "--build", str(build)] + build_args,
                                    stdout=subprocess.DEVNULL,
                                    stderr=subprocess.DEVNULL).returncode
             if built != 0:
@@ -301,7 +323,7 @@ def main():
               f"   (~{rate:.1f}s/mutant)")
 
     # Rebuild clean, so the tree is left as it was found.
-    subprocess.run(["cmake", "--build", str(build)], stdout=subprocess.DEVNULL)
+    subprocess.run(["cmake", "--build", str(build)] + build_args, stdout=subprocess.DEVNULL)
 
     scored = len(killed) + len(survived)
     score = (100.0 * len(killed) / scored) if scored else 0.0
