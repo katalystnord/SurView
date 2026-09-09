@@ -1006,6 +1006,16 @@ those tests exist to check.
   code under test, prove the property that matters independently - as
   `moving_down_and_right_on_screen_moves_down_and_right_in_the_image` does for
   the coordinate frame, asserting only the direction of travel.
+- ⚑ **A FIXTURE THAT AGREES WITH ITSELF CANNOT SEE THE DEFECT.** Earned four
+  times over in one night of mutation testing, always the same way: a square is
+  its own bounding box, so a broken point-in-polygon test still answers it; a
+  circle has one radius, so a circle and an ellipse can swap formulas and only
+  the ellipse notices; a displacement with one component at zero cannot tell a
+  sum of squares from a difference of them; and a record with BOTH its count
+  and its counted-flag cleared cannot tell an AND from an OR, because the lying
+  state is the one where they disagree. Build fixtures that are lopsided in
+  every axis the code could confuse - and when a case fails to catch the
+  mutation it was written for, the fixture is usually the reason, not the rule.
 - **Add coverage as part of the same change, never as an afterthought.**
 
 ### Layout

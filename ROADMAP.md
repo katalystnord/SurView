@@ -899,7 +899,24 @@ as a backlog with everything in it.
 
 ## Test and tooling debt
 
-- **Mutation testing** exists (`tools/mutants.py`) and is not routine.
+- **Mutation testing** exists (`tools/mutants.py`) and was run in earnest for
+  the first time on 2026-09-09. The 22 core sources other than
+  `Correlation.cpp` scored **61.7%**: of 637 viable mutants, 244 changed the
+  meaning of a line and no test went red. `Correlation.cpp` is swept
+  separately, against the complete suite including the slow accuracy cases,
+  since those are what cover it.
+
+  It is still not ROUTINE, which is the actual debt: a sweep costs hours and
+  nothing runs one on a schedule. What the first one bought is in the commits
+  of 2026-09-09; the survivors that remain are the work list, largest first -
+  `Roi.cpp` (the crossing test and its ring), `KnownAnswer.cpp`, `Recovery.cpp`,
+  `ReferenceUpdate.cpp`, `PoiGrid.cpp`, `FieldMesh.cpp`, `Examples.cpp`.
+
+  Two things worth not re-deriving about running one. A mutant costs 6.5 s to
+  build with mold and 90 s to test, so the slow cases are excluded by default
+  and the file they cover is swept separately; and a sweep edits `src/` in
+  place, so it wants its own git worktree if anyone is working in the tree
+  meanwhile.
 - **Coverage reporting** is present but not tracked over time.
 - The **walkthrough suite races with the X server's own pointer motion**;
   synthetic and real mouse moves arrive in an order that is not deterministic.
