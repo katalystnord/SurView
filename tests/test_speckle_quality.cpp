@@ -35,11 +35,28 @@
 // it: widening the scan from the region's bounding box to the whole image
 // changes no answer, because the membership test still excludes the same
 // pixels. The box is an optimisation and the polygon is the restriction.
+//
+// ⚑ AND ONE MORE, FROM THE SWEEP OF 2026-09-09, DELIBERATELY NOT CHASED.
+// Narrowing the scan's `y <= last` to `y < last` drops the final row of every
+// region, and no property here can see it: every comparison between two
+// regions shifts by the same one row, so they go on agreeing and disagreeing
+// exactly as before. The only thing that would catch it is an absolute
+// expectation for the mean -- a number taken from the implementation, which is
+// worth less than no test at all, since it would agree with whatever the code
+// does. What it costs if it is ever wrong is one row of pixels in a mean over
+// tens of thousands, well below the two figures the estimate is quoted to.
+//
+// Reading one row PAST the image is a different matter and is caught, by an
+// out-of-bounds access into the gradient map that takes the process down. The
+// case for it is below: a region drawn over the picture's edge, which is the
+// only thing that asks the clamp to do its job.
 
 #include "core/Roi.h"
 #include "core/SpeckleQuality.h"
 
 #include <QTest>
+
+#include <cmath>
 
 namespace
 {
@@ -71,6 +88,8 @@ private slots:
     void a_region_outside_the_picture_measures_nothing();
     void a_region_over_the_specimen_resolves_better_than_one_over_the_background();
     void a_region_that_is_not_a_rectangle_measures_only_what_is_inside_it();
+    void a_subset_radius_of_one_pixel_is_the_smallest_there_is();
+    void a_region_reaching_past_the_picture_measures_the_picture();
 };
 
 void TestSpeckleQuality::a_speckled_region_reports_what_it_can_resolve()
@@ -210,6 +229,58 @@ void TestSpeckleQuality::a_region_that_is_not_a_rectangle_measures_only_what_is_
              qPrintable(QStringLiteral("a triangle and its bounding box measured "
                                        "the same speckle: %1 against %2")
                             .arg(inside.meanSssig).arg(around.meanSssig)));
+}
+
+
+void TestSpeckleQuality::a_subset_radius_of_one_pixel_is_the_smallest_there_is()
+{
+    // The boundary of the refusal, which the cases above step over: they ask
+    // for 8 and 24, so a guard at "less than 1" and one at "less than 2" are
+    // indistinguishable to them. One pixel of radius is a 3 by 3 subset, which
+    // is small and real; zero is not a subset at all.
+    const QString image = fixture(QStringLiteral("shift_reference.tif"));
+
+    const SpeckleQuality none = speckleQualityIn(image, boxAt(20, 20, 60, 60), 0);
+    QVERIFY2(!none.measured, "a radius of zero is refused");
+    QVERIFY2(none.note.contains(QStringLiteral("at least 1")), qPrintable(none.note));
+
+    const SpeckleQuality one = speckleQualityIn(image, boxAt(20, 20, 60, 60), 1);
+    QVERIFY2(one.measured, "a radius of one pixel is measured, not refused");
+
+    const SpeckleQuality negative = speckleQualityIn(image, boxAt(20, 20, 60, 60), -4);
+    QVERIFY2(!negative.measured, "and a negative radius is refused too");
+}
+
+void TestSpeckleQuality::a_region_reaching_past_the_picture_measures_the_picture()
+{
+    // ⚑ The scan is clamped to the last row and column of the image, and a
+    // region drawn over the edge is the only thing that asks it to be. Every
+    // other case here sits comfortably inside the picture, where the clamp
+    // never binds -- so it could read one row PAST the image, which is an
+    // out-of-bounds access into the gradient map, and nothing would notice.
+    //
+    // The property is that clamping does not change the answer: a region
+    // covering the whole picture and one covering the whole picture plus a
+    // margin beyond it measure the same pixels, because there are no others to
+    // measure.
+    const QString image = fixture(QStringLiteral("shift_reference.tif"));
+    const int width = 240;
+    const int height = 160;
+
+    const SpeckleQuality exact = speckleQualityIn(image, boxAt(0, 0, width, height), 16);
+    QVERIFY2(exact.measured, "a region covering the whole picture is measured");
+
+    const SpeckleQuality overhanging =
+        speckleQualityIn(image, boxAt(-50, -50, width + 100, height + 100), 16);
+    QVERIFY2(overhanging.measured, "and so is one drawn over its edges");
+
+    QVERIFY2(std::abs(overhanging.meanSssig - exact.meanSssig) < 1e-9,
+             qPrintable(QStringLiteral("the overhanging region measured %1 against %2: "
+                                       "clamping the scan to the picture changed the answer")
+                            .arg(overhanging.meanSssig)
+                            .arg(exact.meanSssig)));
+    QVERIFY2(std::abs(overhanging.resolutionPx - exact.resolutionPx) < 1e-12,
+             "and reports the same resolution");
 }
 
 QTEST_MAIN(TestSpeckleQuality)
