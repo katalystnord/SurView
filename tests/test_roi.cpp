@@ -35,6 +35,34 @@ private slots:
     void a_region_with_no_holes_has_no_subset_reaching_one();
     void two_corners_the_same_distance_away_resolve_the_same_way_every_time();
     void a_corner_exactly_at_the_edge_of_reach_is_still_within_it();
+
+    // The crossing test itself, from the sweep of 2026-09-09: which points the
+    // run measures at all is decided here, so a wrong answer puts subsets on
+    // background that never moves, and background correlates confidently
+    // against itself.
+    //
+    // ⚑ Two mutants in this file survive on purpose, both equivalent by an
+    // argument about parity rather than by an input nobody has found yet:
+    //
+    //   ring.size() < 3 -> < 2      A two-corner ring has two edges that are
+    //                               the same segment walked twice, so any
+    //                               crossing is counted twice and the parity
+    //                               is always even. It can never report
+    //                               "inside", guard or no guard.
+    //   (yi > y) -> (yi >= y)       A vertex sitting exactly on the scanline
+    //                               makes BOTH its edges cross where neither
+    //                               did. Two crossings cancel, for the same
+    //                               reason. This robustness is why the
+    //                               convention is a strict comparison.
+    //
+    // The same two survive PatternFab's copy of this algorithm, which is where
+    // the arguments were first worked out.
+    void the_notch_of_a_concave_region_is_outside_it();
+    void a_slanted_boundary_is_crossed_where_it_actually_lies();
+    void a_point_exactly_on_a_boundary_is_decided_the_same_way_every_time();
+    void a_ring_of_fewer_than_three_corners_encloses_nothing();
+    void a_subset_of_no_size_reaches_only_what_it_sits_on();
+    void moving_a_corner_that_does_not_exist_leaves_the_region_alone();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -319,6 +347,121 @@ void TestRoi::a_corner_exactly_at_the_edge_of_reach_is_still_within_it()
 
     QCOMPARE(cornerNear(roi, QPoint(18, 10), 8.0), 0);
     QCOMPARE(cornerNear(roi, QPoint(19, 10), 8.0), -1);
+}
+
+
+void TestRoi::the_notch_of_a_concave_region_is_outside_it()
+{
+    // ⚑ A square is its OWN bounding box, so almost any broken crossing test
+    // still answers one correctly -- and every region fixture in this file is
+    // a square. An L has its notch inside the bounding box and outside the
+    // shape, which is the smallest fixture that can tell a real crossing test
+    // from a box test.
+    //
+    // What is at stake: this decides which points the run measures at all. A
+    // region read as its own bounding box puts subsets on background that
+    // never moves, and those correlate confidently against themselves.
+    RegionOfInterest ell;
+    ell.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 40),
+                    QPoint(40, 40), QPoint(40, 100), QPoint(0, 100)};
+
+    QVERIFY2(regionContains(ell, 20, 20), "the corner of the L is inside it");
+    QVERIFY2(regionContains(ell, 80, 20), "the foot of the L is inside it");
+    QVERIFY2(regionContains(ell, 20, 80), "the upright of the L is inside it");
+    QVERIFY2(!regionContains(ell, 80, 80),
+             "the notch is outside the region even though it is inside its bounding box");
+}
+
+void TestRoi::a_slanted_boundary_is_crossed_where_it_actually_lies()
+{
+    // The hypotenuse of this triangle runs from (0, 100) to (100, 0), so at
+    // y = 50 it sits at x = 50. Points either side of that are the only thing
+    // that can catch the edge interpolation computed with the wrong
+    // difference, and a region whose every edge is axis-aligned never
+    // exercises the arithmetic at all.
+    RegionOfInterest triangle;
+    triangle.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(0, 100)};
+
+    QVERIFY2(regionContains(triangle, 10, 10), "well inside the triangle is inside");
+    QVERIFY2(regionContains(triangle, 45, 50), "just inside the slanted edge is inside");
+    QVERIFY2(!regionContains(triangle, 55, 50), "just outside the slanted edge is outside");
+    QVERIFY2(!regionContains(triangle, 90, 90),
+             "beyond the hypotenuse is outside, which only the closing edge can decide");
+}
+
+void TestRoi::a_point_exactly_on_a_boundary_is_decided_the_same_way_every_time()
+{
+    // ⚑ A grid lands on round numbers, so a boundary at a round number is a
+    // place points really sit. The rule is half-open -- the region owns one of
+    // each pair of opposite edges and not the other -- which is what stops two
+    // abutting regions from either double-counting a point or dropping it.
+    // Which way round it falls is a fact about this code, checked here rather
+    // than assumed, and it is the opposite of what a first reading suggests.
+    RegionOfInterest square;
+    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+
+    QVERIFY2(regionContains(square, 0, 50), "a point on the left boundary is inside");
+    QVERIFY2(!regionContains(square, 100, 50), "a point on the right boundary is not");
+}
+
+void TestRoi::a_ring_of_fewer_than_three_corners_encloses_nothing()
+{
+    // Two corners are a line, and a line has no inside. Asked anyway -- which
+    // happens while a region is still being drawn -- the answer is no, for
+    // every position, rather than whatever the crossing count of a degenerate
+    // ring happens to come to.
+    RegionOfInterest line;
+    line.vertices = {QPoint(0, 0), QPoint(100, 0)};
+    QVERIFY2(!regionContains(line, 50, 0), "a two-corner ring contains nothing, not even its own line");
+    QVERIFY2(!regionContains(line, 50, 50), "nor anything else");
+
+    RegionOfInterest single;
+    single.vertices = {QPoint(0, 0)};
+    QVERIFY2(!regionContains(single, 0, 0), "and one corner contains nothing either");
+
+    const RegionOfInterest nothing;
+    QVERIFY2(!regionContains(nothing, 0, 0), "and an empty region contains nothing");
+}
+
+void TestRoi::a_subset_of_no_size_reaches_only_what_it_sits_on()
+{
+    // ⚑ A radius of zero is one pixel, not none: the subset is 2r + 1 across,
+    // so at r = 0 it is the point itself. The existing cases use a 16 px
+    // radius, where a square of 32 and one of 33 both reach a hole 10 px away
+    // and neither the width nor its "+ 1" can be seen.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+
+    QVERIFY2(subsetReachesAHole(region, 40, 50, 0),
+             "a subset of no radius sitting exactly on the hole's edge reaches it");
+    QVERIFY2(!subsetReachesAHole(region, 39, 50, 0),
+             "and one pixel outside it does not");
+
+    // A negative radius is not a subset at all, and must not be turned into
+    // one by the arithmetic that follows.
+    QVERIFY2(!subsetReachesAHole(region, 50, 50, -1),
+             "a negative radius reaches nothing, even sitting inside the hole");
+}
+
+void TestRoi::moving_a_corner_that_does_not_exist_leaves_the_region_alone()
+{
+    // Both ends of the index check, on their own. An index past the end and a
+    // negative one are separate conditions, and a region handed either must
+    // come back unchanged rather than gaining a corner or losing one.
+    RegionOfInterest roi;
+    roi.vertices << QPoint(10, 10) << QPoint(90, 10) << QPoint(90, 70);
+
+    const RegionOfInterest tooLarge = withCornerMoved(roi, 3, QPoint(0, 0));
+    QCOMPARE(tooLarge.vertices, roi.vertices);
+
+    const RegionOfInterest negative = withCornerMoved(roi, -1, QPoint(0, 0));
+    QCOMPARE(negative.vertices, roi.vertices);
+
+    // And the last real corner still moves, so the check is not simply
+    // refusing everything.
+    const RegionOfInterest moved = withCornerMoved(roi, 2, QPoint(5, 5));
+    QCOMPARE(moved.vertices.at(2), QPoint(5, 5));
 }
 
 QTEST_MAIN(TestRoi)
