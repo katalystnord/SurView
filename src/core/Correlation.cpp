@@ -23,7 +23,6 @@ namespace {
 // POIs handed to the engine per call. Small enough that Stop feels immediate
 // and the progress bar moves, large enough that the engine's own OpenMP
 // parallelism still has work to spread across threads.
-constexpr int kChunkPoints = 2000;
 
 int workerThreadCount()
 {
@@ -292,11 +291,11 @@ void CorrelationRunner::run()
             const QString stageName = stage == 0
                                           ? tr("estimating displacement")
                                           : tr("refining to sub-pixel");
-            for (int start = 0; start < total; start += kChunkPoints) {
+            for (int start = 0; start < total; start += m_chunkPoints) {
                 if (m_cancelled)
                     break;
 
-                const int count = std::min(kChunkPoints, total - start);
+                const int count = std::min(m_chunkPoints, total - start);
                 std::vector<POI2D> chunk(queue.begin() + start,
                                          queue.begin() + start + count);
 
@@ -411,10 +410,10 @@ void CorrelationRunner::run()
                 // Chunked for the reason every other engine call here is: the
                 // whole-queue call blocks with no progress and no way to stop.
                 const int trialCount = int(trial.size());
-                for (int start = 0; start < trialCount; start += kChunkPoints) {
+                for (int start = 0; start < trialCount; start += m_chunkPoints) {
                     if (m_cancelled)
                         break;
-                    const int count = std::min(kChunkPoints, trialCount - start);
+                    const int count = std::min(m_chunkPoints, trialCount - start);
                     std::vector<POI2D> chunk(trial.begin() + start,
                                              trial.begin() + start + count);
                     region_fit.compute(chunk);
@@ -488,10 +487,10 @@ void CorrelationRunner::run()
             // Chunked for the same reason the solve and the strain fit are:
             // the engine's whole-queue call blocks with no progress and no way
             // to stop.
-            for (int start = 0; start < total; start += kChunkPoints) {
+            for (int start = 0; start < total; start += m_chunkPoints) {
                 if (m_cancelled)
                     break;
-                const int count = std::min(kChunkPoints, total - start);
+                const int count = std::min(m_chunkPoints, total - start);
 #pragma omp parallel for num_threads(threads)
                 for (int i = start; i < start + count; i++)
                     reliability.compute(&queue[size_t(i)]);
@@ -536,10 +535,10 @@ void CorrelationRunner::run()
             // whole-queue call would block with no progress and no way to stop.
             // Each point still fits against the WHOLE queue -- only the loop is
             // divided, never the neighbourhood.
-            for (int start = 0; start < total; start += kChunkPoints) {
+            for (int start = 0; start < total; start += m_chunkPoints) {
                 if (m_cancelled)
                     break;
-                const int count = std::min(kChunkPoints, total - start);
+                const int count = std::min(m_chunkPoints, total - start);
 #pragma omp parallel for num_threads(threads)
                 for (int i = start; i < start + count; i++)
                     strain.compute(&queue[size_t(i)], queue);

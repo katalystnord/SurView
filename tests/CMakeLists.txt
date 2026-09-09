@@ -22,6 +22,7 @@ set(SURVIEW_UNIT_TESTS
     test_roi_engine_boundary
     test_roi_detect
     test_solver_choices
+    test_chunking
     test_sequence
     test_reference_update
     test_recovery

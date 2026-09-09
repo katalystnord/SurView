@@ -271,6 +271,10 @@ struct PoiSeeding
 // the queue is split into chunks here and handed over a chunk at a time, which
 // is what makes both progress reporting and a working Stop possible without
 // touching the engine.
+// The number of points handed to the engine per call, and so how often
+// progress is reported and cancellation can take effect.
+inline constexpr int kDefaultChunkPoints = 2000;
+
 class CorrelationRunner : public QObject
 {
     Q_OBJECT
@@ -285,6 +289,21 @@ public:
     // Measure at these positions instead of laying out a fresh grid. Must be
     // set before run().
     void setSeeding(PoiSeeding seeding) { m_seeding = std::move(seeding); }
+
+    // ⚑ How many points are handed to the engine at once. The default is the
+    // one the application runs at; it is settable ONLY so that a test can make
+    // a small grid take more than one chunk.
+    //
+    // The chunking is not an optimisation -- it is the whole reason this class
+    // exists, since the engine's compute() blocks with neither progress nor
+    // cancellation, and every field this application draws comes back through
+    // it. And every grid in the suite is smaller than the default 2000, so the
+    // loop had only ever run ONCE, with `start` at zero, where `total - start`
+    // and `total + start` are the same expression. A mutation sweep against
+    // the complete suite found sixteen mutants living in that blind spot.
+    //
+    // Must be set before run(). A value below one is ignored.
+    void setChunkPoints(int points) { if (points >= 1) m_chunkPoints = points; }
 
 public slots:
     void run();
@@ -301,5 +320,6 @@ private:
     QString m_referencePath;
     QString m_targetPath;
     PoiSeeding m_seeding;
+    int m_chunkPoints = kDefaultChunkPoints;
     std::atomic<bool> m_cancelled{false};
 };
