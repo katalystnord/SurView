@@ -78,6 +78,8 @@ private slots:
     void the_noise_floor_is_put_against_the_movement_it_qualifies();
     void one_bad_point_does_not_set_the_number_that_speaks_for_the_field();
     void the_reported_spread_of_the_noise_floor_is_the_fields_not_its_worst_points();
+    void every_condition_a_point_must_meet_to_join_the_spread_is_checked_on_its_own();
+    void a_movement_no_larger_than_its_own_floor_is_not_put_in_proportion();
 };
 
 void TestFieldLayout::a_value_lands_in_the_cell_its_point_recorded()
@@ -604,6 +606,102 @@ void TestFieldLayout::the_reported_spread_of_the_noise_floor_is_the_fields_not_i
     // And nothing is claimed for a run that measured no reliability at all.
     double a = 0.0, b = 0.0;
     QVERIFY(!noiseFloorSpread(CorrelationResult(), a, b));
+}
+
+
+void TestFieldLayout::every_condition_a_point_must_meet_to_join_the_spread_is_checked_on_its_own()
+{
+    // A point joins the spread only if it converged, only if its floor was
+    // measured, and only if that floor is strictly positive. The three are one
+    // AND, and the mutation sweep showed nothing exercised them separately:
+    // turned into an OR, or with the last relaxed to "not negative", the same
+    // fixtures passed.
+    //
+    // ⚑ STRICTLY POSITIVE, not merely non-negative -- the rule the reliability
+    // work already turns on. Zero is the FLATTERING reading of a noise floor:
+    // it claims a perfect measurement, which is not reachable, so a zero is a
+    // value that was never written. Admitted to the spread it becomes the
+    // reported best, and the run advertises a floor of 0.0 px -- which is
+    // exactly what the negative check printed.
+    //
+    // Two mutants in percentileOf() are NOT chased, recorded here so nobody
+    // hunts them: the upper bound of its clamp cannot bind. Its only caller
+    // asks for the 95th percentile, and nearest rank on any non-empty set puts
+    // the rank inside the array, so `size() - 1` may become `size() + 1` with
+    // nothing to notice. That is dead defensive code rather than untested
+    // behaviour, and a test written to reach it would have to call a function
+    // in an anonymous namespace with an argument the application never uses.
+    const auto spreadOf = [](const QVector<CorrelationPoint> &points, double &lowest,
+                             double &typical) {
+        CorrelationResult result;
+        result.gridColumns = points.size();
+        result.gridRows = 1;
+        result.points = points;
+        return noiseFloorSpread(result, lowest, typical);
+    };
+
+    CorrelationPoint good = measured(0, 4.f, 0.f);
+    good.noiseFloor = 0.004f;
+    good.noiseFloorMeasured = true;
+
+    double lowest = 0.0;
+    double typical = 0.0;
+
+    // A floor of exactly zero, reported as measured, is not a floor.
+    CorrelationPoint zero = measured(1, 4.f, 0.f);
+    zero.noiseFloor = 0.f;
+    zero.noiseFloorMeasured = true;
+    QVERIFY(spreadOf({good, zero}, lowest, typical));
+    QVERIFY2(qAbs(lowest - 0.004) < 1e-9,
+             qPrintable(QStringLiteral("a floor of exactly zero became the best in the run: %1")
+                            .arg(lowest)));
+
+    // A point whose floor was never measured carries whatever its floor member
+    // happens to hold, which is not a measurement of anything.
+    CorrelationPoint unmeasured = measured(1, 4.f, 0.f);
+    unmeasured.noiseFloor = 0.0001f;
+    unmeasured.noiseFloorMeasured = false;
+    QVERIFY(spreadOf({good, unmeasured}, lowest, typical));
+    QVERIFY2(qAbs(lowest - 0.004) < 1e-9,
+             "an unmeasured floor does not join the spread");
+
+    // And a point that did not converge has no measurement to qualify.
+    CorrelationPoint rejected = measured(1, 4.f, 0.f);
+    rejected.converged = false;
+    rejected.noiseFloor = 0.0001f;
+    rejected.noiseFloorMeasured = true;
+    QVERIFY(spreadOf({good, rejected}, lowest, typical));
+    QVERIFY2(qAbs(lowest - 0.004) < 1e-9,
+             "a rejected point does not join the spread");
+}
+
+void TestFieldLayout::a_movement_no_larger_than_its_own_floor_is_not_put_in_proportion()
+{
+    // ⚑ The boundary, which is where the statement stops meaning anything: a
+    // movement exactly equal to the floor that qualifies it would be reported
+    // as "one part in 1", which is worse than saying nothing. Nothing landed
+    // on it, so the comparison could be widened or narrowed freely.
+    CorrelationResult result;
+    result.gridColumns = 2;
+    result.gridRows = 1;
+
+    CorrelationPoint point = measured(0, 0.5f, 0.f);   // magnitude exactly 0.5
+    point.noiseFloor = 0.5f;
+    point.noiseFloorMeasured = true;
+    CorrelationPoint other = measured(1, 0.f, 0.f);
+    other.noiseFloor = 0.5f;
+    other.noiseFloorMeasured = true;
+    result.points << point << other;
+
+    QVERIFY2(noiseFloorAgainstMovement(result).isEmpty(),
+             "a movement exactly the size of its own floor is not put in proportion");
+
+    // Twice the floor is, and reads as one part in 2.
+    result.points[0].u = 1.0f;
+    const QString stated = noiseFloorAgainstMovement(result);
+    QVERIFY2(!stated.isEmpty(), "a movement larger than its floor is put in proportion");
+    QVERIFY2(stated.contains(QStringLiteral(" 2")),
+             qPrintable(QStringLiteral("expected one part in 2, got: %1").arg(stated)));
 }
 
 QTEST_MAIN(TestFieldLayout)
