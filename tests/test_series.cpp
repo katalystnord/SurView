@@ -136,6 +136,33 @@ private slots:
     void a_field_series_averages_only_the_points_that_were_measured();
     void a_frame_where_nothing_solved_has_no_field_reading_rather_than_zero();
     void every_series_the_screen_offers_can_be_produced();
+
+    // Written against the mutation sweep of 2026-09-09, which found 35 mutants
+    // in this file surviving every case above. Each one below is a mutation
+    // that changed what a reader would be shown, negative-checked at the time
+    // it was written.
+    //
+    // ⚑ Three of them survived their first attempt HERE too, and always for
+    // the same reason: a fixture symmetric in the thing under test. The grid
+    // sat at the origin, so `x - originX` and `x + originX` agreed. The cell
+    // was row zero, so `cy - row` and `cy + row` agreed. The sample sat at
+    // fx == fy, so the blend's two axes could be exchanged wholesale. All
+    // three put a wrong displacement into an extensometer reading that looks
+    // entirely ordinary on screen, which is the failure this tool can least
+    // afford.
+    //
+    // One mutation is caught by a SEGFAULT rather than an assertion: relaxing
+    // the all-four-corners rule to an AND dereferences a null corner. The
+    // suite fails, so it is caught, but the harness reports it as a crash and
+    // it is recorded here so the next reader knows why.
+    void a_field_series_numbers_its_frames_the_way_the_rest_of_the_window_does();
+    void the_largest_aggregate_takes_the_largest_MAGNITUDE_signs_included();
+    void the_mean_is_a_mean_and_the_largest_is_not();
+    void the_solved_share_is_a_percentage_of_the_points_attempted();
+    void a_reading_exactly_on_the_far_edge_of_the_grid_belongs_to_the_last_cell();
+    void a_reading_just_outside_the_grid_is_refused_on_each_side_in_turn();
+    void an_interpolated_reading_weights_the_corner_it_is_nearest_to();
+    void strain_is_the_one_quantity_without_a_unit_in_pixels();
 };
 
 // --- sampling ---------------------------------------------------------------
@@ -449,6 +476,221 @@ void TestSeries::every_series_the_screen_offers_can_be_produced()
                  qPrintable(QStringLiteral("series %1 came out named %2")
                                 .arg(choice.name, series.name)));
     }
+}
+
+
+void TestSeries::a_field_series_numbers_its_frames_the_way_the_rest_of_the_window_does()
+{
+    // ⚑ One-based, because that is what the project tree and the run log call
+    // the same frame. The extensometer series is checked for this; the FIELD
+    // series numbers its frames in its own loop and nothing checked that one,
+    // so it could have started at zero -- putting the first target at "frame
+    // 0" on a chart while the rest of the window called it Frame 1 -- or at
+    // two, or anywhere.
+    QVector<CorrelationResult> frames;
+    for (int i = 0; i < 3; i++)
+        frames.append(uniformField(4, 4, 10, float(i), 0.f));
+
+    const Series series =
+        fieldSeries(frames, FieldChannel::DisplacementMagnitude, FieldAggregate::Mean);
+    QCOMPARE(series.points.size(), 3);
+    QCOMPARE(series.points[0].frame, 1);
+    QCOMPARE(series.points[1].frame, 2);
+    QCOMPARE(series.points[2].frame, 3);
+}
+
+void TestSeries::the_largest_aggregate_takes_the_largest_MAGNITUDE_signs_included()
+{
+    // ⚑ A field that moved 5 px one way and 9 px the other has a largest
+    // displacement of 9, not 5, and the answer keeps its SIGN. Compared
+    // without the absolute values a field whose extreme is negative reports
+    // its smallest movement as its largest, which on a specimen in
+    // compression is every frame of the test.
+    CorrelationResult field = uniformField(3, 1, 10, 0.f, 0.f);
+    field.points[0].u = 5.f;
+    field.points[1].u = -9.f;
+    field.points[2].u = 2.f;
+
+    const Series largest =
+        fieldSeries({field}, FieldChannel::DisplacementX, FieldAggregate::Largest);
+    QCOMPARE(largest.points.size(), 1);
+    QVERIFY(largest.points[0].measured);
+    QVERIFY2(std::abs(largest.points[0].value + 9.0) < 1e-9,
+             qPrintable(QStringLiteral("largest read %1, expected -9")
+                            .arg(largest.points[0].value)));
+
+    // And the first point is not privileged: the same field with the extreme
+    // first must still find it.
+    CorrelationResult reordered = field;
+    reordered.points[0].u = -9.f;
+    reordered.points[1].u = 5.f;
+    const Series again =
+        fieldSeries({reordered}, FieldChannel::DisplacementX, FieldAggregate::Largest);
+    QVERIFY2(std::abs(again.points[0].value + 9.0) < 1e-9,
+             "the largest value is found wherever in the list it sits");
+}
+
+void TestSeries::the_mean_is_a_mean_and_the_largest_is_not()
+{
+    // The two aggregates must not collapse into one another: on a field whose
+    // mean and extreme differ, each has to give its own answer. With the same
+    // value for both, either could be computing the other.
+    CorrelationResult field = uniformField(3, 1, 10, 0.f, 0.f);
+    field.points[0].u = 1.f;
+    field.points[1].u = 2.f;
+    field.points[2].u = 6.f;   // mean 3, largest 6
+
+    const Series mean =
+        fieldSeries({field}, FieldChannel::DisplacementX, FieldAggregate::Mean);
+    const Series largest =
+        fieldSeries({field}, FieldChannel::DisplacementX, FieldAggregate::Largest);
+
+    QVERIFY2(std::abs(mean.points[0].value - 3.0) < 1e-9,
+             qPrintable(QStringLiteral("mean read %1, expected 3").arg(mean.points[0].value)));
+    QVERIFY2(std::abs(largest.points[0].value - 6.0) < 1e-9,
+             qPrintable(QStringLiteral("largest read %1, expected 6").arg(largest.points[0].value)));
+}
+
+void TestSeries::the_solved_share_is_a_percentage_of_the_points_attempted()
+{
+    // Three of four solved is 75 per cent, and the denominator is what was
+    // ATTEMPTED rather than what succeeded -- otherwise every frame reads 100.
+    CorrelationResult field = uniformField(2, 2, 10, 1.f, 0.f);
+    field.points[3].converged = false;
+    field.converged = 3;
+
+    const Series share =
+        fieldSeries({field}, FieldChannel::DisplacementMagnitude,
+                    FieldAggregate::SolvedShare);
+    QCOMPARE(share.points.size(), 1);
+    QVERIFY(share.points[0].measured);
+    QVERIFY2(std::abs(share.points[0].value - 75.0) < 1e-9,
+             qPrintable(QStringLiteral("solved share read %1, expected 75")
+                            .arg(share.points[0].value)));
+    QVERIFY2(share.unit.contains(QStringLiteral("%")),
+             "a share of the field is a percentage and says so");
+
+    // ⚑ An empty field has no share, not a share of zero: nothing was
+    // attempted, so there is no proportion to report.
+    const CorrelationResult nothing;
+    const Series empty =
+        fieldSeries({nothing}, FieldChannel::DisplacementMagnitude,
+                    FieldAggregate::SolvedShare);
+    QCOMPARE(empty.points.size(), 1);
+    QVERIFY2(!empty.points[0].measured,
+             "a frame with no points attempted has no share to report");
+}
+
+void TestSeries::a_reading_exactly_on_the_far_edge_of_the_grid_belongs_to_the_last_cell()
+{
+    // ⚑ The far edge is the boundary the clamp exists for, and no case landed
+    // on it. A 4 by 4 grid at 10 px spans 0 to 30: a position at exactly 30
+    // sits on the last grid line, which belongs to the last CELL (columns 2
+    // and 3) rather than to a cell starting at column 3, which does not exist
+    // and whose corners cannot be read.
+    const CorrelationResult field = uniformField(4, 4, 10, 2.f, -1.f);
+
+    const FieldSample onEdge = sampleFieldAt(field, 30.0, 30.0);
+    QVERIFY2(onEdge.measured, "a position exactly on the far edge is inside the field");
+    QVERIFY2(std::abs(onEdge.u - 2.0) < 1e-9 && std::abs(onEdge.v + 1.0) < 1e-9,
+             "and reads the displacement the field holds there");
+
+    const FieldSample onOrigin = sampleFieldAt(field, 0.0, 0.0);
+    QVERIFY2(onOrigin.measured, "and so is one exactly on the near edge");
+}
+
+void TestSeries::a_reading_just_outside_the_grid_is_refused_on_each_side_in_turn()
+{
+    // Each side on its own, because the four comparisons are one OR: a fixture
+    // outside on every side at once is refused by any one of them, and the
+    // other three could be anything at all.
+    const CorrelationResult field = uniformField(4, 4, 10, 2.f, -1.f);
+
+    QVERIFY2(!sampleFieldAt(field, -0.5, 15.0).measured, "left of the grid is outside it");
+    QVERIFY2(!sampleFieldAt(field, 30.5, 15.0).measured, "right of the grid is outside it");
+    QVERIFY2(!sampleFieldAt(field, 15.0, -0.5).measured, "above the grid is outside it");
+    QVERIFY2(!sampleFieldAt(field, 15.0, 30.5).measured, "below the grid is outside it");
+
+    // A field with no grid at all is refused rather than divided by.
+    CorrelationResult degenerate = uniformField(4, 4, 10, 2.f, -1.f);
+    degenerate.step = 0;
+    QVERIFY2(!sampleFieldAt(degenerate, 15.0, 15.0).measured,
+             "a field with no step is refused rather than dividing by zero");
+}
+
+void TestSeries::an_interpolated_reading_weights_the_corner_it_is_nearest_to()
+{
+    // ⚑ THE FIXTURE IS OFFSET AND THE CELL IS NOT THE FIRST ONE, and both of
+    // those are load-bearing. The existing interpolation case varies along x
+    // alone, on a grid at the origin, in cell (0, 0) -- so it cannot tell fx
+    // from fy, it cannot tell `x - originX` from `x + originX` because the
+    // origin is zero, and it cannot tell `cy - row` from `cy + row` because
+    // the row is zero. All three survived the sweep, and all three put a wrong
+    // displacement into an extensometer reading that looks perfectly ordinary.
+    //
+    // So: origin at (100, 200), a 3 by 3 grid, and the reading taken inside
+    // the FAR cell, where every one of those pairs differs.
+    CorrelationResult field = uniformField(3, 3, 10, 0.f, 0.f);
+    field.originX = 100.f;
+    field.originY = 200.f;
+    for (CorrelationPoint &point : field.points) {
+        point.x = 100.f + point.x;
+        point.y = 200.f + point.y;
+    }
+    // Cell (1, 1) spans grid points 4, 5, 7, 8. Give its four corners values
+    // that differ in both directions, so no weight can be swapped for another.
+    field.points[4].u = 0.f;     // (110, 210)
+    field.points[5].u = 4.f;     // (120, 210)
+    field.points[7].u = 8.f;     // (110, 220)
+    field.points[8].u = 12.f;    // (120, 220)
+
+    // A quarter across and a quarter down that cell: cx = 1.25, cy = 1.25,
+    // so fx = fy = 0.25 and the blend is
+    //   0*0.75*0.75 + 4*0.25*0.75 + 8*0.75*0.25 + 12*0.25*0.25 = 3.0
+    const FieldSample quarter = sampleFieldAt(field, 112.5, 212.5);
+    QVERIFY2(quarter.measured, "a position inside the far cell is inside the field");
+    QVERIFY2(std::abs(quarter.u - 3.0) < 1e-9,
+             qPrintable(QStringLiteral("read %1, expected 3").arg(quarter.u)));
+
+    // Three quarters across and down the same cell: 9.0 by the same arithmetic.
+    const FieldSample threeQuarters = sampleFieldAt(field, 117.5, 217.5);
+    QVERIFY2(threeQuarters.u > quarter.u,
+             "a position nearer the larger corner reads larger");
+    QVERIFY2(std::abs(threeQuarters.u - 9.0) < 1e-9,
+             qPrintable(QStringLiteral("read %1, expected 9").arg(threeQuarters.u)));
+
+    // ⚑ AND A POSITION WHERE THE TWO FRACTIONS DIFFER. At fx == fy the blend
+    // is symmetric in its two axes, so the x weights and the y weights can be
+    // exchanged wholesale and every reading above still comes out right. A
+    // quarter across and three quarters down:
+    //   0*0.75*0.25 + 4*0.25*0.25 + 8*0.75*0.75 + 12*0.25*0.75 = 7.0
+    // where the exchanged version reads 5.0.
+    const FieldSample lopsided = sampleFieldAt(field, 112.5, 217.5);
+    QVERIFY(lopsided.measured);
+    QVERIFY2(std::abs(lopsided.u - 7.0) < 1e-9,
+             qPrintable(QStringLiteral("read %1, expected 7 -- the x and y weights "
+                                       "of the blend are interchangeable at this "
+                                       "reading unless the two fractions differ")
+                            .arg(lopsided.u)));
+
+    // ⚑ And the position is measured FROM the origin: the same coordinates on
+    // a field that starts at zero are a different place entirely, and asking
+    // this field about them is asking about somewhere it does not cover.
+    QVERIFY2(!sampleFieldAt(field, 2.5, 2.5).measured,
+             "a position before the grid's origin is outside the field, not inside its first cell");
+}
+
+void TestSeries::strain_is_the_one_quantity_without_a_unit_in_pixels()
+{
+    // A ratio has no unit, and saying "dimensionless" beats both a blank -
+    // which reads as an oversight - and inventing one. Length and elongation
+    // are pixels. Nothing checked which was which, so the two could swap.
+    QCOMPARE(extensometerQuantityUnit(ExtensometerQuantity::Strain),
+             QStringLiteral("dimensionless"));
+    QCOMPARE(extensometerQuantityUnit(ExtensometerQuantity::Length),
+             QStringLiteral("px"));
+    QCOMPARE(extensometerQuantityUnit(ExtensometerQuantity::Elongation),
+             QStringLiteral("px"));
 }
 
 QTEST_MAIN(TestSeries)
