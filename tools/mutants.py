@@ -157,6 +157,51 @@ def find_mutants(path):
     return found
 
 
+def load_survivors(result_path, root):
+    """Rebuild the exact mutants an earlier run recorded as survivors.
+
+    ⚑ Each one is verified against the file as it stands NOW: the offsets are
+    from the run that recorded them, and any edit since has moved them. A
+    mutant whose recorded `from` is no longer at its recorded offset is
+    reported and skipped rather than applied somewhere it does not belong,
+    which would silently measure a mutation nobody chose -- the same hazard as
+    the harness editing a dirty tree.
+    """
+    data = json.loads(result_path.read_text())
+    replayed = []
+    moved = []
+    for entry in data.get("survived", []):
+        path = (root / entry["file"]).resolve()
+        if not path.exists():
+            moved.append(f"{entry['file']}: gone")
+            continue
+        text = path.read_text()
+        start, end = entry["start"], entry["end"]
+        if text[start:end] != entry["from"]:
+            moved.append(f"{entry['file']}:{entry['line']} {entry['from']!r} has moved")
+            continue
+        replayed.append({
+            "file": entry["file"],
+            "path": path,
+            "line": entry["line"],
+            "operator": entry["operator"],
+            "from": entry["from"],
+            "to": entry["to"],
+            "start": start,
+            "end": end,
+            "source": text,
+            "mutated": text[:start] + entry["to"] + text[end:],
+            "context": entry.get("context", ""),
+        })
+
+    if moved:
+        print(f"=== {len(moved)} recorded survivors could not be replayed ===")
+        for line in moved:
+            print(f"  {line}")
+        print("  (the source moved under them; sweep those files afresh)\n")
+    return replayed
+
+
 def run(cmd, cwd, timeout):
     try:
         p = subprocess.run(cmd, cwd=cwd, timeout=timeout,
@@ -186,6 +231,15 @@ def main():
                          "machine too -- a mutation run is hours of full load "
                          "and it is a poor neighbour at its natural width.")
     ap.add_argument("--json", help="write the full result to this file")
+    ap.add_argument("--rerun", metavar="RESULT.JSON",
+                    help="re-run exactly the survivors recorded in an earlier "
+                         "run's --json, instead of generating mutants afresh. "
+                         "This is what makes the sentence above about "
+                         "--include-slow into something you can actually do: a "
+                         "fast sweep reports as SURVIVED anything only the slow "
+                         "cases would have killed, and until those are re-run "
+                         "the survivor list is a mixture of real gaps and "
+                         "artefacts of the exclusion.")
     args = ap.parse_args()
 
     if args.engine:
@@ -292,10 +346,18 @@ def main():
         return 2
     print("Baseline green.\n")
 
-    mutants = []
-    for f in files:
-        mutants.extend(find_mutants(f))
-    total_found = len(mutants)
+    if args.rerun:
+        mutants = load_survivors(Path(args.rerun), root)
+        if not mutants:
+            print("mutants.py: no survivors could be replayed from that file",
+                  file=sys.stderr)
+            return 2
+        total_found = len(mutants)
+    else:
+        mutants = []
+        for f in files:
+            mutants.extend(find_mutants(f))
+        total_found = len(mutants)
 
     if args.limit and args.limit < len(mutants):
         random.Random(args.seed).shuffle(mutants)
