@@ -81,6 +81,10 @@ private slots:
 
     void every_channel_of_a_colour_pixel_is_reported_and_none_is_invented();
     void a_position_off_the_picture_reads_as_absent_rather_than_as_zero();
+    void the_type_limit_is_named_in_the_warning_and_not_only_in_the_flags();
+    void a_pixel_at_the_types_floor_is_treated_like_one_at_its_ceiling();
+    void a_record_that_never_counted_its_extremes_still_says_what_it_means();
+    void a_colour_pixel_and_a_grey_one_are_labelled_differently();
 };
 
 void TestPixelReadout::the_value_reported_is_the_one_in_the_file()
@@ -253,6 +257,94 @@ void TestPixelReadout::a_position_off_the_picture_reads_as_absent_rather_than_as
     QVERIFY2(!lines.isEmpty(), "an absent reading emptied the panel instead of "
                                "saying so");
     QVERIFY2(!allText(lines).contains(QStringLiteral("0 of")), qPrintable(allText(lines)));
+}
+
+
+void TestPixelReadout::the_type_limit_is_named_in_the_warning_and_not_only_in_the_flags()
+{
+    // The case above checks the FLAGS on the reading; nothing checked that the
+    // readout says so. The two are a whole sentence apart -- "at the highest
+    // value in this image" and ", which is the pixel type's own limit" -- and
+    // the second is the stronger statement, because the type's limit is where
+    // the file itself stops rather than where this exposure happened to.
+    ImageRecord record = eightBitGrey();
+    record.dataMax = 255.0;
+    const QString atLimit =
+        allText(pixelReadoutLines(pixelReading(record, 3, 4, {255.0}), record));
+    QVERIFY2(atLimit.contains(QStringLiteral("pixel type's own limit")),
+             qPrintable(atLimit));
+
+    // At the image's own maximum but well inside the type's, only the weaker
+    // statement is made.
+    const ImageRecord shy = eightBitGrey();   // dataMax 240 of a possible 255
+    const QString belowLimit =
+        allText(pixelReadoutLines(pixelReading(shy, 3, 4, {240.0}), shy));
+    QVERIFY2(belowLimit.contains(QStringLiteral("highest value in this image")),
+             qPrintable(belowLimit));
+    QVERIFY2(!belowLimit.contains(QStringLiteral("pixel type's own limit")),
+             qPrintable(QStringLiteral("240 of a possible 255 was called the type's own limit: %1")
+                            .arg(belowLimit)));
+}
+
+void TestPixelReadout::a_pixel_at_the_types_floor_is_treated_like_one_at_its_ceiling()
+{
+    // ⚑ Both ends, because only the ceiling was ever exercised. A sensor can
+    // run out of range downwards just as well as upwards, and crushed blacks
+    // are the same measurement problem as blown highlights: every pixel down
+    // there holds the same number and the speckle is gone.
+    const ImageRecord record = eightBitGrey();   // dataMin 0, which is also the type's
+
+    const PixelReading floorReading = pixelReading(record, 3, 4, {0.0});
+    QVERIFY(floorReading.atDataFloor);
+    QVERIFY2(floorReading.atTypeFloor, "zero in an 8-bit image is the type's own floor");
+
+    const QString said = allText(pixelReadoutLines(floorReading, record));
+    QVERIFY2(said.contains(QStringLiteral("lowest value in this image")), qPrintable(said));
+    QVERIFY2(said.contains(QStringLiteral("pixel type's own limit")), qPrintable(said));
+}
+
+void TestPixelReadout::a_record_that_never_counted_its_extremes_still_says_what_it_means()
+{
+    // The share of the image is an addition to the warning, not the warning
+    // itself. A record whose extremes were never counted -- an unrecognised
+    // sample type -- must still explain what being at an extreme costs, rather
+    // than falling silent or claiming a share of zero.
+    // ⚑ The size of the picture is KEPT and only the counting is missing, which
+    // is the state that can lie: the counts sit at zero because nothing wrote
+    // them, and a guard asking only whether the pixel count is known will
+    // happily divide by it and announce "0 pixels share it, 0.0% of the
+    // image". Unknown reported as zero, the rule this whole application is
+    // built to refuse. Clearing the pixel count as well hides that: the two
+    // halves of the guard then agree and the mutant walks through.
+    ImageRecord record = eightBitGrey();
+    record.extremesCounted = false;
+    record.pixelsAtDataMin = 0;
+    record.pixelsAtDataMax = 0;
+
+    const QString said =
+        allText(pixelReadoutLines(pixelReading(record, 3, 4, {0.0}), record));
+    QVERIFY2(said.contains(QStringLiteral("lowest value in this image")), qPrintable(said));
+    QVERIFY2(said.contains(QStringLiteral("no gradient")), qPrintable(said));
+    QVERIFY2(!said.contains(QStringLiteral("0.0%")),
+             qPrintable(QStringLiteral("a share was claimed from counts that were never taken: %1")
+                            .arg(said)));
+    QVERIFY2(!said.contains(QStringLiteral("0 pixels share it")), qPrintable(said));
+}
+
+void TestPixelReadout::a_colour_pixel_and_a_grey_one_are_labelled_differently()
+{
+    // One number and three are not the same thing, and the label is the only
+    // place that says which is being read. "Camera, per channel" over a single
+    // grey value invites a reader to look for the other two.
+    const ImageRecord grey = eightBitGrey();
+    const QString one = allText(pixelReadoutLines(pixelReading(grey, 3, 4, {120.0}), grey));
+    QVERIFY2(!one.contains(QStringLiteral("per channel")), qPrintable(one));
+
+    ImageRecord colour = eightBitGrey();
+    colour.components = 3;
+    const QString three =
+        allText(pixelReadoutLines(pixelReading(colour, 3, 4, {120.0, 130.0, 140.0}), colour));
+    QVERIFY2(three.contains(QStringLiteral("per channel")), qPrintable(three));
 }
 
 QTEST_MAIN(TestPixelReadout)
