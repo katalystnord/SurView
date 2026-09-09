@@ -31,6 +31,10 @@ private slots:
     void a_hole_needs_three_corners_like_any_other_ring();
     void the_regions_bounds_are_the_outer_boundarys_alone();
     void a_subset_reaching_into_a_hole_is_reported_not_hidden();
+    void a_subset_that_just_touches_a_hole_is_reported();
+    void a_region_with_no_holes_has_no_subset_reaching_one();
+    void two_corners_the_same_distance_away_resolve_the_same_way_every_time();
+    void a_corner_exactly_at_the_edge_of_reach_is_still_within_it();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -245,8 +249,76 @@ void TestRoi::a_subset_reaching_into_a_hole_is_reported_not_hidden()
              "a point 10 px from the hole with a 16 px subset reaches into it");
     QVERIFY2(!subsetReachesAHole(region, 10, 50, 16),
              "a point 30 px away with a 16 px subset does not");
-    QVERIFY2(!subsetReachesAHole(region, 10, 50, 16),
-             "and a region with no holes reaches none");
+}
+
+
+void TestRoi::a_subset_that_just_touches_a_hole_is_reported()
+{
+    // ⚑ The case above tests a subset 10 px into a hole and one 30 px clear,
+    // and neither can see the subset's own SIZE: it is a square of side
+    // 2r + 1 about the point, and both of those answers survive that becoming
+    // 2r or 2r + 2. The boundary is the only place the width shows, and six
+    // mutants sat on it.
+    //
+    // The hole spans x 40..60. A point at x = 23 with a 16 px subset reaches
+    // x = 39, one pixel short. At x = 24 it reaches exactly 40, the hole's own
+    // edge, and touching is reaching: those pixels are background.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+
+    QVERIFY2(!subsetReachesAHole(region, 23, 50, 16),
+             "a subset ending one pixel short of the hole does not reach it");
+    QVERIFY2(subsetReachesAHole(region, 24, 50, 16),
+             "a subset whose edge lands exactly on the hole's edge does");
+}
+
+void TestRoi::a_region_with_no_holes_has_no_subset_reaching_one()
+{
+    // ⚑ This is what the case above MEANT to check and never did. Its third
+    // assertion repeated the second call verbatim, region and all, under a
+    // message about a region with no holes -- so the no-holes path had never
+    // been run. Found by the mutation sweep, not by reading the file.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+
+    QVERIFY2(!subsetReachesAHole(region, 50, 50, 16),
+             "a region with no holes has nothing for a subset to reach into");
+}
+
+void TestRoi::two_corners_the_same_distance_away_resolve_the_same_way_every_time()
+{
+    // ⚑ Roi.cpp states this rule in a comment -- "the first of two equally
+    // close corners wins and the answer does not depend on the order they
+    // happen to be stored in" -- and nothing enforced it. A comment may say
+    // WHY a mechanism is what it is; it may not assert what the design
+    // requires unless a test of that name enforces it, and now one does.
+    //
+    // The existing case puts the pointer 1 px from one corner and 5 from the
+    // other, so it never meets a tie at all.
+    RegionOfInterest roi;
+    roi.vertices << QPoint(10, 10) << QPoint(20, 10) << QPoint(15, 40);
+
+    // Exactly between the first two, and 5 px from each.
+    QCOMPARE(cornerNear(roi, QPoint(15, 10), 8.0), 0);
+
+    // The same two corners stored the other way round still hand back index 0,
+    // which is the point: the FIRST of the tied pair wins, so the answer is a
+    // property of the list rather than of floating-point luck.
+    RegionOfInterest swapped;
+    swapped.vertices << QPoint(20, 10) << QPoint(10, 10) << QPoint(15, 40);
+    QCOMPARE(cornerNear(swapped, QPoint(15, 10), 8.0), 0);
+}
+
+void TestRoi::a_corner_exactly_at_the_edge_of_reach_is_still_within_it()
+{
+    // The boundary of the grab radius, which no existing case lands on: at
+    // exactly `reach` the corner is grabbable, a pixel further out it is not.
+    RegionOfInterest roi;
+    roi.vertices << QPoint(10, 10) << QPoint(90, 10) << QPoint(90, 70);
+
+    QCOMPARE(cornerNear(roi, QPoint(18, 10), 8.0), 0);
+    QCOMPARE(cornerNear(roi, QPoint(19, 10), 8.0), -1);
 }
 
 QTEST_MAIN(TestRoi)
