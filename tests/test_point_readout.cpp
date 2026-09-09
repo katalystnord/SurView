@@ -103,6 +103,18 @@ bool anyLineWarns(const PointReadout &readout)
     return false;
 }
 
+// Which rows warn, by label. `anyLineWarns` above answers whether the readout
+// warns at all, which is a much weaker question: a readout that marked EVERY
+// row would satisfy it just as well as one that marked the right row.
+QStringList warningLabels(const PointReadout &readout)
+{
+    QStringList labels;
+    for (const ReadoutLine &line : readout.lines)
+        if (line.warning)
+            labels << line.label;
+    return labels;
+}
+
 }  // namespace
 
 class TestPointReadout : public QObject
@@ -135,6 +147,11 @@ private slots:
 
     // --- the shape of the thing itself -------------------------------------
     void every_line_carries_a_label_and_something_to_read();
+    void a_good_point_reports_itself_without_a_single_warning();
+    void only_the_row_that_cannot_carry_a_bare_number_warns();
+    void a_correlation_exactly_at_the_strain_floor_is_not_excluded_by_it();
+    void two_points_the_same_distance_away_resolve_the_same_way_every_time();
+    void a_displacement_is_compared_to_its_floor_as_a_length_not_as_one_axis();
 };
 
 void TestPointReadout::a_position_on_a_measured_point_finds_that_point()
@@ -364,6 +381,112 @@ void TestPointReadout::every_line_carries_a_label_and_something_to_read()
         QVERIFY2(!line.label.trimmed().isEmpty(), qPrintable(line.value));
         QVERIFY2(!line.value.trimmed().isEmpty(), qPrintable(line.label));
     }
+}
+
+
+void TestPointReadout::a_good_point_reports_itself_without_a_single_warning()
+{
+    // ⚑ The mutation sweep marked one row after another as a warning and the
+    // suite noticed none of it: twelve survivors, every one a `false` becoming
+    // `true` on an ordinary row. A readout that warns about everything warns
+    // about nothing -- the mark is what tells a reader which number cannot
+    // carry the weight it looks like it carries, and it only means that while
+    // most numbers do not have it.
+    const CorrelationResult result = plainResult();
+    const PointReadout readout = pointReadout(result, 4);
+
+    QVERIFY2(!anyLineWarns(readout),
+             qPrintable(QStringLiteral("a point that measured cleanly warns about: %1")
+                            .arg(warningLabels(readout).join(QStringLiteral(", ")))));
+}
+
+void TestPointReadout::only_the_row_that_cannot_carry_a_bare_number_warns()
+{
+    // A rejected point: the displacement row is the one that must warn, and it
+    // is the only one. The rows around it are still ordinary facts -- where
+    // the point sits, what the run asked for -- and marking those would bury
+    // the one that matters.
+    CorrelationResult result = plainResult();
+    result.points[4].converged = false;
+    result.points[4].failureReason = QStringLiteral("correlation too low");
+    result.converged--;
+
+    const PointReadout rejected = pointReadout(result, 4);
+    QCOMPARE(warningLabels(rejected).size(), 1);
+    QVERIFY2(warningLabels(rejected).first().contains(QStringLiteral("Displacement")),
+             qPrintable(QStringLiteral("the one warning row is: %1")
+                            .arg(warningLabels(rejected).join(QStringLiteral(", ")))));
+
+    // And a point whose displacement is under its own noise floor warns on the
+    // floor's row instead, without the displacement row acquiring one: the
+    // measurement happened, it is the confidence in it that is qualified.
+    CorrelationResult quiet = plainResult();
+    quiet.points[4].u = 0.001f;
+    quiet.points[4].v = 0.0f;
+    const PointReadout small = pointReadout(quiet, 4);
+    QVERIFY2(anyLineWarns(small), "a displacement under its own noise floor is marked");
+    QCOMPARE(warningLabels(small).size(), 1);
+}
+
+void TestPointReadout::a_correlation_exactly_at_the_strain_floor_is_not_excluded_by_it()
+{
+    // The engine excludes points correlating BELOW 0.9 from every strain fit,
+    // so a point sitting exactly on 0.9 is included and must not be told it
+    // was dropped. The boundary is the only place that sentence can be wrong,
+    // and two mutants sat on it.
+    CorrelationResult atFloor = plainResult();
+    atFloor.points[4].zncc = kStrainFitCorrelationFloor;
+    QVERIFY2(!spoken(pointReadout(atFloor, 4)).contains(QStringLiteral("excluded from every strain fit")),
+             "a point exactly at the correlation floor is not excluded by it");
+
+    CorrelationResult below = plainResult();
+    below.points[4].zncc = kStrainFitCorrelationFloor - 0.01f;
+    QVERIFY2(spoken(pointReadout(below, 4)).contains(QStringLiteral("excluded from every strain fit")),
+             "and one below it is told so");
+}
+
+void TestPointReadout::two_points_the_same_distance_away_resolve_the_same_way_every_time()
+{
+    // The same rule as the region's corner grab, one panel along: a position
+    // exactly between two grid points belongs to the FIRST of them, so the
+    // readout does not flicker between two points as the pointer sits still.
+    const CorrelationResult result = plainResult();
+
+    const float betweenX = result.originX + float(result.step) / 2.0f;
+    const float y = result.originY;
+
+    // Exactly half a step from each of the first two points.
+    const int chosen = pointNearestTo(result, betweenX, y);
+    QCOMPARE(chosen, 0);
+
+    // Asked again, the same answer: nothing here depends on which point was
+    // visited first or on floating-point luck.
+    QCOMPARE(pointNearestTo(result, betweenX, y), chosen);
+}
+
+
+void TestPointReadout::a_displacement_is_compared_to_its_floor_as_a_length_not_as_one_axis()
+{
+    // ⚑ The comparison is against the LENGTH of the displacement vector, and
+    // the fixtures that were here could not tell that from any other
+    // combination of u and v: one of them was zero, or both were far above the
+    // floor. A point that moved 0.003 px in each direction moved 0.0042 in
+    // total, which is above a 0.0034 floor -- while u squared MINUS v squared
+    // is zero, and would report the strongest possible finding about a point
+    // that is doing nothing of the kind.
+    CorrelationResult result = plainResult();
+    result.points[4].u = 0.003f;
+    result.points[4].v = 0.003f;
+    result.points[4].noiseFloor = 0.0034f;
+
+    QVERIFY2(!anyLineWarns(pointReadout(result, 4)),
+             "a displacement whose LENGTH clears its noise floor is not marked as under it");
+
+    // And one whose length does not clear it is marked, so the case cannot
+    // pass by never marking anything.
+    result.points[4].noiseFloor = 0.005f;
+    QVERIFY2(anyLineWarns(pointReadout(result, 4)),
+             "and one whose length falls under it is");
 }
 
 QTEST_MAIN(TestPointReadout)
