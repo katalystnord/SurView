@@ -22,6 +22,7 @@
 #include <QTest>
 
 #include <vtkImageData.h>
+#include <vtkSmartPointer.h>
 
 namespace {
 
@@ -51,6 +52,8 @@ private slots:
     void the_record_says_whether_the_decoder_had_to_be_corrected();
     void the_origin_is_reset_after_a_flip();
     void an_unreadable_file_still_leaves_provenance();
+    void the_pixels_sitting_at_each_extreme_are_counted();
+    void a_picture_with_nothing_at_an_extreme_counts_none();
 };
 
 // Shown to fail without the fix, which is the only thing that makes the green
@@ -153,6 +156,63 @@ void TestImageDecode::an_unreadable_file_still_leaves_provenance()
     QVERIFY(!image);
     QVERIFY(!record.isValid());
     QCOMPARE(record.fileName, QStringLiteral("no_such_file.tif"));
+}
+
+
+void TestImageDecode::the_pixels_sitting_at_each_extreme_are_counted()
+{
+    // ⚑ A pixel that ran out of range is a WARNING, not a value: every pixel
+    // that clipped holds the same number, so a subset over them has no
+    // gradient and the correlation has nothing to lock onto. The Record panel
+    // says how much of the picture is in that state, and until the mutation
+    // sweep nothing checked the counting at all -- twelve mutants lived in
+    // that loop, including both comparisons that decide what "at an extreme"
+    // means and the flags that carry the answer out of it.
+    //
+    // The expectation comes from the FIXTURE's stated property rather than
+    // from the code: 8 by 8, a 3 by 3 block at the top-left and one mid-grey
+    // pixel at the top-right. So 9 pixels sit at the maximum, one sits
+    // between, and the remaining 54 sit at the minimum.
+    ImageRecord record;
+    vtkSmartPointer<vtkImageData> image =
+        decodeImage(fixture(QStringLiteral("row_order_marker.png")), record);
+    QVERIFY(image);
+
+    QVERIFY2(record.extremesCounted, "a picture in a type we can read has its extremes counted");
+    QCOMPARE(record.pixelCount, qint64(64));
+    QCOMPARE(record.dataMin, 0.0);
+    QCOMPARE(record.dataMax, double(kMarker));
+    QCOMPARE(record.pixelsAtDataMax, qint64(9));
+    QCOMPARE(record.pixelsAtDataMin, qint64(54));
+
+    // The mid-grey pixel is at neither extreme, which is what makes the two
+    // counts add up to less than the picture: 9 + 54 is 63 of 64.
+    QVERIFY2(record.pixelsAtDataMin + record.pixelsAtDataMax < record.pixelCount,
+             "a pixel between the extremes is counted at neither of them");
+}
+
+void TestImageDecode::a_picture_with_nothing_at_an_extreme_counts_none()
+{
+    // ⚑ The other half, and what stops "count every pixel" from passing. This
+    // fixture is a noise field around mid-grey: its own minimum and maximum
+    // are held by a handful of pixels out of 52000, which is what an image
+    // that has NOT clipped looks like. A counter that marked everything, or
+    // one that marked nothing, is visible here and not in the marker fixture.
+    ImageRecord record;
+    vtkSmartPointer<vtkImageData> image =
+        decodeImage(fixture(QStringLiteral("blank_frame.tif")), record);
+    QVERIFY(image);
+
+    QVERIFY(record.extremesCounted);
+    QCOMPARE(record.pixelCount, qint64(260) * 200);
+    QVERIFY2(record.dataMin < record.dataMax, "a noise field spans a range");
+
+    // Both extremes are held by a few pixels each: real, and nothing like the
+    // share a clipped exposure would show.
+    QVERIFY(record.pixelsAtDataMin > 0);
+    QVERIFY(record.pixelsAtDataMax > 0);
+    QVERIFY2(record.pixelsAtDataMin + record.pixelsAtDataMax < record.pixelCount / 100,
+             "an unclipped picture has almost nothing sitting at either extreme");
 }
 
 QTEST_MAIN(TestImageDecode)
