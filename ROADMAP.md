@@ -906,6 +906,14 @@ as a backlog with everything in it.
   separately, against the complete suite including the slow accuracy cases,
   since those are what cover it.
 
+  `Correlation.cpp` swept separately against the complete suite scored
+  **48.2%** - 41 killed of 85 viable, 44 survivors - which is markedly worse
+  than the rest of core and is the file where the measurement happens. Sixteen
+  of those were the chunking arithmetic and are closed (the queue had only ever
+  been divided into one piece, since every grid in the suite is smaller than
+  the chunk size); the rest are the engine-boundary guards and the recovery
+  pass's own loop, and they are the most valuable survivors in the project.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
   nothing runs one on a schedule. What the first one bought is in the commits
   of 2026-09-09; the survivors that remain are the work list, largest first -
