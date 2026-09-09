@@ -611,11 +611,55 @@ void TestSeries::a_reading_just_outside_the_grid_is_refused_on_each_side_in_turn
     QVERIFY2(!sampleFieldAt(field, 15.0, -0.5).measured, "above the grid is outside it");
     QVERIFY2(!sampleFieldAt(field, 15.0, 30.5).measured, "below the grid is outside it");
 
-    // A field with no grid at all is refused rather than divided by.
-    CorrelationResult degenerate = uniformField(4, 4, 10, 2.f, -1.f);
-    degenerate.step = 0;
-    QVERIFY2(!sampleFieldAt(degenerate, 15.0, 15.0).measured,
-             "a field with no step is refused rather than dividing by zero");
+    // ⚑ A FIELD WITH NO STEP, SAMPLED AT ITS OWN ORIGIN, and the reading below
+    // is the one that matters even though NO TEST CAN PROVE THE GUARD IS DOING
+    // IT. Worth writing down in full, because the next reader will otherwise
+    // spend an evening on the same mutant.
+    //
+    // Away from the origin, (x - originX) / 0 is an infinity, which the bounds
+    // test below refuses on its own. AT the origin it is 0 / 0, a NaN, and
+    // every comparison against a NaN is false -- so the bounds test waves it
+    // through. Verified rather than reasoned: a standalone program printed
+    // cx = -nan with `cx < 0.0` and `cx > 3.0` both false.
+    //
+    // What follows the guard is then int(floor(NaN)), which is UNDEFINED. On
+    // this build it lands outside the grid and measuredAtCell refuses it, so
+    // removing the step condition changes nothing observable and its mutant
+    // survives -- checked, not assumed. The guard stays anyway: what it buys
+    // is that the undefined conversion is never REACHED, and "the compiler
+    // happens to land somewhere harmless today" is not a property this tool
+    // can be built on. That difference is invisible to any assertion, which is
+    // why this case asserts the outcome and this comment carries the reason.
+    CorrelationResult noStep = uniformField(4, 4, 10, 2.f, -1.f);
+    noStep.step = 0;
+    QVERIFY2(!sampleFieldAt(noStep, 0.0, 0.0).measured,
+             "a field with no step is refused at its own origin, where the "
+             "position works out to a NaN that every bounds test lets past");
+    QVERIFY2(!sampleFieldAt(noStep, 15.0, 15.0).measured,
+             "and anywhere else, where it works out to an infinity");
+
+    // ⚑ The other two conditions of that guard are UNREACHABLE, and are
+    // recorded here rather than tested so that nobody writes a case for them
+    // and nobody deletes them either. With gridColumns at zero the upper bound
+    // becomes double(0 - 1), so the bounds test asks whether 0 <= cx <= -1,
+    // which nothing satisfies: every position is already refused before the
+    // guard is consulted. Their mutants survive and always will. They stay in
+    // the code because a guard that states its precondition where the
+    // precondition is used is worth more than two lines of saved work.
+    CorrelationResult noColumns = uniformField(4, 4, 10, 2.f, -1.f);
+    noColumns.gridColumns = 0;
+    QVERIFY2(!sampleFieldAt(noColumns, 15.0, 15.0).measured,
+             "a field with no columns is refused, whichever test does it");
+
+    CorrelationResult noRows = uniformField(4, 4, 10, 2.f, -1.f);
+    noRows.gridRows = 0;
+    QVERIFY2(!sampleFieldAt(noRows, 15.0, 15.0).measured,
+             "a field with no rows is refused, whichever test does it");
+
+    // A single-point grid has no CELL to interpolate across, only a corner.
+    CorrelationResult single = uniformField(1, 1, 10, 2.f, -1.f);
+    QVERIFY2(!sampleFieldAt(single, 0.0, 0.0).measured,
+             "one point is not a cell, so there is nothing to read between");
 }
 
 void TestSeries::an_interpolated_reading_weights_the_corner_it_is_nearest_to()
