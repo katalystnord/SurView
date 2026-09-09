@@ -155,6 +155,33 @@ private slots:
     // the all-four-corners rule to an AND dereferences a null corner. The
     // suite fails, so it is caught, but the harness reports it as a crash and
     // it is recorded here so the next reader knows why.
+    //
+    // ⚑ WHAT STILL SURVIVES IN Series.cpp, AND WHY NO CASE IS COMING. 35
+    // mutants became 15, and every one of the 15 was chased to a reason:
+    //
+    //   the degenerate-field guard (5)   Two conditions unreachable, one
+    //                                    preventing undefined behaviour that
+    //                                    is refused downstream anyway. Argued
+    //                                    at the case below.
+    //   measuredAtCell's own bounds (5)  Defensive behind sampleFieldAt's
+    //                                    clamp, which cannot hand it a column
+    //                                    outside [0, gridColumns - 2] or a row
+    //                                    outside [0, gridRows - 2]. Nothing
+    //                                    can call it out of range, so nothing
+    //                                    can observe the check.
+    //   `cx < 0 || cy < 0` as an AND (1) A position outside on one axis alone
+    //                                    then reaches the clamp, which hands
+    //                                    measuredAtCell a negative column, and
+    //                                    that refuses it. Same answer by a
+    //                                    longer road.
+    //   the clamp's ternary (4)          `x >= 0 ? x : 0` and `x > 0 ? x : 0`
+    //                                    differ only at x == 0, where both
+    //                                    give 0. Equivalent by construction,
+    //                                    not merely unobserved.
+    //   the four-corner rule (1)         The segfault above.
+    //
+    // Recorded at this length because the alternative is the next person
+    // running the sweep, seeing 15 survivors, and doing all of it again.
     void a_field_series_numbers_its_frames_the_way_the_rest_of_the_window_does();
     void the_largest_aggregate_takes_the_largest_MAGNITUDE_signs_included();
     void the_mean_is_a_mean_and_the_largest_is_not();
@@ -163,6 +190,8 @@ private slots:
     void a_reading_just_outside_the_grid_is_refused_on_each_side_in_turn();
     void an_interpolated_reading_weights_the_corner_it_is_nearest_to();
     void strain_is_the_one_quantity_without_a_unit_in_pixels();
+    void a_grid_exactly_two_points_across_still_has_one_cell();
+    void two_movements_of_equal_size_and_opposite_sign_resolve_the_same_way();
 };
 
 // --- sampling ---------------------------------------------------------------
@@ -735,6 +764,55 @@ void TestSeries::strain_is_the_one_quantity_without_a_unit_in_pixels()
              QStringLiteral("px"));
     QCOMPARE(extensometerQuantityUnit(ExtensometerQuantity::Elongation),
              QStringLiteral("px"));
+}
+
+
+void TestSeries::a_grid_exactly_two_points_across_still_has_one_cell()
+{
+    // ⚑ Two columns is the smallest grid that HAS a cell, and it is where the
+    // clamp's own guard lives: `gridColumns - 2 >= 0` picks the last cell's
+    // left column, and at exactly two columns that expression is zero. One
+    // either side of it -- a strict `> 0`, or a `- 1` -- and the only cell in
+    // the grid is either unreachable or indexed one past its right-hand
+    // corner. Every other case here uses a comfortable 3 or 4 columns, where
+    // the same mistakes are invisible.
+    CorrelationResult narrow = uniformField(2, 2, 10, 0.f, 0.f);
+    narrow.points[0].u = 0.f;
+    narrow.points[1].u = 4.f;
+    narrow.points[2].u = 8.f;
+    narrow.points[3].u = 12.f;
+
+    const FieldSample middle = sampleFieldAt(narrow, 5.0, 5.0);
+    QVERIFY2(middle.measured, "the one cell of a two-by-two grid can be read");
+    QVERIFY2(std::abs(middle.u - 6.0) < 1e-9,
+             qPrintable(QStringLiteral("read %1, expected 6 (the mean of all four corners)")
+                            .arg(middle.u)));
+
+    const FieldSample corner = sampleFieldAt(narrow, 10.0, 10.0);
+    QVERIFY2(corner.measured, "and its far corner is inside it");
+    QVERIFY2(std::abs(corner.u - 12.0) < 1e-9,
+             qPrintable(QStringLiteral("read %1, expected the far corner's own 12").arg(corner.u)));
+}
+
+void TestSeries::two_movements_of_equal_size_and_opposite_sign_resolve_the_same_way()
+{
+    // ⚑ The tie. Two points that moved the same DISTANCE in opposite
+    // directions have the same claim to being the largest, so which one is
+    // reported has to be settled by the rule rather than by the order the
+    // points happen to sit in. Strictly greater keeps the first; not-worse
+    // keeps the last, and the same field then reports +5 or -5 depending on
+    // nothing a reader can see.
+    CorrelationResult field = uniformField(2, 1, 10, 0.f, 0.f);
+    field.points[0].u = 5.f;
+    field.points[1].u = -5.f;
+
+    const Series largest =
+        fieldSeries({field}, FieldChannel::DisplacementX, FieldAggregate::Largest);
+    QVERIFY2(std::abs(largest.points[0].value - 5.0) < 1e-9,
+             qPrintable(QStringLiteral("read %1, expected +5: the first of two equal "
+                                       "magnitudes wins, so the answer does not depend "
+                                       "on the order the points are stored in")
+                            .arg(largest.points[0].value)));
 }
 
 QTEST_MAIN(TestSeries)
