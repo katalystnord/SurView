@@ -68,6 +68,17 @@ private slots:
     void a_target_that_cannot_pair_is_skipped_with_its_reason_kept();
     void a_target_that_could_not_be_read_is_skipped_with_its_reason_kept();
     void a_plan_with_nothing_to_measure_says_so();
+
+    // ⚑ Frame order is a CORRECTNESS problem and nothing downstream can detect
+    // it: every field solves, the displacements are real, and the specimen
+    // simply appears to jump about. The cases below were written against the
+    // mutation sweep of 2026-09-09, which found the comparator's boundaries
+    // untouched by everything above.
+    void every_digit_is_a_digit_including_the_last_one();
+    void a_digit_and_a_letter_in_the_same_place_do_not_compare_as_numbers();
+    void a_name_that_is_a_prefix_of_another_comes_first_either_way_round();
+    void a_name_ending_in_a_digit_is_compared_without_running_off_the_end();
+    void two_names_that_differ_in_nothing_precede_neither();
 };
 
 void TestSequence::frame_ten_comes_after_frame_two()
@@ -207,6 +218,103 @@ void TestSequence::a_plan_with_nothing_to_measure_says_so()
     const SequencePlan plan = planSequence(reference(), targets);
     QVERIFY(plan.isEmpty());
     QCOMPARE(plan.skipped.size(), 1);
+}
+
+
+void TestSequence::every_digit_is_a_digit_including_the_last_one()
+{
+    // ⚑ '9' is the boundary of the digit test, and no fixture above contains
+    // one. Narrow the test to '0' through '8' and nine stops being a number:
+    // it compares as a letter instead, so frame_9 lands after frame_10 and a
+    // ten-frame test is measured in the wrong order with every field perfect.
+    QVERIFY2(precedesInSequence(QStringLiteral("frame_9.tif"),
+                                QStringLiteral("frame_10.tif")),
+             "frame_9 comes before frame_10");
+    QVERIFY2(!precedesInSequence(QStringLiteral("frame_10.tif"),
+                                 QStringLiteral("frame_9.tif")),
+             "and frame_10 does not come before frame_9");
+
+    // '0' is the other end of the same range.
+    QVERIFY2(precedesInSequence(QStringLiteral("frame_0.tif"),
+                                QStringLiteral("frame_1.tif")),
+             "frame_0 comes before frame_1");
+
+    const QStringList sorted =
+        sortIntoSequenceOrder({QStringLiteral("f_11.tif"), QStringLiteral("f_9.tif"),
+                               QStringLiteral("f_0.tif"), QStringLiteral("f_10.tif")});
+    QCOMPARE(sorted, QStringList({QStringLiteral("f_0.tif"), QStringLiteral("f_9.tif"),
+                                  QStringLiteral("f_10.tif"), QStringLiteral("f_11.tif")}));
+}
+
+void TestSequence::a_digit_and_a_letter_in_the_same_place_do_not_compare_as_numbers()
+{
+    // BOTH sides have to be digits for the run comparison to apply. With
+    // either one enough, a name with a letter where the other has a digit is
+    // fed to the number path, which scans a run of no digits at all.
+    QVERIFY2(precedesInSequence(QStringLiteral("frame_1.tif"),
+                                QStringLiteral("frame_a.tif")),
+             "a digit sorts before a letter at the same position");
+    QVERIFY2(!precedesInSequence(QStringLiteral("frame_a.tif"),
+                                 QStringLiteral("frame_1.tif")),
+             "and the reverse does not hold");
+}
+
+void TestSequence::a_name_that_is_a_prefix_of_another_comes_first_either_way_round()
+{
+    // ⚑ The tail, where one name has run out and the other has not, and the
+    // two directions are separate lines of code. Answered the same way in both
+    // directions, a sort is not an order at all: two names each claiming to
+    // precede the other is what makes std::sort walk off the end of its range.
+    //
+    // ⚑ And it must be a TRUE prefix, which took a negative check to get
+    // right: "frame.tif" against "frame_1.tif" is not one, because they differ
+    // at '.' versus '_' and the comparison returns from the letter test long
+    // before either name runs out. The tail is reached only when every
+    // compared character matched and one name simply stopped -- a .tif beside
+    // a .tiff, which is an ordinary thing to find in a folder.
+    QVERIFY2(precedesInSequence(QStringLiteral("frame_1.tif"),
+                                QStringLiteral("frame_1.tiff")),
+             "the name that runs out first comes first");
+    QVERIFY2(!precedesInSequence(QStringLiteral("frame_1.tiff"),
+                                 QStringLiteral("frame_1.tif")),
+             "and the longer one does not come first");
+
+    const QStringList sorted =
+        sortIntoSequenceOrder({QStringLiteral("frame_1.tiff"), QStringLiteral("frame_1.tif")});
+    QCOMPARE(sorted, QStringList({QStringLiteral("frame_1.tif"),
+                                  QStringLiteral("frame_1.tiff")}));
+}
+
+void TestSequence::a_name_ending_in_a_digit_is_compared_without_running_off_the_end()
+{
+    // A run of digits at the very end of a name is where the scan can read one
+    // character past it. Both names end in one here, and one is a prefix of
+    // the other, so the scan reaches the end on both sides in turn.
+    QVERIFY2(precedesInSequence(QStringLiteral("f2"), QStringLiteral("f10")),
+             "a name that is nothing but a stem and a number still compares as a number");
+    QVERIFY2(precedesInSequence(QStringLiteral("f1"), QStringLiteral("f12")),
+             "and a number that is a prefix of another compares as the smaller number");
+    QVERIFY2(!precedesInSequence(QStringLiteral("f12"), QStringLiteral("f1")),
+             "in that direction only");
+}
+
+void TestSequence::two_names_that_differ_in_nothing_precede_neither()
+{
+    // ⚑ Irreflexivity, which is what makes this a strict weak ordering and
+    // therefore a legal comparator for std::sort. A name does not precede
+    // itself, and two files from different folders sharing a name do not
+    // precede each other -- if they did, the comparator would be inconsistent
+    // and the sort's behaviour undefined, on a list nobody would think to
+    // suspect.
+    QVERIFY2(!precedesInSequence(QStringLiteral("frame_1.tif"),
+                                 QStringLiteral("frame_1.tif")),
+             "a name does not precede itself");
+    QVERIFY2(!precedesInSequence(QStringLiteral("a/frame_1.tif"),
+                                 QStringLiteral("b/frame_1.tif")),
+             "and neither of two names that differ only in their folder precedes the other");
+    QVERIFY2(!precedesInSequence(QStringLiteral("b/frame_1.tif"),
+                                 QStringLiteral("a/frame_1.tif")),
+             "in either direction");
 }
 
 QTEST_MAIN(TestSequence)
