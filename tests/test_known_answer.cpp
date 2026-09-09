@@ -110,6 +110,8 @@ private slots:
     void a_rigid_rotation_states_no_strain_in_the_measure_that_has_none();
     void the_linear_measure_states_the_error_it_is_known_to_have_on_a_rotation();
     void a_stated_strain_is_uniform_over_the_picture_as_the_deformation_is();
+    void the_cauchy_shear_adds_the_two_off_diagonal_terms_rather_than_differencing_them();
+    void the_two_measures_state_different_shears_for_a_deformation_that_has_both();
 
     void a_channel_the_stated_answer_cannot_speak_to_is_not_offered();
 
@@ -578,6 +580,79 @@ void TestKnownAnswer::the_error_scale_is_centred_on_zero_whatever_the_errors_are
 
     const QVector<float> nothing{kNothingMeasured};
     QVERIFY(!errorColourRange(nothing, lowest, highest));
+}
+
+
+void TestKnownAnswer::the_cauchy_shear_adds_the_two_off_diagonal_terms_rather_than_differencing_them()
+{
+    // ⚑ A ROTATION IS THE FIXTURE THAT CAN SEE THIS, and the shipped shear set
+    // cannot. Shear states f10 = 0, so uy + vx and uy - vx come to the same
+    // number and the formula's sign is invisible. A rotation states equal and
+    // OPPOSITE off-diagonal terms, so their sum is zero and their difference
+    // is the whole of one of them -- a quarter of a radian on the fifteen
+    // degree frame.
+    //
+    // What is at stake: this is the answer the comparison window states as
+    // TRUTH. Wrong here, a correct measurement is shown as a large error, and
+    // the reader has every reason to believe the instrument rather than the
+    // truth panel.
+    const QJsonObject frame = statedFrame(QStringLiteral("rotation"), 4);
+    const QJsonArray f = frame.value(QStringLiteral("deformation_gradient")).toArray();
+    const double uy = f.at(0).toArray().at(1).toDouble();
+    const double vx = f.at(1).toArray().at(0).toDouble();
+    QVERIFY2(std::abs(uy + vx) < 1e-12,
+             "the fixture's own off-diagonal terms are equal and opposite");
+    QVERIFY2(std::abs(uy) > 0.1, "and large enough that the difference could not hide");
+
+    const KnownAnswer answer =
+        knownAnswerFor(synthetic(QStringLiteral("rotation_04.tif")));
+    QVERIFY(answer.valid);
+
+    const double linear = statedValue(answer, FieldChannel::StrainXY, 100.0, 300.0,
+                                      StrainMeasure::Cauchy);
+    QVERIFY2(std::abs(linear - 0.5 * (uy + vx)) < 1e-12,
+             qPrintable(QStringLiteral("the Cauchy shear was stated as %1 where the "
+                                       "file's own gradient gives %2")
+                            .arg(linear).arg(0.5 * (uy + vx))));
+}
+
+void TestKnownAnswer::the_two_measures_state_different_shears_for_a_deformation_that_has_both()
+{
+    // ⚑ NO SHIPPED SET CAN TELL THE TWO SHEAR MEASURES APART. Green-Lagrange
+    // adds uy*ux + vy*vx to the linear form, and every example states either
+    // no shear (tension, translation, large strain) or no stretch (shear), so
+    // that correction is zero in all of them and the two measures agree
+    // exactly. The dispatch between them was therefore free to be inverted.
+    //
+    // A stated answer is plain data, so the case states a deformation that has
+    // both -- five per cent stretch, a little shear, a little in the other
+    // direction -- and asks each measure for its own answer. Nothing is
+    // hard-coded: both expectations are the published formulae written out
+    // here, and they differ by the correction term, which is the whole point.
+    KnownAnswer answer;
+    answer.valid = true;
+    answer.f00 = 1.05;   // ux = 0.05
+    answer.f01 = 0.04;   // uy = 0.04
+    answer.f10 = 0.02;   // vx = 0.02
+    answer.f11 = 0.97;   // vy = -0.03
+
+    const double ux = answer.f00 - 1.0;
+    const double uy = answer.f01;
+    const double vx = answer.f10;
+    const double vy = answer.f11 - 1.0;
+
+    const double linear = statedValue(answer, FieldChannel::StrainXY, 10.0, 20.0,
+                                      StrainMeasure::Cauchy);
+    const double green = statedValue(answer, FieldChannel::StrainXY, 10.0, 20.0,
+                                     StrainMeasure::GreenLagrange);
+
+    QVERIFY2(std::abs(linear - 0.5 * (uy + vx)) < 1e-12,
+             qPrintable(QStringLiteral("linear shear stated as %1").arg(linear)));
+    QVERIFY2(std::abs(green - 0.5 * (uy + vx + uy * ux + vy * vx)) < 1e-12,
+             qPrintable(QStringLiteral("Green-Lagrange shear stated as %1").arg(green)));
+    QVERIFY2(std::abs(green - linear) > 1e-9,
+             "the two measures must actually differ here, or the case cannot tell "
+             "which one answered");
 }
 
 QTEST_MAIN(TestKnownAnswer)
