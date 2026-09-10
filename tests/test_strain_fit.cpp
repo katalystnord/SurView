@@ -38,6 +38,7 @@ private slots:
     void the_warning_speaks_for_the_best_case_only();
     void a_nonsense_grid_step_counts_nothing_rather_than_dividing_by_zero();
     void every_offered_strain_measure_has_a_name();
+    void a_subregion_of_no_radius_holds_its_centre_and_nothing_else();
 };
 
 void TestStrainFit::the_centre_point_counts_toward_what_the_fit_can_see()
@@ -132,6 +133,22 @@ void TestStrainFit::every_offered_strain_measure_has_a_name()
         QVERIFY2(!names.contains(name), "two strain measures share a name");
         names << name;
     }
+}
+
+
+void TestStrainFit::a_subregion_of_no_radius_holds_its_centre_and_nothing_else()
+{
+    // The boundary of the refusal, which the case above steps over: it offers
+    // -1 and -5, and a guard at "negative" and one at "not positive" both
+    // reject those. A radius of exactly zero is not nonsense -- it is a
+    // subregion containing the point it is centred on, which is one point and
+    // therefore far too few to fit a plane through. Counting it as zero would
+    // say the same thing for the wrong reason, and the panel states this
+    // number to a reader deciding what to set.
+    QCOMPARE(gridPointsInSubregion(0.0, 10), 1);
+
+    // And it is genuinely too few, so the panel still warns.
+    QVERIFY(!strainSubregionWarning(0.0, 10, 6).isEmpty());
 }
 
 QTEST_MAIN(TestStrainFit)

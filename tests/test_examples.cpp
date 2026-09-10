@@ -88,6 +88,8 @@ private slots:
     void a_folder_with_nothing_in_it_offers_nothing_rather_than_failing();
     void an_example_names_itself_readably();
     void two_examples_with_the_same_name_are_told_apart();
+    void a_pair_of_images_is_the_smallest_example_there_is();
+    void every_separator_a_name_might_use_is_trimmed_from_its_stem();
 };
 
 void TestExamples::every_numbered_run_of_images_is_offered_as_one_example()
@@ -217,6 +219,79 @@ void TestExamples::two_examples_with_the_same_name_are_told_apart()
 
     for (const ExampleSet &set : sets)
         QVERIFY2(!set.group.isEmpty(), qPrintable(set.name));
+}
+
+
+void TestExamples::a_pair_of_images_is_the_smallest_example_there_is()
+{
+    // ⚑ The boundary of "a lone image is not an example". Two images are a
+    // reference and one target, which is a whole DIC measurement -- the
+    // smallest one there is -- and turning it away would hide the shift pair
+    // that this project's own fixtures are built on.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    QDir().mkpath(dir.path() + QStringLiteral("/pair"));
+    touch(dir.path() + QStringLiteral("/pair/shift_00.tif"));
+    touch(dir.path() + QStringLiteral("/pair/shift_01.tif"));
+
+    const QVector<ExampleSet> sets = findExamples({dir.path()});
+    QCOMPARE(sets.size(), 1);
+    QCOMPARE(sets.first().frames.size(), 2);
+}
+
+void TestExamples::every_separator_a_name_might_use_is_trimmed_from_its_stem()
+{
+    // The stem is what names the example in the menu, and the separator is
+    // trimmed so "rotation_04" reads as "rotation" rather than "rotation_".
+    // Every fixture in this file separates with an underscore, so the other
+    // three were never exercised at all.
+    //
+    // ⚑ Only the DOT can actually fail, and the reason is worth recording so
+    // that the other three mutants are not hunted: readableName() replaces
+    // '_' and '-' with spaces and then simplifies, which strips a trailing one
+    // -- so a stem left as "dash-" is displayed as "Dash" regardless, and the
+    // trimming of those three is belt and braces over a normalisation that has
+    // already happened. A dot survives readableName untouched, so an untrimmed
+    // one reaches the menu as "Dot." and this case reddens. The three are kept
+    // because stemOf is also what the grouping key is built from, where no
+    // such normalisation applies.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QVector<QPair<QString, QString>> named{
+        {QStringLiteral("under_"), QStringLiteral("under")},
+        {QStringLiteral("dash-"), QStringLiteral("dash")},
+        {QStringLiteral("dot."), QStringLiteral("dot")},
+        {QStringLiteral("space "), QStringLiteral("space")},
+    };
+
+    for (const auto &entry : named) {
+        const QString folder = dir.path() + QStringLiteral("/") + entry.second;
+        QDir().mkpath(folder);
+        touch(folder + QStringLiteral("/") + entry.first + QStringLiteral("00.tif"));
+        touch(folder + QStringLiteral("/") + entry.first + QStringLiteral("01.tif"));
+    }
+
+    const QVector<ExampleSet> sets = findExamples({dir.path()});
+    QCOMPARE(sets.size(), named.size());
+
+    for (const auto &entry : named) {
+        bool found = false;
+        for (const ExampleSet &set : sets) {
+            if (set.name.contains(entry.second, Qt::CaseInsensitive)
+                && !set.name.contains(entry.first, Qt::CaseInsensitive)) {
+                found = true;
+            }
+        }
+        QVERIFY2(found,
+                 qPrintable(QStringLiteral("no example named for \"%1\" with its "
+                                           "separator trimmed; the names offered were %2")
+                                .arg(entry.second, [&sets] {
+                                    QStringList all;
+                                    for (const ExampleSet &set : sets)
+                                        all << set.name;
+                                    return all.join(QStringLiteral(", "));
+                                }())));
+    }
 }
 
 QTEST_MAIN(TestExamples)
