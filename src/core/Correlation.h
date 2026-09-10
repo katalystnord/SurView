@@ -275,6 +275,17 @@ struct PoiSeeding
 // progress is reported and cancellation can take effect.
 inline constexpr int kDefaultChunkPoints = 2000;
 
+// How many threads the engine is given, out of however many the machine says
+// it has. ⚑ ONE IS LEFT FOR THE INTERFACE: a solve that takes every core makes
+// the window it is reporting into stop redrawing, and a Stop button that does
+// not repaint is a Stop button nobody can trust. And never fewer than one --
+// omp_set_num_threads() is handed this number directly.
+//
+// A free function rather than a detail of the run, because a number nothing
+// can call is a number nothing can check: it decided how every correlation in
+// this application is dispatched and no test could reach it.
+int solverThreadCount(int coresAvailable);
+
 class CorrelationRunner : public QObject
 {
     Q_OBJECT

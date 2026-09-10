@@ -79,6 +79,7 @@ class TestSolverChoices : public QObject
 
 private slots:
     void the_application_offers_the_combinations_the_engine_implements();
+    void the_combination_that_is_not_offered_says_why_it_is_not();
     void every_offered_combination_recovers_a_known_shift();
     void every_offered_combination_honours_a_region_of_interest();
 };
@@ -104,6 +105,48 @@ void TestSolverChoices::the_application_offers_the_combinations_the_engine_imple
     for (const SolverChoice &choice : choices) {
         if (choice.solver == CorrelationSettings::NewtonRaphson)
             QCOMPARE(choice.shapeOrder, 1);
+    }
+}
+
+void TestSolverChoices::the_combination_that_is_not_offered_says_why_it_is_not()
+{
+    // The case above asks what IS offered. Nothing asked what happens at the
+    // one combination that is not, and the panel does not simply omit it: the
+    // second-order entry stays in the shape list, disabled, carrying
+    // unavailableReason() as its tooltip. That sentence is the only thing on
+    // screen explaining why the option cannot be chosen, and it was written by
+    // a function no test had ever called.
+    //
+    // ⚑ Found by the mutation sweep of 2026-09-09: three mutants lived in that
+    // one condition -- refusing every second-order solver, refusing
+    // Newton-Raphson at first order, and refusing on either half instead of
+    // both -- and the suite watched all three go by. The reason a combination
+    // is refused is checked from both sides here: the refused one carries a
+    // reason, and every offered one carries none.
+    CorrelationSettings refused;
+    refused.solver = CorrelationSettings::NewtonRaphson;
+    refused.shapeOrder = 2;
+
+    QVERIFY2(!refused.isAvailable(),
+             "Newton-Raphson at second order was offered, and the engine does "
+             "not implement it");
+    QVERIFY2(!refused.unavailableReason().isEmpty(),
+             "an option the panel disables with nothing said about why");
+    QVERIFY2(refused.unavailableReason().contains(QStringLiteral("Newton-Raphson")),
+             qPrintable(refused.unavailableReason()));
+    QVERIFY2(refused.unavailableReason().contains(QStringLiteral("first-order")),
+             qPrintable(refused.unavailableReason()));
+
+    // And the other side of it: a combination that IS offered must not be
+    // explained away. A reason here would disable a control that works.
+    for (const SolverChoice &choice : offeredSolverChoices()) {
+        CorrelationSettings settings;
+        settings.solver = choice.solver;
+        settings.shapeOrder = choice.shapeOrder;
+        QVERIFY2(settings.unavailableReason().isEmpty(),
+                 qPrintable(QStringLiteral("%1 is offered and yet reports: %2")
+                                .arg(describe(choice))
+                                .arg(settings.unavailableReason())));
     }
 }
 

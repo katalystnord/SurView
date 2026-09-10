@@ -20,16 +20,6 @@ using namespace opencorr;
 
 namespace {
 
-// POIs handed to the engine per call. Small enough that Stop feels immediate
-// and the progress bar moves, large enough that the engine's own OpenMP
-// parallelism still has work to spread across threads.
-
-int workerThreadCount()
-{
-    const int cores = QThread::idealThreadCount();
-    return cores > 1 ? cores - 1 : 1;
-}
-
 // Build the solver the settings ask for. Returned as the DIC base so the
 // chunked loop below does not care which one it got.
 std::unique_ptr<DIC> makeSolver(const CorrelationSettings &settings, int threads)
@@ -58,6 +48,12 @@ std::unique_ptr<DIC> makeSolver(const CorrelationSettings &settings, int threads
 }
 
 }  // namespace
+
+int solverThreadCount(int coresAvailable)
+{
+    return coresAvailable > 1 ? coresAvailable - 1 : 1;
+}
+
 
 QString CorrelationSettings::strainWarning() const
 {
@@ -136,7 +132,7 @@ void CorrelationRunner::run()
     QElapsedTimer timer;
     timer.start();
 
-    const int threads = workerThreadCount();
+    const int threads = solverThreadCount(QThread::idealThreadCount());
     omp_set_num_threads(threads);
 
     try {

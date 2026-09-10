@@ -105,8 +105,46 @@ class TestChunking : public QObject
 
 private slots:
     void dividing_the_queue_does_not_change_what_is_measured();
+    void the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none();
     void a_divided_queue_reports_progress_more_than_once();
 };
+
+void TestChunking::the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none()
+{
+    // The other half of how a run is dispatched: how many points go over at
+    // once, and how many threads work on them. This number is handed straight
+    // to omp_set_num_threads() for every correlation the application runs, and
+    // until it was lifted out of the run it could not be called by anything --
+    // the sweep of 2026-09-09 found four mutants in its one line, including
+    // one that asks for MORE threads than the machine has and one that, on a
+    // single-core machine, asks for none at all.
+    //
+    // Two properties, both about the machine rather than about the expression:
+    // one core is left free so the window keeps repainting while the engine
+    // runs, and a solve is never dispatched to nothing.
+    QCOMPARE(solverThreadCount(12), 11);
+    QCOMPARE(solverThreadCount(4), 3);
+    QCOMPARE(solverThreadCount(2), 1);
+
+    // ⚑ A single core is the boundary, and it is the one that matters: there
+    // is no core to spare, and the solve still has to happen.
+    QCOMPARE(solverThreadCount(1), 1);
+
+    // idealThreadCount() returns -1 when it cannot tell.
+    QCOMPARE(solverThreadCount(0), 1);
+    QCOMPARE(solverThreadCount(-1), 1);
+
+    for (int cores = 1; cores <= 64; cores++) {
+        const int threads = solverThreadCount(cores);
+        QVERIFY2(threads >= 1,
+                 qPrintable(QStringLiteral("%1 cores dispatched %2 threads")
+                                .arg(cores).arg(threads)));
+        QVERIFY2(threads <= cores || cores < 1,
+                 qPrintable(QStringLiteral("%1 cores dispatched %2 threads: "
+                                           "more work than the machine has")
+                                .arg(cores).arg(threads)));
+    }
+}
 
 void TestChunking::dividing_the_queue_does_not_change_what_is_measured()
 {
