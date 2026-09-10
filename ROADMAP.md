@@ -1026,6 +1026,23 @@ as a backlog with everything in it.
       refusal.** An image with no pixels was refused for its subset radius; a
       region inside the border margin on one axis alone was not refused at all.
 
+  ⚑ **AND THE SWEEP ITSELF WAS THE WASTE.** It ran all 33 test executables for
+  every mutant, when a mutation in `Sequence.cpp` cannot be noticed by a test
+  that never compiles against it. `tools/mutants.py` now works in two stages:
+  first the tests whose source includes the mutated file's header, then - only
+  for what survives that - the complete suite before anything is recorded as a
+  survivor. A narrowed run can produce a false SURVIVOR, never a false kill, and
+  a false survivor costs one more run, so the narrowing buys time and cannot
+  cost accuracy.
+
+  The coverage set comes from the include graph rather than a hand-written map,
+  so it cannot rot. Measured on the same six mutants, warm build directory, same
+  verdicts both ways: **2 min 26 against 6 min 17**, and the run reports how many
+  mutants the narrow set killed on its own against how many got past it - which
+  is the number that says whether the heuristic is still any good. Two tests
+  instead of thirty-three for most core files; `Correlation.h` is included by
+  nineteen of them, so the central types benefit least.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
   nothing runs one on a schedule. What this round showed is that the cheap half
   is the valuable half - replaying the SURVIVOR list is minutes of setup and

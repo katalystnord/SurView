@@ -202,6 +202,37 @@ def load_survivors(result_path, root):
     return replayed
 
 
+def tests_covering(path, root):
+    """The tests that compile against the mutated file, as a ctest -R pattern.
+
+    ⚑ WHY A MUTANT DOES NOT NEED THE WHOLE SUITE. A mutation in Sequence.cpp
+    cannot be caught by a test that never compiles against it, and running all
+    33 executables to find that out costs three minutes a mutant where two
+    executables would cost three seconds. Measured on this project, 2026-09-10:
+    a full sweep spends most of its time re-running tests that could not
+    possibly notice.
+
+    The set is derived from the include graph rather than from a hand-written
+    map, so it cannot rot: a test that includes core/Sequence.h is a test that
+    might notice a change to Sequence.cpp. Direct includes only, which makes it
+    a lower bound on what could catch the mutant -- and that is the whole reason
+    the caller treats a pass here as INCONCLUSIVE and re-runs the complete suite
+    before recording a survivor. A narrow filter can only ever produce a false
+    survivor, never a false kill, and a false survivor costs one more run.
+
+    Returns None when nothing includes the header, which sends the mutant
+    straight to the complete suite.
+    """
+    header = path.with_suffix(".h").name
+    covering = []
+    for case in sorted((root / "tests").glob("test_*.cpp")):
+        if header in case.read_text():
+            covering.append(case.stem)
+    if not covering:
+        return None
+    return "^(" + "|".join(covering) + ")$"
+
+
 def run(cmd, cwd, timeout):
     try:
         p = subprocess.run(cmd, cwd=cwd, timeout=timeout,
@@ -230,6 +261,14 @@ def main():
                          "Give a number when something else is using the "
                          "machine too -- a mutation run is hours of full load "
                          "and it is a poor neighbour at its natural width.")
+    ap.add_argument("--whole-suite", action="store_true",
+                    help="run every test for every mutant, instead of first "
+                         "trying only the tests that compile against the "
+                         "mutated file. The narrowed run cannot produce a false "
+                         "kill -- anything that survives it is re-run against "
+                         "the complete suite before being recorded -- so this "
+                         "is for checking the narrowing itself, not for trusting "
+                         "the result more.")
     ap.add_argument("--json", help="write the full result to this file")
     ap.add_argument("--rerun", metavar="RESULT.JSON",
                     help="re-run exactly the survivors recorded in an earlier "
@@ -367,6 +406,14 @@ def main():
           f"({total_found} found across {len(files)} files) ===\n")
 
     killed, survived, not_viable = [], [], []
+    # Worked out once: reading every test source per mutant would be its own
+    # small waste, and the sources do not change while a sweep runs.
+    coverage = {}
+    if not args.whole_suite and not args.engine:
+        for target in {str(m["path"]) for m in mutants}:
+            coverage[target] = tests_covering(Path(target), root)
+    localised = 0   # killed by the narrow set alone
+    widened = 0     # survived the narrow set and died to the whole suite
     started = time.time()
 
     for i, m in enumerate(mutants, 1):
@@ -381,8 +428,27 @@ def main():
                 not_viable.append(m)
                 verdict = "not viable"
             else:
-                rc = run(["ctest", "--test-dir", str(ctest_dir)] + ctest_args + test_filter,
-                         ctest_cwd, args.timeout)
+                # Stage one: only the tests that compile against this file, and
+                # only the fast ones. A failure here is a kill and needs no
+                # second opinion.
+                rc = 1
+                narrow = coverage.get(str(path)) if not args.whole_suite else None
+                if narrow:
+                    rc = run(["ctest", "--test-dir", str(ctest_dir)] + ctest_args
+                             + ["-R", narrow] + test_filter,
+                             ctest_cwd, args.timeout)
+                    if rc != 0:
+                        localised += 1
+
+                # Stage two: anything that got past stage one faces the whole
+                # suite before it is called a survivor, so the narrowing can
+                # cost time and never accuracy.
+                if rc == 0 or not narrow:
+                    rc = run(["ctest", "--test-dir", str(ctest_dir)] + ctest_args + test_filter,
+                             ctest_cwd, args.timeout)
+                    if rc != 0 and narrow:
+                        widened += 1
+
                 if rc == 0:
                     survived.append(m)
                     verdict = "SURVIVED"
@@ -409,6 +475,14 @@ def main():
     print(f"  killed     {len(killed)}")
     print(f"  SURVIVED   {len(survived)}")
     print(f"  not viable {len(not_viable)}  (did not compile; excluded from the score)")
+
+    if localised or widened:
+        # What the narrowing bought, and what it missed. A high `widened` count
+        # means the include graph is a poorer guide to coverage than it looks
+        # on this project, and the narrowing is buying less than it costs.
+        print(f"\n  {localised} killed by the tests that compile against the "
+              f"mutated file alone")
+        print(f"  {widened} got past those and died to the whole suite")
 
     if survived:
         print("\n--- Survivors: behaviour the suite runs but does not check ---")
