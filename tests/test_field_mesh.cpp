@@ -66,6 +66,7 @@ private slots:
     void a_cell_survives_a_corner_the_solver_rejected();
     void a_grid_too_narrow_for_a_cell_still_keeps_its_points();
     void an_empty_result_makes_an_empty_mesh();
+    void each_of_a_cells_four_corners_is_required_on_its_own();
 };
 
 void TestFieldMesh::every_measured_point_becomes_a_point_of_the_mesh()
@@ -185,6 +186,38 @@ void TestFieldMesh::an_empty_result_makes_an_empty_mesh()
     const FieldMesh mesh = buildFieldMesh(CorrelationResult());
     QVERIFY(mesh.pointSource.isEmpty());
     QVERIFY(mesh.quads.isEmpty());
+}
+
+
+void TestFieldMesh::each_of_a_cells_four_corners_is_required_on_its_own()
+{
+    // ⚑ The case above removes the CENTRE of a 3 by 3 grid, which is a corner
+    // of all four cells at once -- so every cell goes whichever of the four
+    // corner checks is doing the work, and three of them could be missing
+    // entirely. The rule is that a cell exists where ALL FOUR of its corners
+    // were attempted, and a rule about four things needs four cases.
+    //
+    // A 2 by 2 grid is one cell with four corners and nothing else, so
+    // removing any one of them must leave no cell at all.
+    for (int missing = 0; missing < 4; missing++) {
+        CorrelationResult result = fullGrid(2, 2);
+        QCOMPARE(buildFieldMesh(result).quads.size(), 1);
+
+        for (int i = 0; i < result.points.size(); i++) {
+            if (result.points.at(i).gridIndex == missing) {
+                result.points.remove(i);
+                break;
+            }
+        }
+
+        const FieldMesh mesh = buildFieldMesh(result);
+        QCOMPARE(mesh.pointSource.size(), 3);
+        QVERIFY2(mesh.quads.isEmpty(),
+                 qPrintable(QStringLiteral("a cell was built with corner %1 never "
+                                           "attempted, claiming a surface over "
+                                           "ground the instrument did not look at")
+                                .arg(missing)));
+    }
 }
 
 QTEST_MAIN(TestFieldMesh)

@@ -52,6 +52,7 @@ private slots:
     void a_subset_radius_of_zero_is_refused();
     void an_image_degenerate_on_only_one_axis_is_still_refused();
     void an_image_exactly_large_enough_yields_exactly_one_point();
+    void a_region_leaving_exactly_one_column_or_row_is_measured_not_refused();
     void each_refusal_says_which_thing_was_wrong();
 };
 
@@ -322,6 +323,42 @@ void TestPoiGrid::each_refusal_says_which_thing_was_wrong()
     for (const QString &message : all)
         QVERIFY(!message.isEmpty());
     QCOMPARE(QSet<QString>(all.begin(), all.end()).size(), all.size());
+}
+
+
+void TestPoiGrid::a_region_leaving_exactly_one_column_or_row_is_measured_not_refused()
+{
+    // ⚑ The refusal is for a region that leaves NO room at all, and one column
+    // of points is room. Every existing refusal case leaves the extent
+    // properly inverted -- last before first -- so the comparison could be
+    // widened to "no later than" and a perfectly measurable sliver would be
+    // turned away in words.
+    //
+    // ⚑ Getting one column takes an image exactly one subset wide, not a
+    // narrow REGION: the extent is clipped to the region's bounding box in
+    // pixels, so a region one grid step across still spans ten of them. At
+    // 2r + 1 wide the safe margin leaves exactly the one position, which is
+    // what makes first and last equal. Learned by printing the extent after
+    // this case failed against correct code.
+    const int radius = 16;
+    const int step = 10;
+    const int oneSubset = 2 * radius + 1;
+
+    RegionOfInterest whole;
+    whole.vertices = {QPoint(0, 0), QPoint(oneSubset - 1, 0),
+                      QPoint(oneSubset - 1, 479), QPoint(0, 479)};
+    const PoiGridExtent narrow = poiGridExtent(oneSubset, 480, radius, step, whole);
+    QVERIFY2(narrow.valid, qPrintable(narrow.refusal));
+    QCOMPARE(narrow.firstX, narrow.lastX);
+    QVERIFY2(narrow.lastY > narrow.firstY, "with room to spare on the other axis");
+
+    RegionOfInterest flat;
+    flat.vertices = {QPoint(0, 0), QPoint(639, 0),
+                     QPoint(639, oneSubset - 1), QPoint(0, oneSubset - 1)};
+    const PoiGridExtent shallow = poiGridExtent(640, oneSubset, radius, step, flat);
+    QVERIFY2(shallow.valid, qPrintable(shallow.refusal));
+    QCOMPARE(shallow.firstY, shallow.lastY);
+    QVERIFY2(shallow.lastX > shallow.firstX, "with room to spare on the other axis");
 }
 
 QTEST_MAIN(TestPoiGrid)
