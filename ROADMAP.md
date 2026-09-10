@@ -953,6 +953,15 @@ as a backlog with everything in it.
   hazard applies to any case anywhere in this suite that is "killed" by a
   crash rather than by a failure.
 
+  Measured afterwards rather than assumed, by replaying all 36 that were still
+  standing against the suite as it now is: **23 killed, 13 left**, and of those
+  thirteen, twelve carry a written reason beside the case they belong to. The
+  replay earned its cost immediately - it exposed four nobody had noticed, one
+  in each chunked loop, where `start < total` widened to `start <= total` adds
+  an empty pass ONLY when the chunk size divides the queue exactly. Every case
+  in the file uses a deliberately ragged chunk, so `start` steps over `total`
+  and never lands on it. A chunk of one point divides every queue there is.
+
   Seventeen more of that file's survivors were killed on 2026-09-10 and six
   closed by argument beside the cases they belong to: the reason a solver
   combination is refused, the thread count every run is dispatched with (lifted

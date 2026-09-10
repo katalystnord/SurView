@@ -53,6 +53,14 @@
 // closed were not being killed by this file at all; they were being killed by
 // an allocator, in one build, on one machine.
 //
+// ⚑ AND ONE SURVIVOR IS LEFT STANDING ON PURPOSE, for the same reason. Copying
+// a repaired chunk back with `trial.begin() - start` writes BEFORE the start of
+// the vector, and what that does is not something to claim either way: it is
+// the recovery loop's copy of the mutant already recorded as NOT ESTABLISHED
+// above. Nothing observable distinguishes it until the memory it wrote decides
+// to matter, which is the definition of a verdict that does not travel between
+// builds.
+//
 // Undefined behaviour is not an assertion. What holds them now is a property
 // the run states out loud before any memory is touched wrongly: a stage cannot
 // report more points than it has, so a chunk sized from `total + start` says
@@ -128,6 +136,7 @@ private slots:
     void a_divided_queue_reports_progress_more_than_once();
     void the_run_names_the_stage_it_is_in_and_counts_forward_through_it();
     void every_stage_of_a_full_run_counts_within_its_own_total();
+    void an_even_division_does_not_report_its_last_chunk_twice();
 };
 
 void TestChunking::the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none()
@@ -364,6 +373,61 @@ void TestChunking::every_stage_of_a_full_run_counts_within_its_own_total()
              qPrintable(stages.join(QStringLiteral(", "))));
     QVERIFY2(stages.filter(QStringLiteral("repairing")).size() == 1,
              qPrintable(stages.join(QStringLiteral(", "))));
+}
+
+void TestChunking::an_even_division_does_not_report_its_last_chunk_twice()
+{
+    // ⚑ THE RAGGED CHUNK HIDES THIS ONE, which is the mirror image of why the
+    // ragged chunk exists. `start < total` widened to `start <= total` adds an
+    // extra pass through the loop ONLY when the chunk size divides the queue
+    // exactly: `start` then lands on `total`, an empty chunk goes to the
+    // engine, and the stage reports the same count a second time. With a
+    // deliberately ragged chunk, `start` steps over `total` and never lands on
+    // it, so every case in this file walked past four of these - one in each of
+    // the four chunked loops. Found by replaying the survivor list on
+    // 2026-09-10 after the rest of the family had been closed.
+    //
+    // A chunk of one point divides every queue there is, including the repair
+    // pass's own, whose length is decided by how many points failed.
+    CorrelationSettings settings = coarseSettings();
+    settings.strainEnabled = true;
+    settings.strainRadius = 60.0;
+    settings.strainMinPoints = 6;
+    settings.recovery.enabled = true;
+
+    CorrelationRunner runner(settings, RegionOfInterest(),
+                             fixture(QStringLiteral("shift_reference.tif")),
+                             fixture(QStringLiteral("shift_target.tif")));
+    runner.setChunkPoints(1);
+
+    QString repeated;
+    QString lastStage;
+    int lastDone = -1;
+    CorrelationResult result;
+    QObject::connect(&runner, &CorrelationRunner::finished,
+                     [&result](const CorrelationResult &r) { result = r; });
+    QObject::connect(&runner, &CorrelationRunner::progress,
+                     [&](int done, int total, const QString &stage) {
+                         if (repeated.isEmpty() && stage == lastStage && done == lastDone) {
+                             repeated = QStringLiteral("%1 reported %2 of %3 "
+                                                       "points twice running")
+                                            .arg(stage).arg(done).arg(total);
+                         }
+                         lastStage = stage;
+                         lastDone = done;
+                     });
+
+    runner.run();
+
+    QVERIFY(result.total() > 0);
+    QVERIFY2(repeated.isEmpty(), qPrintable(repeated));
+
+    // ⚑ A repair round legitimately restarts its count from zero, which is why
+    // the rule is "not the same count twice RUNNING" rather than "always
+    // forward". A round with nothing to attempt cannot happen, so a restart
+    // never repeats the count before it.
+    QVERIFY2(result.recoveryRequested, "the repair pass did not run, so its own "
+                                       "loop was never exercised");
 }
 
 void TestChunking::a_divided_queue_reports_progress_more_than_once()
