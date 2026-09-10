@@ -16,6 +16,16 @@
 // in both axes, so a flip in either direction, or a 180-degree rotation, is
 // distinguishable.
 
+// ⚑ FOUR SURVIVORS ARE UNREACHABLE WITH A REAL FILE (2026-09-10). The guard
+// refusing an image of no width or height sits AFTER the reader has produced a
+// non-null output, and every VTK reader here either fails before that or hands
+// back real dimensions - so all three of its mutants survive, and a case for
+// them would need a reader that lies. The fourth is the depth term
+// `dims[2] > 0 ? dims[2] : 1`, which differs only for an image of ZERO depth: a
+// 2D reader always reports one. They stay because the pixel count they feed is
+// what every clipping share is measured against, and a count of zero there
+// would divide a warning by nothing.
+
 #include "core/ImageDecode.h"
 #include "core/ImageRecord.h"
 

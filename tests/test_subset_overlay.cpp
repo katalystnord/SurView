@@ -74,6 +74,7 @@ private slots:
     void the_points_drawn_are_the_ones_the_panel_counts();
     void near_an_edge_only_the_neighbours_that_exist_are_drawn();
     void every_point_drawn_is_a_point_the_run_would_place();
+    void every_point_drawn_at_every_edge_is_one_the_run_would_place();
     void the_centre_is_one_of_the_points_the_fit_would_use();
 
     void a_hole_takes_the_points_it_covers_out_of_the_neighbourhood();
@@ -230,6 +231,43 @@ void TestSubsetOverlay::every_point_drawn_is_a_point_the_run_would_place()
         const double dx = point.x() - overlay.centreX;
         const double dy = point.y() - overlay.centreY;
         QVERIFY(dx * dx + dy * dy <= overlay.subregionRadius * overlay.subregionRadius);
+    }
+}
+
+void TestSubsetOverlay::every_point_drawn_at_every_edge_is_one_the_run_would_place()
+{
+    // ⚑ THE CASE ABOVE SITS COMFORTABLY INSIDE THE PICTURE, where the extent
+    // test never binds at all - so all four of its comparisons could be
+    // missing and every point drawn would still be a real one. Each edge of the
+    // grid is checked by its own line of code, and three mutants lived there:
+    // joining a pair with AND makes the test unsatisfiable in that axis, and
+    // the overlay then draws neighbours on ground the run will never place a
+    // point on, at exactly the edges where a reader is looking to see how much
+    // of the fit survives.
+    //
+    // The count case cannot see it either: clipping in the OTHER axis still
+    // leaves an edge neighbourhood smaller than a central one.
+    const QVector<QPoint> positions = runPositions(16, 10);
+    const struct { const char *where; double x; double y; } corners[] = {
+        {"top-left", 0.0, 0.0},
+        {"top-right", double(kWidth), 0.0},
+        {"bottom-left", 0.0, double(kHeight)},
+        {"bottom-right", double(kWidth), double(kHeight)},
+    };
+
+    for (const auto &corner : corners) {
+        const SubsetOverlay overlay = overlayAt(corner.x, corner.y, 16, 10, true, 40.0);
+        QVERIFY2(overlay.valid, corner.where);
+        QVERIFY2(!overlay.neighbours.isEmpty(), corner.where);
+
+        for (const QPointF &point : overlay.neighbours) {
+            QVERIFY2(isARunPosition(positions, point.x(), point.y()),
+                     qPrintable(QStringLiteral("at the %1 the overlay drew a "
+                                               "neighbour at (%2, %3), where the "
+                                               "run places nothing")
+                                    .arg(QString::fromLatin1(corner.where))
+                                    .arg(point.x()).arg(point.y())));
+        }
     }
 }
 

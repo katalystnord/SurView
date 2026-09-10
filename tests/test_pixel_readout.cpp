@@ -85,6 +85,7 @@ private slots:
     void a_pixel_at_the_types_floor_is_treated_like_one_at_its_ceiling();
     void a_record_that_never_counted_its_extremes_still_says_what_it_means();
     void a_colour_pixel_and_a_grey_one_are_labelled_differently();
+    void the_stretch_is_mentioned_only_when_there_is_one();
 };
 
 void TestPixelReadout::the_value_reported_is_the_one_in_the_file()
@@ -329,6 +330,26 @@ void TestPixelReadout::a_record_that_never_counted_its_extremes_still_says_what_
              qPrintable(QStringLiteral("a share was claimed from counts that were never taken: %1")
                             .arg(said)));
     QVERIFY2(!said.contains(QStringLiteral("0 pixels share it")), qPrintable(said));
+
+    // ⚑ AND THE OTHER HALF OF THAT GUARD, which the case above cannot reach: a
+    // record that DID count, over no pixels at all. The share is then a
+    // division by zero, and what reaches the screen is "nan% of the image" -- a
+    // number in a sentence about how much of the picture is unusable. The two
+    // halves are separate conditions and each needs its own record.
+    ImageRecord counted = eightBitGrey();
+    counted.extremesCounted = true;
+    counted.pixelCount = 0;
+    counted.pixelsAtDataMin = 0;
+    counted.pixelsAtDataMax = 0;
+
+    const QString overNothing =
+        allText(pixelReadoutLines(pixelReading(counted, 3, 4, {0.0}), counted));
+    QVERIFY2(overNothing.contains(QStringLiteral("no gradient")), qPrintable(overNothing));
+    QVERIFY2(!overNothing.contains(QStringLiteral("nan"), Qt::CaseInsensitive),
+             qPrintable(QStringLiteral("a share was computed over no pixels: %1")
+                            .arg(overNothing)));
+    QVERIFY2(!overNothing.contains(QStringLiteral("% of the image")),
+             qPrintable(overNothing));
 }
 
 void TestPixelReadout::a_colour_pixel_and_a_grey_one_are_labelled_differently()
@@ -345,6 +366,46 @@ void TestPixelReadout::a_colour_pixel_and_a_grey_one_are_labelled_differently()
     const QString three =
         allText(pixelReadoutLines(pixelReading(colour, 3, 4, {120.0, 130.0, 140.0}), colour));
     QVERIFY2(three.contains(QStringLiteral("per channel")), qPrintable(three));
+}
+
+void TestPixelReadout::the_stretch_is_mentioned_only_when_there_is_one()
+{
+    // ⚑ THE SENTENCE ABOUT THE STRETCH IS THERE TO EXPLAIN A DIFFERENCE. The
+    // viewport widens the intensity window so a 16-bit image sitting in 0 to
+    // 5000 is not rendered nearly black, and the readout says so because the
+    // number it prints is the FILE's rather than the screen's. Where the two
+    // agree there is nothing to explain, and saying it anyway teaches a reader
+    // to distrust a picture that is faithful.
+    //
+    // The fixture is stretched, so every case here sees the sentence and none
+    // of them could see it appearing in the wrong places. Two mutants sat on
+    // that condition: one putting the sentence on an UNSTRETCHED image and
+    // taking it off a stretched one, and one putting it on an image that is
+    // not being displayed at all.
+    const ImageRecord stretched = eightBitGrey();
+    const QString withStretch =
+        allText(pixelReadoutLines(pixelReading(stretched, 3, 4, {120.0}), stretched));
+    QVERIFY2(withStretch.contains(QStringLiteral("stretched")), qPrintable(withStretch));
+
+    // The same picture shown at its type's own range: nothing was stretched.
+    ImageRecord asItIs = eightBitGrey();
+    asItIs.displayMin = asItIs.typeMin();
+    asItIs.displayMax = asItIs.typeMax();
+    const QString unstretched =
+        allText(pixelReadoutLines(pixelReading(asItIs, 3, 4, {120.0}), asItIs));
+    QVERIFY2(!unstretched.contains(QStringLiteral("stretched")),
+             qPrintable(QStringLiteral("a picture shown at its own range was said "
+                                       "to be stretched: %1").arg(unstretched)));
+
+    // And a record of an image that is not on screen at all says nothing about
+    // what the screen is doing with it.
+    ImageRecord notShown = eightBitGrey();
+    notShown.displayed = false;
+    const QString hidden =
+        allText(pixelReadoutLines(pixelReading(notShown, 3, 4, {120.0}), notShown));
+    QVERIFY2(!hidden.contains(QStringLiteral("on screen")),
+             qPrintable(QStringLiteral("an image that is not displayed was "
+                                       "described as displayed: %1").arg(hidden)));
 }
 
 QTEST_MAIN(TestPixelReadout)

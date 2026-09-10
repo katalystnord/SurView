@@ -48,6 +48,8 @@ private slots:
     void a_subset_too_large_for_the_image_is_refused_in_words();
     void a_region_entirely_in_the_border_margin_is_refused_in_words();
     void a_region_that_falls_between_grid_lines_is_refused_in_words();
+    void an_image_with_no_pixels_is_refused_for_being_empty_not_for_its_radius();
+    void a_region_in_the_margin_on_one_axis_alone_is_still_refused();
     void a_refusal_never_pretends_to_be_an_empty_measurement();
     void a_subset_radius_of_zero_is_refused();
     void an_image_degenerate_on_only_one_axis_is_still_refused();
@@ -359,6 +361,56 @@ void TestPoiGrid::a_region_leaving_exactly_one_column_or_row_is_measured_not_ref
     QVERIFY2(shallow.valid, qPrintable(shallow.refusal));
     QCOMPARE(shallow.firstY, shallow.lastY);
     QVERIFY2(shallow.lastX > shallow.firstX, "with room to spare on the other axis");
+}
+
+void TestPoiGrid::an_image_with_no_pixels_is_refused_for_being_empty_not_for_its_radius()
+{
+    // ⚑ WHICH REFUSAL A READER GETS IS THE POINT. An image of no size fails the
+    // margin test too -- a radius of 16 leaves no room in an image of zero
+    // width, and it does -- so removing the guard above still produces a
+    // refusal, and the case that only asked "was it refused" could not tell the
+    // two apart. What reaches the screen would then blame the subset radius for
+    // a file that has no pixels, and the reader would go and change a number
+    // that was never the problem.
+    const PoiGrid noWidth = buildPoiGrid(0, 200, 16, 5, RegionOfInterest(), {});
+    QVERIFY(!noWidth.isValid());
+    QVERIFY2(noWidth.refusal.contains(QStringLiteral("no pixels")),
+             qPrintable(noWidth.refusal));
+
+    // Each axis on its own: an image with height but no width, and one with
+    // width but no height, are both empty, and joining the two halves of that
+    // test with AND would let each of them through to the wrong sentence.
+    const PoiGrid noHeight = buildPoiGrid(200, 0, 16, 5, RegionOfInterest(), {});
+    QVERIFY(!noHeight.isValid());
+    QVERIFY2(noHeight.refusal.contains(QStringLiteral("no pixels")),
+             qPrintable(noHeight.refusal));
+}
+
+void TestPoiGrid::a_region_in_the_margin_on_one_axis_alone_is_still_refused()
+{
+    // ⚑ The case above it draws a region into the top-left CORNER, inside the
+    // margin on both axes at once -- so either half of the test could be
+    // missing and the answer would be the same. A strip along the left edge is
+    // inside the margin in x and comfortably clear of it in y, which is the
+    // ordinary shape of a region drawn down the side of a specimen.
+    const RegionOfInterest leftEdge = rectRoi(0, 60, 8, 120);
+    const PoiGrid narrow =
+        buildPoiGrid(200, 200, 20, 1, leftEdge, insideRect(0, 60, 8, 120));
+    QVERIFY2(!narrow.isValid(), "a region lying inside the left margin was measured");
+    // ⚑ Named by its OWN sentence, not merely by "region of interest": the
+    // refusal for a region that falls between grid lines says that too, and
+    // asking only for the common half cannot tell which of the two a reader
+    // would be shown. This one is about the border margin.
+    QVERIFY2(narrow.refusal.contains(QStringLiteral("border")),
+             qPrintable(narrow.refusal));
+
+    // And the same strip along the top edge, which is the other axis.
+    const RegionOfInterest topEdge = rectRoi(60, 0, 120, 8);
+    const PoiGrid flat =
+        buildPoiGrid(200, 200, 20, 1, topEdge, insideRect(60, 0, 120, 8));
+    QVERIFY2(!flat.isValid(), "a region lying inside the top margin was measured");
+    QVERIFY2(flat.refusal.contains(QStringLiteral("border")),
+             qPrintable(flat.refusal));
 }
 
 QTEST_MAIN(TestPoiGrid)

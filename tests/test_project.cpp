@@ -437,6 +437,14 @@ void TestProject::an_entry_with_no_recorded_hash_is_not_reported_as_changed()
     QVERIFY2(loaded.missing.isEmpty(), "and none was reported missing");
 }
 
+// ⚑ A SECOND SURVIVOR IS EQUIVALENT TOO (2026-09-10): the guard reading
+// `parse error OR the document is not an object`, narrowed to AND. A document
+// that parses but is not an object - a JSON array, say - then falls through to
+// the format check, where an empty object has no "format" field and produces
+// the SAME refusal, in the same words. The guard is worth keeping because it
+// says what it means at the point it means it, but no assertion can tell the
+// two apart.
+//
 // ⚑ One survivor in Project.cpp is EQUIVALENT: `bool exists = false` in
 // Resolved. resolve() assigns out.exists from QFileInfo::exists() before any
 // return, so the initialiser is dead and no input can observe it. `changed` is

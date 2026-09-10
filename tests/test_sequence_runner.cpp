@@ -61,6 +61,7 @@ private slots:
     void stopping_reaches_into_the_frame_that_is_running();
     void re_anchoring_does_not_change_the_answer_when_it_did_not_need_to();
     void a_re_anchor_is_announced_rather_than_done_quietly();
+    void a_re_anchor_announces_what_it_lost_rather_than_what_was_lost_before();
 };
 
 void TestSequenceRunner::every_frame_arrives_identified_and_in_the_order_it_was_given()
@@ -200,8 +201,15 @@ void TestSequenceRunner::a_frame_that_cannot_be_read_stops_the_run_and_names_its
 
     QCOMPARE(frames.size(), 1);   // the good frame was still delivered
     QVERIFY2(!failure.isEmpty(), "a missing frame was measured without complaint");
-    QVERIFY2(failure.contains(QStringLiteral("2")),
-             qPrintable(QStringLiteral("the failure does not name the frame: %1")
+    // ⚑ NAMED THE WAY THE REST OF THE WINDOW NAMES IT: one-based, so the
+    // second target is "Frame 2", which is what the project tree and the run
+    // log call the same picture. Asking only whether the message contains a
+    // "2" was not enough to see that: "Frame 1 of 2" contains one too, and
+    // three mutants on that `frame + 1` lived behind it. Two numbers for one
+    // frame on one screen is worse than none.
+    QVERIFY2(failure.contains(QStringLiteral("Frame 2 of 2")),
+             qPrintable(QStringLiteral("the failure does not name the frame the "
+                                       "way the window does: %1")
                             .arg(failure)));
 }
 
@@ -391,6 +399,75 @@ void TestSequenceRunner::a_re_anchor_is_announced_rather_than_done_quietly()
     runner.run();
 
     QCOMPARE(announced, QVector<int>({0, 1, 2}));
+}
+
+void TestSequenceRunner::a_re_anchor_announces_what_it_lost_rather_than_what_was_lost_before()
+{
+    // ⚑ THE NUMBER BESIDE A RE-ANCHOR IS WHAT THAT RE-ANCHOR COST. A point with
+    // no increment on the frame the reference moves is LOST: its position in
+    // the new reference is unknown, so it cannot be measured again. The run log
+    // says how many, and a reader uses it to decide whether the re-anchor was
+    // worth it -- so a running TOTAL there would read as a single catastrophic
+    // step rather than as the cost of this one.
+    //
+    // The case above ignores that number entirely, and on a clean sequence it
+    // could not have seen it anyway: nothing is ever lost, so "how many now"
+    // and "how many now plus how many before" are both zero. These settings
+    // give the solver one iteration against a strict threshold, so plenty of
+    // points fail on every frame and the second re-anchor has a non-zero
+    // history behind it.
+    CorrelationSettings hard = coarseSettings();
+    hard.maxIterations = 1;
+    hard.convergence = 1e-9;
+    hard.recovery.enabled = false;
+
+    ReferenceUpdatePolicy always;
+    always.enabled = true;
+    always.znccThreshold = 1.1;   // unreachable, so every frame re-anchors
+    always.percentile = 1.0;
+
+    SequenceRunner runner(hard, RegionOfInterest(),
+                          fixture(QStringLiteral("shift_reference.tif")),
+                          threeFrames(), always);
+
+    QVector<int> announced;
+    QVector<int> lostAfterEachFrame;
+    QObject::connect(&runner, &SequenceRunner::referenceReanchored,
+                     [&announced](int, int lost) { announced.append(lost); });
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&lostAfterEachFrame](int, const CorrelationResult &field) {
+                         int lost = 0;
+                         for (const CorrelationPoint &point : field.points) {
+                             if (!point.converged)
+                                 lost++;
+                         }
+                         lostAfterEachFrame.append(lost);
+                     });
+
+    runner.run();
+
+    QCOMPARE(announced.size(), 3);
+    QCOMPARE(lostAfterEachFrame.size(), 3);
+
+    // The case only means something if something really was lost before the
+    // last re-anchor: with nothing lost, a total and a difference agree.
+    QVERIFY2(lostAfterEachFrame.at(1) > 0,
+             qPrintable(QStringLiteral("no point was lost by the second frame, "
+                                       "so a running total and this frame's own "
+                                       "cost cannot be told apart: %1")
+                            .arg(lostAfterEachFrame.at(1))));
+
+    // Each announcement is at most what the field lost in total by that frame,
+    // and the last one is smaller than the running total that a wrong sign
+    // would report.
+    for (int frame = 0; frame < announced.size(); frame++) {
+        QVERIFY2(announced.at(frame) <= lostAfterEachFrame.at(frame),
+                 qPrintable(QStringLiteral("frame %1 announced %2 points lost "
+                                           "where the whole field has lost %3")
+                                .arg(frame + 1)
+                                .arg(announced.at(frame))
+                                .arg(lostAfterEachFrame.at(frame))));
+    }
 }
 
 QTEST_MAIN(TestSequenceRunner)

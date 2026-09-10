@@ -9,6 +9,8 @@
 
 #include <QTest>
 
+#include <cmath>
+
 #include <vtkType.h>
 
 namespace {
@@ -36,6 +38,8 @@ private slots:
     void integer_pixels_have_a_type_range_and_float_pixels_do_not();
     void range_use_is_measured_against_the_types_range_not_the_datas();
     void range_use_is_a_span_on_a_type_that_starts_below_zero_too();
+    void a_float_image_reports_no_range_use_rather_than_a_nonsense_one();
+    void a_file_under_a_kilobyte_states_its_size_once();
     void clipping_shares_are_counted_against_the_pixels_actually_present();
     void an_uncounted_image_reports_no_share_rather_than_zero_percent();
     void the_pixel_type_is_named_in_words();
@@ -171,6 +175,53 @@ void TestImageRecord::range_use_is_a_span_on_a_type_that_starts_below_zero_too()
              qPrintable(QStringLiteral("range use read %1, expected %2")
                             .arg(record.rangeUtilization())
                             .arg(4095.0 / 65535.0)));
+}
+
+void TestImageRecord::a_float_image_reports_no_range_use_rather_than_a_nonsense_one()
+{
+    // A floating-point image has no fixed range to be a share OF, which the
+    // case above states, and the panel says "not applicable" rather than a
+    // percentage. What it must not do is produce a nonsense number on the way:
+    // the share stays a fraction whatever the type.
+    ImageRecord record = sixteenBitImage();
+    record.scalarType = VTK_FLOAT;
+    QVERIFY(!record.hasTypeRange());
+    const double share = record.rangeUtilization();
+    QVERIFY2(share >= 0.0 && share < 1.0, qPrintable(QString::number(share)));
+    QVERIFY2(!std::isnan(share), "a float image reported a range use of not-a-number");
+
+    // ⚑ AND THE GUARD BELOW THAT IS UNREACHABLE, recorded rather than tested.
+    // `span <= 0` fires only for a pixel type whose declared range is empty,
+    // and the one caller asks hasTypeRange() first -- true for exactly the
+    // seven integer types, every one of which has a real span. Its mutant
+    // survives and always will. It stays because rangeUtilization() is a public
+    // method that does not get to assume its caller checked.
+}
+
+void TestImageRecord::a_file_under_a_kilobyte_states_its_size_once()
+{
+    // "28 bytes (28 bytes)" reads as a mistake rather than as precision, so the
+    // exact count is dropped where the human-readable form already IS the exact
+    // count. Both sides of that rule, because the test flipped is a rule that
+    // hides the byte count on every large file and doubles it on every small
+    // one -- and each of those looks deliberate on its own.
+    ImageRecord small = sixteenBitImage();
+    small.fileBytes = 28;
+    const QString smallText = small.fileSizeText();
+    QVERIFY2(smallText.contains(QStringLiteral("28")), qPrintable(smallText));
+    QVERIFY2(!smallText.contains(QLatin1Char('(')),
+             qPrintable(QStringLiteral("a file under a kilobyte states its size "
+                                       "twice: %1").arg(smallText)));
+
+    ImageRecord large = sixteenBitImage();
+    large.fileBytes = 6291456;
+    const QString largeText = large.fileSizeText();
+    QVERIFY2(largeText.contains(QLatin1Char('(')),
+             qPrintable(QStringLiteral("a large file does not state its exact "
+                                       "byte count: %1").arg(largeText)));
+    QVERIFY2(largeText.contains(QStringLiteral("6291456")) ||
+             largeText.contains(QLocale().toString(qint64(6291456))),
+             qPrintable(largeText));
 }
 
 QTEST_MAIN(TestImageRecord)

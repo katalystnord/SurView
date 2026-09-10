@@ -29,6 +29,8 @@
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QCoreApplication>
+#include <QSet>
 #include <QTest>
 
 namespace
@@ -91,6 +93,7 @@ private slots:
     void a_pair_of_images_is_the_smallest_example_there_is();
     void every_separator_a_name_might_use_is_trimmed_from_its_stem();
     void images_named_only_by_their_number_take_the_folders_name();
+    void every_place_the_examples_are_looked_for_is_a_place_that_exists();
 };
 
 void TestExamples::every_numbered_run_of_images_is_offered_as_one_example()
@@ -327,6 +330,52 @@ void TestExamples::images_named_only_by_their_number_take_the_folders_name()
     const QVector<ExampleSet> sets = findExamples({dir.path()});
     QCOMPARE(sets.size(), 1);
     QCOMPARE(sets.first().frames.size(), 2);
+}
+
+void TestExamples::every_place_the_examples_are_looked_for_is_a_place_that_exists()
+{
+    // The application looks for its examples in several places relative to the
+    // binary, because a build tree, an installed prefix and an AppImage put
+    // them in different ones. The list it returns is the list it will search,
+    // and a path that does not exist has no business in it: it turns a menu
+    // that finds nothing into a menu that looked in four imaginary folders.
+    //
+    // ⚑ The two halves of that test are separate questions - does this path
+    // exist, and have we already got it - and joining them with OR keeps every
+    // candidate, existing or not. Nothing here had ever looked at the list.
+    // Asked about the real running binary's directory, which is what the
+    // application asks about, and about a directory that holds nothing, which
+    // is what a stripped-down install looks like.
+    const QStringList paths =
+        exampleSearchPaths(QCoreApplication::applicationDirPath());
+
+    for (const QString &path : paths) {
+        QVERIFY2(QDir(path).exists(),
+                 qPrintable(QStringLiteral("the examples are looked for in %1, "
+                                           "which does not exist")
+                                .arg(path)));
+    }
+
+    // And no place is searched twice: several of the candidates resolve to the
+    // same folder in an ordinary build, and a menu built from a list with
+    // duplicates offers every example twice.
+    QSet<QString> seen;
+    for (const QString &path : paths) {
+        QVERIFY2(!seen.contains(path),
+                 qPrintable(QStringLiteral("%1 is searched twice").arg(path)));
+        seen.insert(path);
+    }
+
+    // A directory with nothing around it offers nowhere to look, rather than
+    // four places that do not exist.
+    QTemporaryDir empty;
+    QVERIFY(empty.isValid());
+    const QStringList nowhere = exampleSearchPaths(empty.path());
+    for (const QString &path : nowhere) {
+        QVERIFY2(QDir(path).exists(),
+                 qPrintable(QStringLiteral("a stripped install would search %1")
+                                .arg(path)));
+    }
 }
 
 QTEST_MAIN(TestExamples)
