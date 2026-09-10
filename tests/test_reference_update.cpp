@@ -84,6 +84,7 @@ private slots:
     void losing_points_counts_against_the_reference();
     void a_few_points_that_can_never_be_measured_do_not_re_anchor_a_good_run();
     void a_point_that_was_not_measured_is_lost_rather_than_frozen();
+    void a_field_with_no_points_at_all_is_no_evidence_about_the_reference();
     void a_lost_point_stays_lost_and_reports_nothing();
     void a_lost_point_reports_no_strain_and_no_reliability_either();
     void a_point_exactly_at_the_tracking_threshold_is_still_tracking();
@@ -454,6 +455,41 @@ void TestReferenceUpdate::a_field_exactly_at_the_share_it_must_keep_does_not_re_
     field.points[8].zncc = 0.5f;   // eight of ten
     QVERIFY2(fieldNeedsReanchor(field, policy),
              "and one keeping less than that was not");
+}
+
+void TestReferenceUpdate::a_field_with_no_points_at_all_is_no_evidence_about_the_reference()
+{
+    // ⚑ AN EMPTY FIELD IS NOT A DECORRELATED ONE. The rule counts LOSSES, which
+    // is what makes it work at all -- a point lost to decorrelation is the
+    // strongest evidence there is that the reference has gone stale, and the
+    // case above exists because excluding those votes made the feature inert.
+    // A field holding no points has cast no votes either way.
+    //
+    // Re-anchoring on it would be the opposite mistake and the worse one: the
+    // banking step takes the increment just measured, and with no increment it
+    // banks nothing, marks every point lost, and the rest of the sequence
+    // measures nothing at all. A stale reference that still fails is
+    // recoverable on a later frame; a field with no tracked points is not.
+    ReferenceUpdatePolicy policy;
+    policy.enabled = true;
+    policy.znccThreshold = 0.9;
+    policy.percentile = 0.75;
+
+    const CorrelationResult nothingAtAll;
+    QCOMPARE(nothingAtAll.points.size(), 0);
+    QVERIFY2(!fieldNeedsReanchor(nothingAtAll, policy),
+             "a field with no points at all re-anchored the reference");
+
+    // A grid that was laid out and then measured nothing is a different thing
+    // and is answered separately: it has points, and all of them failed.
+    CorrelationResult allFailed;
+    allFailed.gridColumns = 10;
+    allFailed.gridRows = 1;
+    for (int i = 0; i < 10; i++)
+        allFailed.points.append(rejected(i, float(i), 0.f));
+    QVERIFY2(!fieldNeedsReanchor(allFailed, policy),
+             "a frame that measured nothing re-anchored, which banks no "
+             "increment and loses the whole field");
 }
 
 QTEST_MAIN(TestReferenceUpdate)
