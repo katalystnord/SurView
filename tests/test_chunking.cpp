@@ -41,6 +41,25 @@
 //                                         claim either way. Written down
 //                                         because a green suite must not be
 //                                         read as more than it is.
+//
+// ⚑ AND THE REST OF THAT ACCOUNT WAS WRONG, corrected 2026-09-10 by measuring
+// it rather than repeating it. Those negative checks were run in this project's
+// Debug build, where reading off the end of the queue happens to take the
+// process down mid-case. Re-run in the configuration a mutation sweep actually
+// uses -- a fresh build directory with no CMAKE_BUILD_TYPE set -- the same
+// mutant corrupts the heap quietly, EVERY CASE REPORTS PASS, and Qt Test's own
+// crash handler prints a stack trace during teardown and exits ZERO. ctest
+// reads that as a green suite. So the sixteen chunking mutants recorded as
+// closed were not being killed by this file at all; they were being killed by
+// an allocator, in one build, on one machine.
+//
+// Undefined behaviour is not an assertion. What holds them now is a property
+// the run states out loud before any memory is touched wrongly: a stage cannot
+// report more points than it has, so a chunk sized from `total + start` says
+// "56 of 54 points" and the case goes red on the sentence rather than on the
+// heap. Verified in that same no-build-type configuration: exit 1 with a named
+// failure where the crash alone had exited 0.
+//
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -108,6 +127,7 @@ private slots:
     void the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none();
     void a_divided_queue_reports_progress_more_than_once();
     void the_run_names_the_stage_it_is_in_and_counts_forward_through_it();
+    void every_stage_of_a_full_run_counts_within_its_own_total();
 };
 
 void TestChunking::the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none()
@@ -218,13 +238,14 @@ void TestChunking::the_run_names_the_stage_it_is_in_and_counts_forward_through_i
                              fixture(QStringLiteral("shift_target.tif")));
     runner.setChunkPoints(kRaggedChunk);
 
-    QVector<QPair<QString, int>> reports;
+    struct Report { QString stage; int done; int total; };
+    QVector<Report> reports;
     CorrelationResult result;
     QObject::connect(&runner, &CorrelationRunner::finished,
                      [&result](const CorrelationResult &r) { result = r; });
     QObject::connect(&runner, &CorrelationRunner::progress,
-                     [&reports](int done, int, const QString &stage) {
-                         reports.append({stage, done});
+                     [&reports](int done, int total, const QString &stage) {
+                         reports.append({stage, done, total});
                      });
 
     runner.run();
@@ -232,9 +253,32 @@ void TestChunking::the_run_names_the_stage_it_is_in_and_counts_forward_through_i
     QVERIFY(!reports.isEmpty());
 
     QStringList stagesInOrder;
-    for (const auto &report : reports) {
-        if (stagesInOrder.isEmpty() || stagesInOrder.last() != report.first)
-            stagesInOrder.append(report.first);
+    for (const Report &report : reports) {
+        if (stagesInOrder.isEmpty() || stagesInOrder.last() != report.stage)
+            stagesInOrder.append(report.stage);
+
+        // ⚑ AND NO STAGE EVER REPORTS MORE POINTS THAN IT HAS. This is the
+        // deterministic form of the chunk arithmetic: a chunk sized from
+        // `total + start` instead of `total - start` runs the last chunk of a
+        // ragged division off the end of the queue, and the progress bar says
+        // so - "175 of 170 points" - before anything else goes wrong.
+        //
+        // ⚑ IT HAS TO BE SAID HERE, because the crash that mutant also causes
+        // is NOT a reliable red. Measured 2026-09-10: the same mutant takes the
+        // process down mid-case in this project's Debug build, and in a build
+        // with no build type set it corrupts the heap quietly, every case
+        // reports PASS, and Qt Test's crash handler prints a stack trace during
+        // teardown and exits ZERO. ctest then reports the suite green. A
+        // mutation sweep in that configuration scored the whole chunking family
+        // as survivors, which is what it should have scored them all along:
+        // undefined behaviour is not an assertion.
+        QVERIFY2(report.done <= report.total,
+                 qPrintable(QStringLiteral("%1 reported %2 of %3 points")
+                                .arg(report.stage).arg(report.done)
+                                .arg(report.total)));
+        QVERIFY2(report.done >= 0,
+                 qPrintable(QStringLiteral("%1 reported %2 points")
+                                .arg(report.stage).arg(report.done)));
     }
 
     // Three, with strain and the repair pass switched off: the two solve
@@ -253,17 +297,73 @@ void TestChunking::the_run_names_the_stage_it_is_in_and_counts_forward_through_i
     // that runs to the end and starts again while the label is unchanged says
     // the run is doing something other than what it is doing.
     for (int i = 1; i < reports.size(); i++) {
-        if (reports.at(i).first != reports.at(i - 1).first)
+        if (reports.at(i).stage != reports.at(i - 1).stage)
             continue;
-        QVERIFY2(reports.at(i).second > reports.at(i - 1).second,
+        QVERIFY2(reports.at(i).done > reports.at(i - 1).done,
                  qPrintable(QStringLiteral("%1 counted %2 after %3")
-                                .arg(reports.at(i).first)
-                                .arg(reports.at(i).second)
-                                .arg(reports.at(i - 1).second)));
+                                .arg(reports.at(i).stage)
+                                .arg(reports.at(i).done)
+                                .arg(reports.at(i - 1).done)));
     }
 
     // Each pass finishes the whole queue before the next begins.
-    QCOMPARE(reports.last().second, result.total());
+    QCOMPARE(reports.last().done, result.total());
+}
+
+void TestChunking::every_stage_of_a_full_run_counts_within_its_own_total()
+{
+    // The case above switches strain and the repair pass off, to keep the
+    // stages it names down to the three that always run. That leaves the OTHER
+    // two chunked loops - the repair pass and the strain fit - carrying the
+    // same arithmetic with nothing watching it, which is exactly the blind spot
+    // the whole file was written for, one loop along.
+    //
+    // Everything on, a ragged chunk, and one invariant across every stage:
+    // a stage cannot report more points than it has. That is what a chunk sized
+    // off the end of its queue says out loud before the memory it read decides
+    // whether to crash.
+    CorrelationSettings settings = coarseSettings();
+    settings.strainEnabled = true;
+    settings.strainRadius = 60.0;
+    settings.strainMinPoints = 6;
+    settings.recovery.enabled = true;
+
+    CorrelationRunner runner(settings, RegionOfInterest(),
+                             fixture(QStringLiteral("shift_reference.tif")),
+                             fixture(QStringLiteral("shift_target.tif")));
+    runner.setChunkPoints(kRaggedChunk);
+
+    QStringList stages;
+    bool overrun = false;
+    QString worst;
+    CorrelationResult result;
+    QObject::connect(&runner, &CorrelationRunner::finished,
+                     [&result](const CorrelationResult &r) { result = r; });
+    QObject::connect(&runner, &CorrelationRunner::progress,
+                     [&](int done, int total, const QString &stage) {
+                         if (!stages.contains(stage))
+                             stages.append(stage);
+                         if (done > total || done < 0) {
+                             overrun = true;
+                             worst = QStringLiteral("%1 reported %2 of %3 points")
+                                         .arg(stage).arg(done).arg(total);
+                         }
+                     });
+
+    runner.run();
+
+    QVERIFY(result.strainRequested);
+    QVERIFY2(!overrun, qPrintable(worst));
+
+    // And all five stages really did run, or the invariant above was checked
+    // over a run that never reached the loops this case exists for.
+    QVERIFY2(stages.size() >= 4,
+             qPrintable(QStringLiteral("only these stages ran: %1")
+                            .arg(stages.join(QStringLiteral(", ")))));
+    QVERIFY2(stages.filter(QStringLiteral("strain")).size() == 1,
+             qPrintable(stages.join(QStringLiteral(", "))));
+    QVERIFY2(stages.filter(QStringLiteral("repairing")).size() == 1,
+             qPrintable(stages.join(QStringLiteral(", "))));
 }
 
 void TestChunking::a_divided_queue_reports_progress_more_than_once()
