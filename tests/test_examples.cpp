@@ -90,6 +90,7 @@ private slots:
     void two_examples_with_the_same_name_are_told_apart();
     void a_pair_of_images_is_the_smallest_example_there_is();
     void every_separator_a_name_might_use_is_trimmed_from_its_stem();
+    void images_named_only_by_their_number_take_the_folders_name();
 };
 
 void TestExamples::every_numbered_run_of_images_is_offered_as_one_example()
@@ -292,6 +293,40 @@ void TestExamples::every_separator_a_name_might_use_is_trimmed_from_its_stem()
                                     return all.join(QStringLiteral(", "));
                                 }())));
     }
+}
+
+
+void TestExamples::images_named_only_by_their_number_take_the_folders_name()
+{
+    // ⚑ THEY ARE NOT OFFERED AT ALL, which is not what the naming code below
+    // suggests and is worth pinning either way. findExamples() skips any file
+    // whose stem is empty before it groups anything, so a folder of 00.tif and
+    // 01.tif produces no example, and the "name it after the folder when the
+    // stem says nothing" fallback further down can never be reached: every set
+    // that gets that far has a stem. Its mutant survives and always will.
+    //
+    // Recorded rather than changed. A file named only by its number is not
+    // recognisably a numbered RUN -- 00.tif beside 01.tif could as easily be
+    // two unrelated pictures -- and every example this project ships names its
+    // set. If a real dataset ever arrives named that way, this case is where
+    // the decision is written down.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString folder = dir.path() + QStringLiteral("/03_tension_with_holes");
+    QDir().mkpath(folder);
+    touch(folder + QStringLiteral("/00.tif"));
+    touch(folder + QStringLiteral("/01.tif"));
+
+    QVERIFY2(findExamples({dir.path()}).isEmpty(),
+             "a folder of images named only by their number was offered as an example");
+
+    // A single word in front of the numbers is all it takes, so the rule is
+    // about the stem rather than about the folder being unusable.
+    touch(folder + QStringLiteral("/frame_00.tif"));
+    touch(folder + QStringLiteral("/frame_01.tif"));
+    const QVector<ExampleSet> sets = findExamples({dir.path()});
+    QCOMPARE(sets.size(), 1);
+    QCOMPARE(sets.first().frames.size(), 2);
 }
 
 QTEST_MAIN(TestExamples)

@@ -223,6 +223,7 @@ private slots:
     void a_result_with_no_points_is_refused_rather_than_written_empty();
     void a_path_that_cannot_be_written_is_reported_as_a_reason();
     void a_reason_carrying_a_comma_or_a_quote_does_not_break_the_columns();
+    void a_rejected_point_still_says_where_it_was_attempted();
 };
 
 void TestFieldCsv::every_attempted_point_gets_a_row()
@@ -516,6 +517,41 @@ void TestFieldCsv::a_reason_carrying_a_comma_or_a_quote_does_not_break_the_colum
                  qPrintable(QStringLiteral("a reason with %1 lost its text: %2")
                                 .arg(QString::fromUtf8(entry.what), text)));
     }
+}
+
+
+void TestFieldCsv::a_rejected_point_still_says_where_it_was_attempted()
+{
+    // ⚑ WHERE a point was attempted is known whatever the solver did there,
+    // and it is the one pair of columns that is never empty. This is the whole
+    // reason the file carries a row per ATTEMPTED point rather than per solved
+    // one: the geometry says where the instrument was pointed and the values
+    // say what came back. Leave the position out for a rejected point and the
+    // row becomes a run of empty cells that says nothing at all, which is
+    // indistinguishable from a writer that lost the point.
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.csv"));
+
+    CorrelationResult result = plainResult();
+    result.points[1].converged = false;
+    result.points[1].failureReason = QStringLiteral("correlation too low");
+
+    QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
+    const QString text = contentsOf(path);
+
+    for (int row = 0; row < result.points.size(); row++) {
+        const QString x = cell(text, row, QStringLiteral("x_px"));
+        const QString y = cell(text, row, QStringLiteral("y_px"));
+        QVERIFY2(!x.isEmpty(), qPrintable(QStringLiteral("row %1 has no x").arg(row)));
+        QVERIFY2(!y.isEmpty(), qPrintable(QStringLiteral("row %1 has no y").arg(row)));
+        QCOMPARE(x.toDouble(), double(result.points.at(row).x));
+        QCOMPARE(y.toDouble(), double(result.points.at(row).y));
+    }
+
+    // And the row that was rejected really is the one with no displacement, so
+    // the case is about the position surviving rather than about nothing being
+    // empty anywhere.
+    QVERIFY(cell(text, 1, QStringLiteral("u_px")).isEmpty());
 }
 
 QTEST_MAIN(TestFieldCsv)
