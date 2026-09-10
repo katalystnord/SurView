@@ -914,11 +914,34 @@ as a backlog with everything in it.
   the chunk size); the rest are the engine-boundary guards and the recovery
   pass's own loop, and they are the most valuable survivors in the project.
 
+  ⚑ **61.7% WAS A FLOOR, NOT THE SCORE.** That sweep excluded the four slow
+  test executables to fit in a night, so any mutant only they would have killed
+  was reported as a survivor. Re-running the 244 survivors against the complete
+  suite killed 49 of them outright: the real figure was **69.4%**, and the real
+  work list was 195 rather than 244. `tools/mutants.py --rerun` exists for
+  exactly this, and doing it first is what stops a night being spent writing
+  tests for behaviour that was already covered.
+
+  Working through those 195 on 2026-09-09/10 took it to **78.8%** - 60 more
+  killed, measured rather than assumed, by replaying the survivor list against
+  the suite afterwards. Fifteen files, and the commits carry the reasoning.
+  What it found was not only missing tests: a reference that re-anchored on a
+  field which had not decayed, because a float correlation was widened to
+  compare against a double threshold and 0.9f is 0.899999976 - the same defect
+  this project had already diagnosed and fixed once in `Recovery.cpp`, six
+  lines away, without the fix travelling.
+
+  ⚑ **AND MOST OF WHAT REMAINS CANNOT BE KILLED.** Of the 129 still standing,
+  the large majority were chased individually to a reason and the reason is in
+  the test file beside them: guard conditions the code above them makes
+  unreachable, defensive bounds nothing can call out of range, ternaries
+  equivalent by construction, and one mutant that only a sanitizer or an
+  implementation-derived expectation could catch. That accounting is the point
+  rather than the percentage: a survivor with an argument beside it is closed
+  work, and the next person to run a sweep should not re-derive it.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
-  nothing runs one on a schedule. What the first one bought is in the commits
-  of 2026-09-09; the survivors that remain are the work list, largest first -
-  `Roi.cpp` (the crossing test and its ring), `KnownAnswer.cpp`, `Recovery.cpp`,
-  `ReferenceUpdate.cpp`, `PoiGrid.cpp`, `FieldMesh.cpp`, `Examples.cpp`.
+  nothing runs one on a schedule.
 
   Two things worth not re-deriving about running one. A mutant costs 6.5 s to
   build with mold and 90 s to test, so the slow cases are excluded by default
