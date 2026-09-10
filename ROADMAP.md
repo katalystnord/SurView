@@ -984,8 +984,54 @@ as a backlog with everything in it.
   which a non-uniform one does not. Worth doing: it is the only way anything
   here can tell whether a user asking for second order gets it.
 
+  **Worked to the end on 2026-09-10**, file by file, across every core source
+  the sweep had left standing. Fourteen commits carry the reasoning; the two
+  findings worth more than the count are recorded above (the chunking family,
+  and the second-order solver gap).
+
+  Measured afterwards rather than assumed, by replaying the standing survivors
+  against the suite as it now is: of the 98 replayed, **40 are now killed and 58
+  still stand, every one of the 58 carrying a written reason beside the case it
+  belongs to.** The replay was stopped at 98 of 142 deliberately: the remaining
+  44 are Series' sixteen (argued down in the previous session), the Sequence
+  equivalents settled by brute force over 355,216 ordered pairs, and
+  Correlation's own thirteen, every one of which had been negative-checked
+  individually as its case was written. Confirming those would have cost three
+  more hours of machine time and told us nothing new.
+
+  ⚑ **THE REPLAY IS WHAT FOUND WHAT THE FILE-BY-FILE PASS WALKED PAST**, four
+  times, and that is its real argument rather than the score: the Magnitude row
+  the panel prints (a second copy of an expression whose first copy was tested),
+  a pixel at the image's darkest value claiming the pixel type's own limit
+  (the fixture's darkest pixel is 0, which IS a byte's floor, so both facts were
+  true at once in every case), the off-picture row one flag away from cautioning
+  every time the pointer crossed an edge, and an EMPTY field re-anchoring the
+  reference - which banks no increment, marks every point lost, and leaves the
+  rest of the sequence measuring nothing.
+
+  ⚑ **AND THREE PATTERNS ACCOUNT FOR MOST OF WHAT WAS FOUND**, worth knowing
+  before the next sweep rather than after it:
+
+    - **An index check tightened at its LOWER bound**, three times in three
+      files. Cases ask about the middle of a grid and about indices past the
+      end; nothing asks about the FIRST one. The point readout refused point
+      zero, the repair pass dropped it from every round, and three of
+      FieldMesh's four corner checks were free because mesh point zero is only
+      ever a top-left corner when points arrive in grid order.
+    - **A fixture symmetric in the thing under test.** test_roi probed only
+      along x, so three mutants lived in the subset rectangle's height; the
+      irreflexivity case used a name whose digits hold no leading zero, so
+      image_0000.png could precede itself.
+    - **A case asking whether something was refused without asking WHICH
+      refusal.** An image with no pixels was refused for its subset radius; a
+      region inside the border margin on one axis alone was not refused at all.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
-  nothing runs one on a schedule.
+  nothing runs one on a schedule. What this round showed is that the cheap half
+  is the valuable half - replaying the SURVIVOR list is minutes of setup and
+  finds real defects, where re-proving known kills is hours and finds none.
+  Verify a kill when you write it, with one mutant against one test executable;
+  replay the survivors when the work is done.
 
   Two things worth not re-deriving about running one. A mutant costs 6.5 s to
   build with mold and 90 s to test, so the slow cases are excluded by default
