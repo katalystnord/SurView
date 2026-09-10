@@ -27,6 +27,27 @@
 // which measures a real example through the real window and asks the screen
 // itself what error it found.
 
+// ⚑ SIX SURVIVORS FROM THE SWEEP OF 2026-09-09 ARE CLOSED BY ARGUMENT, and are
+// written down here so the next sweep does not re-derive them:
+//
+//   - the frame loop's `index < frames.size()` widened to `<=`. QJsonArray::at()
+//     past the end returns an undefined value, whose object is empty, whose
+//     "file" is an empty string, which matches no image file name -- and if it
+//     ever did, the half-an-answer rule below refuses it for stating neither a
+//     gradient nor a shift. Same answer by a longer road.
+//   - the cell-bounds tests in layoutStatedField and layoutErrorField, four
+//     mutants across the two. Widening `>=` to `>`, or joining the two halves
+//     with AND, lets an out-of-range grid index reach `cells[index]`, which is
+//     a WRITE past the end of a QVector. That is undefined behaviour, not an
+//     assertion, and after the chunking family on 2026-09-10 -- a mutant killed
+//     by an allocator in one build and green in another -- a case resting on
+//     what that write happens to do would be evidence of nothing. The guard
+//     stays because a layout is handed a result it did not build.
+//   - `magnitude > report.worstAbsolute` widened to `>=`. It changes which
+//     point is reported only when two points are EXACTLY equally wrong, and
+//     then both are correct answers to "where is the worst". Equivalent in
+//     meaning rather than merely unobserved.
+
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/KnownAnswer.h"
@@ -35,6 +56,7 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include <QTemporaryDir>
 #include <QTest>
 
 #include <cmath>
@@ -116,6 +138,9 @@ private slots:
     void a_channel_the_stated_answer_cannot_speak_to_is_not_offered();
 
     void the_stated_field_covers_every_point_the_run_attempted_including_its_failures();
+    void a_frame_that_states_half_an_answer_states_none_of_it();
+    void an_answer_that_is_not_valid_states_nothing_anywhere();
+    void a_run_that_measured_nothing_is_still_scaled_against_what_it_missed();
     void a_cell_no_point_reached_has_no_stated_value_either();
     void a_point_the_solver_rejected_is_not_an_error_of_zero();
     void a_strain_the_fit_declined_is_not_an_error_of_zero();
@@ -653,6 +678,131 @@ void TestKnownAnswer::the_two_measures_state_different_shears_for_a_deformation_
     QVERIFY2(std::abs(green - linear) > 1e-9,
              "the two measures must actually differ here, or the case cannot tell "
              "which one answered");
+}
+
+void TestKnownAnswer::a_frame_that_states_half_an_answer_states_none_of_it()
+{
+    // ⚑ HALF AN ANSWER IS NOT AN ANSWER. The frame states a deformation
+    // gradient and a rigid shift, and both are read into fixed-size arrays. A
+    // file carrying one of them and not the other is refused outright rather
+    // than accepted with the missing half left at whatever a default-constructed
+    // value happens to be -- which would put a confident error map on screen
+    // against half of an experiment.
+    //
+    // The sweep of 2026-09-09 found the two conditions could be joined with AND
+    // instead of OR, so a frame stating only one of them sailed through. Every
+    // frame that ships states both, so nothing here could see it: this case
+    // writes the malformed file it needs.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("half_an_answer.json"));
+
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly));
+    file.write(R"({
+      "sets": {
+        "half": {
+          "what_it_shows": "a frame that states a gradient and no shift",
+          "frames": [
+            {"file": "half_00.tif",
+             "deformation_gradient": [[1.0, 0.0], [0.0, 1.0]],
+             "rigid_shift_px": [0.0, 0.0]},
+            {"file": "half_01.tif",
+             "deformation_gradient": [[1.01, 0.0], [0.0, 1.0]]},
+            {"file": "half_02.tif",
+             "rigid_shift_px": [3.0, 0.0]}
+          ]
+        }
+      }
+    })");
+    file.close();
+
+    // The complete frame is read, or this case is testing a broken file rather
+    // than a broken rule.
+    QVERIFY2(knownAnswerFromFile(path, QStringLiteral("half_00.tif")).valid,
+             "the frame stating both halves was refused, so this file is wrong "
+             "rather than the rule");
+
+    QVERIFY2(!knownAnswerFromFile(path, QStringLiteral("half_01.tif")).valid,
+             "a frame stating a deformation and no shift was accepted");
+    QVERIFY2(!knownAnswerFromFile(path, QStringLiteral("half_02.tif")).valid,
+             "a frame stating a shift and no deformation was accepted");
+}
+
+void TestKnownAnswer::an_answer_that_is_not_valid_states_nothing_anywhere()
+{
+    // The comparison window is only offered where an answer exists, so the
+    // guard at the top of each layout looks redundant -- and it is the last
+    // thing standing between an image with NO stated answer and a full panel of
+    // confident numbers computed from a default-constructed deformation. A
+    // reader cannot tell those from measured ones: that is the whole hazard
+    // this file exists for, arriving through the door nobody watches.
+    const KnownAnswer nothingKnown;   // valid == false
+    QVERIFY(!nothingKnown.valid);
+
+    const CorrelationResult result = gridOf(4, 3, 20, 40, [](CorrelationPoint &) {});
+
+    for (const FieldChannel channel : {FieldChannel::DisplacementX,
+                                       FieldChannel::DisplacementY,
+                                       FieldChannel::StrainXX}) {
+        const QVector<float> stated = layoutStatedField(result, channel, nothingKnown);
+        const QVector<float> error = layoutErrorField(result, channel, nothingKnown);
+        QCOMPARE(stated.size(), 12);
+        QCOMPARE(error.size(), 12);
+        for (int cell = 0; cell < stated.size(); cell++) {
+            QVERIFY2(std::isnan(stated[cell]),
+                     qPrintable(QStringLiteral("cell %1 states %2 with no answer "
+                                               "to state it from")
+                                    .arg(cell).arg(double(stated[cell]))));
+            QVERIFY2(std::isnan(error[cell]),
+                     qPrintable(QStringLiteral("cell %1 reports an error of %2 "
+                                               "against nothing")
+                                    .arg(cell).arg(double(error[cell]))));
+        }
+    }
+
+    // And the accuracy report, which is the same guard a third time and the one
+    // that would put a NUMBER in the run log rather than a colour on a map: an
+    // error of zero against an answer that does not exist reads as a perfect
+    // measurement, which is the flattering reading this file already refuses
+    // for a run that measured nothing.
+    const AccuracyReport report =
+        accuracyAgainstStated(result, FieldChannel::DisplacementX, nothingKnown);
+    QVERIFY2(!report.valid, "an accuracy was reported against no answer at all");
+    QCOMPARE(report.compared, 0);
+    QCOMPARE(report.worstAbsolute, 0.0);
+}
+
+void TestKnownAnswer::a_run_that_measured_nothing_is_still_scaled_against_what_it_missed()
+{
+    // ⚑ The two panels share one colour scale so that a measurement wrong by
+    // half is not painted in exactly the colours of the answer it missed. The
+    // case where the MEASURED half is empty is the one that matters most and
+    // was covered by nothing: a run that solved no points at all still has an
+    // answer to show, and refusing to produce a range leaves the stated panel
+    // with no scale to draw itself against - a blank window where the reader
+    // most needs to see what the run failed to find.
+    const QVector<float> nothingMeasured(12, std::numeric_limits<float>::quiet_NaN());
+    QVector<float> stated(12, 0.0f);
+    for (int cell = 0; cell < stated.size(); cell++)
+        stated[cell] = float(cell) * 0.5f;
+
+    double lowest = 0.0;
+    double highest = 0.0;
+    QVERIFY2(sharedColourRange(nothingMeasured, stated, false, lowest, highest),
+             "a run that measured nothing left the stated answer with no scale");
+    QCOMPARE(lowest, 0.0);
+    QCOMPARE(highest, 5.5);
+
+    // And the other way round, which is the same rule seen from the other side.
+    QVERIFY2(sharedColourRange(stated, nothingMeasured, false, lowest, highest),
+             "an answer that states nothing left the measurement with no scale");
+    QCOMPARE(lowest, 0.0);
+    QCOMPARE(highest, 5.5);
+
+    // Only when there is nothing on either side is there no range to give.
+    QVERIFY2(!sharedColourRange(nothingMeasured, nothingMeasured, false, lowest, highest),
+             "two empty fields produced a colour range out of nothing");
 }
 
 QTEST_MAIN(TestKnownAnswer)

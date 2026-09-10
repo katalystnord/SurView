@@ -156,6 +156,15 @@ private slots:
     // suite fails, so it is caught, but the harness reports it as a crash and
     // it is recorded here so the next reader knows why.
     //
+    // ⚑ AND THAT IS A KILL THAT TRAVELS, checked on 2026-09-10 rather than
+    // assumed, because the same morning found one that does not: the chunking
+    // family in Correlation.cpp was "killed" by a small out-of-bounds WRITE,
+    // which in a build with no CMAKE_BUILD_TYPE corrupts the heap quietly, lets
+    // every case report PASS, and exits ZERO. This one is a null DEREFERENCE,
+    // which is a fault the moment it happens: exit 139 in both builds, checked
+    // in each. The distinction is the whole lesson - a crash is only evidence
+    // when it is the kind of crash that cannot be swallowed.
+    //
     // ⚑ WHAT STILL SURVIVES IN Series.cpp, AND WHY NO CASE IS COMING. 35
     // mutants became 15, and every one of the 15 was chased to a reason:
     //
