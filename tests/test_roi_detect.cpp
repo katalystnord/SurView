@@ -7,6 +7,27 @@
 // detector that manufactures a plausible region from sensor noise is worse than
 // one that finds nothing, because the result looks like an answer.
 
+// ⚑ NINE SURVIVORS IN THIS FILE'S SUBJECT ARE UNREACHABLE, established by
+// breaking them and watching this suite stay green (2026-09-10), and recorded
+// here so the next sweep does not re-derive it:
+//
+//   - `image.width <= 0 || image.height <= 0`, in both functions. OpenCorr's
+//     Image2D loads through cv::imread and THROWS a std::string when the file
+//     cannot be read, so anything reaching that test has already been decoded
+//     and has real dimensions. Six mutants, all of them defence against a
+//     future loader that returns an empty image rather than throwing. The
+//     unreadable file IS covered, by the case below, through the catch.
+//   - `corners < 3 || x.size() < corners || y.size() < corners`. AutoROI builds
+//     its boundary from a contour, so it cannot hand back a ring of fewer than
+//     three corners or two vertex arrays of different lengths. Nothing this
+//     side of the engine can produce the input that separates those mutants.
+//   - the vertex loop's own `i < corners`. Widened, it reads one past the end
+//     of two std::vectors, which is undefined behaviour and not an assertion:
+//     it does not even crash here, because the vectors have slack. After what
+//     the chunking family taught this project on 2026-09-10 -- a mutant killed
+//     by an allocator in one build and green in another -- a crash is not
+//     something to rely on for a kill even where it does happen.
+
 #include "core/Roi.h"
 #include "core/RoiDetect.h"
 

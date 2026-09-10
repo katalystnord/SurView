@@ -36,15 +36,26 @@
 // changes no answer, because the membership test still excludes the same
 // pixels. The box is an optimisation and the polygon is the restriction.
 //
-// ⚑ AND ONE MORE, FROM THE SWEEP OF 2026-09-09, DELIBERATELY NOT CHASED.
+// ⚑ AND FOUR MORE, FROM THE SWEEP OF 2026-09-09, DELIBERATELY NOT CHASED.
 // Narrowing the scan's `y <= last` to `y < last` drops the final row of every
-// region, and no property here can see it: every comparison between two
-// regions shifts by the same one row, so they go on agreeing and disagreeing
-// exactly as before. The only thing that would catch it is an absolute
-// expectation for the mean -- a number taken from the implementation, which is
-// worth less than no test at all, since it would agree with whatever the code
-// does. What it costs if it is ever wrong is one row of pixels in a mean over
-// tens of thousands, well below the two figures the estimate is quoted to.
+// region, `x <= last` the final column, and pulling either clamp back from
+// `size - 1` to `size - 2` does the same thing one region-edge further out. No
+// property here can see any of them: every comparison between two regions
+// shifts by the same one row, so they go on agreeing and disagreeing exactly
+// as before. The only thing that would catch it is an absolute expectation for
+// the mean -- a number taken from the implementation, which is worth less than
+// no test at all, since it would agree with whatever the code does. What it
+// costs if it is ever wrong is one row of pixels in a mean over tens of
+// thousands, well below the two figures the estimate is quoted to.
+//
+// ⚑ AND ONE IN THE NO-SPECKLE GUARD, which is exact rather than a judgement.
+// The guard reads `!(meanSssig > 0) || !(noiseStdDev > 0)`, and widening the
+// FIRST half to `>= 0` cannot be caught by any image: an image flat enough to
+// have no gradient energy also has no noise, so the second half fires first and
+// refuses it either way. Measured on flat_frame.tif, which is where this was
+// established rather than argued: its noise estimate is exactly zero while its
+// gradient energy is not quite, so the noise half is the one doing the work.
+// The other two mutants in that line are killed by the case below.
 //
 // Reading one row PAST the image is a different matter and is caught, by an
 // out-of-bounds access into the gradient map that takes the process down. The
@@ -90,6 +101,7 @@ private slots:
     void a_region_that_is_not_a_rectangle_measures_only_what_is_inside_it();
     void a_subset_radius_of_one_pixel_is_the_smallest_there_is();
     void a_region_reaching_past_the_picture_measures_the_picture();
+    void a_frame_with_no_speckle_says_so_rather_than_reporting_a_resolution();
 };
 
 void TestSpeckleQuality::a_speckled_region_reports_what_it_can_resolve()
@@ -249,6 +261,46 @@ void TestSpeckleQuality::a_subset_radius_of_one_pixel_is_the_smallest_there_is()
 
     const SpeckleQuality negative = speckleQualityIn(image, boxAt(20, 20, 60, 60), -4);
     QVERIFY2(!negative.measured, "and a negative radius is refused too");
+}
+
+void TestSpeckleQuality::a_frame_with_no_speckle_says_so_rather_than_reporting_a_resolution()
+{
+    // ⚑ THE ESTIMATE IS A DIVISION BY THE SPECKLE'S OWN GRADIENT ENERGY, and a
+    // frame that carries none divides by zero. What comes out is a not-a-number
+    // or an infinity, and either one on a panel that otherwise reads "0.004 px"
+    // is a resolution claim about an image nothing can be correlated in.
+    //
+    // The guard refusing it had no case: the sweep of 2026-09-09 found both
+    // halves could be widened to accept a value of exactly zero and nothing
+    // went red, because every fixture here is speckled corner to corner.
+    //
+    // ⚑ AND blank_frame.tif WILL NOT DO IT, which is worth knowing rather than
+    // discovering twice. That fixture is pure sensor NOISE, and noise has
+    // gradient energy: it reports a finite 0.045 px, which is ten times worse
+    // than the same estimate over real speckle and is the honest answer this
+    // design gives (there is no invented threshold for "good enough"). The
+    // guard is for a frame that is genuinely flat -- a lens cap, a blown-out
+    // highlight, an unspeckled painted background -- so flat_frame.tif is
+    // exactly that: 240x160 with every pixel at 128, one distinct value in the
+    // whole image, which any image tool will confirm.
+    const SpeckleQuality quality =
+        speckleQualityIn(fixture(QStringLiteral("flat_frame.tif")),
+                         boxAt(40, 40, 120, 80), 16);
+
+    QVERIFY2(!quality.measured,
+             qPrintable(QStringLiteral("a frame with no gradient at all "
+                                       "reported a resolution of %1 px")
+                            .arg(quality.resolutionPx)));
+    QVERIFY2(quality.note.contains(QStringLiteral("speckle"), Qt::CaseInsensitive),
+             qPrintable(quality.note));
+
+    // And it is refused for the RIGHT reason. The region lies squarely over the
+    // picture, so a refusal saying it does not is the other failure wearing
+    // this one's clothes -- the confusion this file was already caught by once,
+    // where a region off the picture was refused by the no-gradient guard
+    // rather than by its own.
+    QVERIFY2(!quality.note.contains(QStringLiteral("lie over"), Qt::CaseInsensitive),
+             qPrintable(quality.note));
 }
 
 void TestSpeckleQuality::a_region_reaching_past_the_picture_measures_the_picture()
