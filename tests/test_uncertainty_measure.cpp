@@ -32,6 +32,21 @@
 //     that is worth knowing. See a_point_with_no_displacement_gets_no_
 //     reliability_either below for why.
 
+// ⚑ TWO SURVIVORS FROM THE SWEEP OF 2026-09-09, both closed by argument rather
+// than by a case, because no real engine can produce the value that separates
+// them. The guards read `sigma > 0` and `beta > 0`, and widening either to
+// `>= 0` changes an answer only at a value of EXACTLY zero -- which is the
+// state POI2D::clear() leaves and which the engine never writes: sigma is the
+// square root of a positive ratio and beta a sum of non-zero reciprocal slopes,
+// and both are -1 when the engine declines to produce one. So the mutants
+// survive against any pair of real photographs, and the defect they stand for
+// is precisely the one the negative check above already caught by removing the
+// pass outright: a zero reaching the screen as a perfect measurement. That
+// check is what holds this rule, and it is stronger than either mutant.
+//
+// A fake engine returning a zero would kill them both, and would mean building
+// a stand-in for the one thing this application is a GUI for. Recorded instead.
+
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/Roi.h"

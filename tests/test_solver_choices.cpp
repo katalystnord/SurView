@@ -14,6 +14,28 @@
 // The fixture pair is the reference displaced by exactly +3 px in x and 0 in y,
 // so every solver has the same known answer to be wrong about.
 
+// ⚑ AND ONE GAP THIS FILE CANNOT CLOSE, found by the same sweep and worth more
+// than the mutants that revealed it. The two lines choosing between the first-
+// and second-order solvers (ICGN2D1 against ICGN2D2, ICLM2D1 against ICLM2D2)
+// can be INVERTED and the whole suite stays green: every user asking for a
+// second-order shape function would get a first-order one, and nothing here or
+// anywhere else would notice.
+//
+// It is not for want of a case. Nothing in this repository DEFORMS in a way a
+// first-order shape function cannot describe. Every synthetic example is a
+// uniform deformation gradient by construction -- translation, tension, shear,
+// rotation, all of them exactly affine, which is what first order represents
+// exactly -- and measured on the real photographs the two orders agree to
+// within a thousandth of a correlation, in neither direction consistently
+// (checked, 2026-09-10: 0.99103 against 0.99020 on the open-hole set at a
+// subset radius of 24, and 0.99245 against 0.99294 at 36).
+//
+// What would close it is a fixture whose displacement field is quadratic, where
+// second order can fit what first order cannot. That is a real piece of work
+// with a real question inside it - the generator's exactness comes from a
+// uniform F mapping a Gaussian blob to a Gaussian blob, and a non-uniform one
+// does not - so it is on the roadmap rather than half-done here.
+
 #include "core/Correlation.h"
 #include "core/Roi.h"
 
