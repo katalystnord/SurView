@@ -624,6 +624,49 @@ void TestFieldLayout::every_condition_a_point_must_meet_to_join_the_spread_is_ch
     // reported best, and the run advertises a floor of 0.0 px -- which is
     // exactly what the negative check printed.
     //
+    // ⚑ AND WITH THEM, THE REST OF THIS FILE'S SURVIVORS, chased individually
+    // on 2026-09-10 and closed by argument rather than by cases that could not
+    // exist:
+    //
+    //   the tail `return false` after      Unreachable: the switch above it
+    //   fieldChannelIsStrain's switch      answers every channel there is.
+    //
+    //   `cells <= 0` narrowed to `< 0`     A grid of no cells then builds an
+    //                                      EMPTY vector instead of returning
+    //                                      one, and an empty QVector equals an
+    //                                      empty QVector. Checked, not argued.
+    //
+    //   layoutField's own cell bounds (2)  Their only effect is a write past
+    //                                      the end of a QVector, which is
+    //                                      undefined behaviour and not an
+    //                                      assertion. Same reasoning as the
+    //                                      identical guard in KnownAnswer.cpp.
+    //
+    //   `!(span > 0.0)` as `>= 0.0`        A scale whose bounds are equal then
+    //                                      divides by a tick step of zero and
+    //                                      converts an infinity to an int,
+    //                                      which is undefined -- and the clamp
+    //                                      two lines later happens to rescue
+    //                                      the result to the same 3 the guard
+    //                                      would have returned. What the guard
+    //                                      buys is that the undefined
+    //                                      conversion is never REACHED, which
+    //                                      no assertion can see. The same
+    //                                      argument, in the same words, as the
+    //                                      step-of-zero guard in Series.cpp.
+    //
+    //   `!(reach > 0.0)` as `>= 0.0`       Reach is zero only when both bounds
+    //                                      are zero, and then the span is zero
+    //                                      too and the guard above returns
+    //                                      first. Nothing reaches it.
+    //
+    //   `!(floor > 0.0)` as `>= 0.0`       sortedNoiseFloors() already keeps
+    //                                      only floors ABOVE zero, so the
+    //                                      percentile of a non-empty list
+    //                                      cannot be zero. Dead by the rule
+    //                                      this very case enforces one
+    //                                      function away.
+    //
     // Two mutants in percentileOf() are NOT chased, recorded here so nobody
     // hunts them: the upper bound of its clamp cannot bind. Its only caller
     // asks for the 95th percentile, and nearest rank on any non-empty set puts

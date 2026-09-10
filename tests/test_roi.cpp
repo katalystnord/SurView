@@ -57,12 +57,26 @@ private slots:
     //
     // The same two survive PatternFab's copy of this algorithm, which is where
     // the arguments were first worked out.
+    //
+    // ⚑ A THIRD IS UNREACHABLE, and it is worth saying exactly why, because a
+    // case below carries a name that suggests otherwise. ringContains() returns
+    // false for a ring of fewer than three corners, and flipping that to true
+    // changes nothing: the function is private to this file, the outer ring
+    // reaches it only after isValid() has already required three vertices, and
+    // a hole reaches it only after its own size test. So
+    // a_ring_of_fewer_than_three_corners_encloses_nothing passes for a
+    // different reason than its name gives -- what refuses a two-corner region
+    // is isValid(), not the guard inside the crossing test. Both are worth
+    // keeping; only one of them is being tested.
     void the_notch_of_a_concave_region_is_outside_it();
     void a_slanted_boundary_is_crossed_where_it_actually_lies();
     void a_point_exactly_on_a_boundary_is_decided_the_same_way_every_time();
     void a_ring_of_fewer_than_three_corners_encloses_nothing();
     void a_subset_of_no_size_reaches_only_what_it_sits_on();
     void moving_a_corner_that_does_not_exist_leaves_the_region_alone();
+    void the_first_corner_of_a_region_moves_like_any_other();
+    void a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it();
+    void a_triangular_hole_is_a_hole_wherever_the_question_is_asked();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -462,6 +476,90 @@ void TestRoi::moving_a_corner_that_does_not_exist_leaves_the_region_alone()
     // refusing everything.
     const RegionOfInterest moved = withCornerMoved(roi, 2, QPoint(5, 5));
     QCOMPARE(moved.vertices.at(2), QPoint(5, 5));
+}
+
+void TestRoi::the_first_corner_of_a_region_moves_like_any_other()
+{
+    // ⚑ The case above moves the LAST corner, to show the index check is not
+    // simply refusing everything. It cannot see the check tightening at the
+    // other end: `corner < 0` narrowed to `corner <= 0` refuses corner ZERO,
+    // and a user dragging the first corner of a region they drew would find it
+    // silently immovable while every other corner obeyed. Nothing on screen
+    // would say why. Found standing after the sweep of 2026-09-09.
+    RegionOfInterest roi;
+    roi.vertices << QPoint(10, 10) << QPoint(90, 10) << QPoint(90, 70);
+
+    const RegionOfInterest moved = withCornerMoved(roi, 0, QPoint(5, 5));
+    QCOMPARE(moved.vertices.at(0), QPoint(5, 5));
+    QCOMPARE(moved.vertices.at(1), roi.vertices.at(1));
+    QCOMPARE(moved.vertices.at(2), roi.vertices.at(2));
+}
+
+void TestRoi::a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it()
+{
+    // ⚑ EVERY CASE IN THIS FILE PROBES ALONG X. The subset is built as a
+    // rectangle with a width and a height, written as the same expression
+    // twice, and three mutants lived in the SECOND copy: a square one pixel
+    // short, one pixel over, or a whole pixel narrower in y only. A hole
+    // directly above the point is the only thing that asks about its height.
+    //
+    // The same hole, spanning y 40..60. A point at y = 23 with a 16 px subset
+    // reaches y = 39, one pixel short; at y = 24 it reaches exactly 40, and
+    // touching is reaching.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+
+    QVERIFY2(!subsetReachesAHole(region, 50, 23, 16),
+             "a subset ending one pixel above the hole does not reach it");
+    QVERIFY2(subsetReachesAHole(region, 50, 24, 16),
+             "and one that ends exactly on its edge does");
+
+    // And at a radius of zero, where the height's own "+ 1" is the whole
+    // difference between a one-pixel subset and no subset at all.
+    QVERIFY2(subsetReachesAHole(region, 50, 40, 0),
+             "a subset of no radius sitting on the hole's top edge reaches it");
+    QVERIFY2(!subsetReachesAHole(region, 50, 39, 0),
+             "and one pixel above it does not");
+}
+
+void TestRoi::a_triangular_hole_is_a_hole_wherever_the_question_is_asked()
+{
+    // ⚑ THREE CORNERS IS THE SMALLEST RING THAT ENCLOSES ANYTHING, and three
+    // separate places apply that rule: whether a region has holes at all,
+    // whether a point falls inside one, and whether a subset reaches one. Every
+    // hole in this file is a rectangle, and to a rectangle "three or more" and
+    // "more than three" are the same rule -- so all three could be tightened
+    // and nothing went red.
+    //
+    // What it costs is not a wrong number but a hole that stops existing:
+    // hasHoles() answers false, the run never builds a region with holes at
+    // all, and the void the user drew round is measured straight across.
+    RegionOfInterest region;
+    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    region.holes.append({QPoint(30, 30), QPoint(70, 30), QPoint(50, 70)});
+
+    QVERIFY2(region.hasHoles(),
+             "a region whose only hole is a triangle reported no holes at all");
+
+    QVERIFY2(!regionContains(region, 50, 40),
+             "a point well inside a triangular hole was reported inside the region");
+    QVERIFY2(regionContains(region, 10, 10),
+             "and a point clear of it is still inside");
+
+    QVERIFY2(subsetReachesAHole(region, 20, 40, 12),
+             "a subset reaching a triangular hole was not reported");
+
+    // And a ring of two corners still encloses nothing, in all three, which is
+    // the rule the one above must not be confused with.
+    RegionOfInterest twoCorners;
+    twoCorners.vertices = region.vertices;
+    twoCorners.holes.append({QPoint(30, 30), QPoint(70, 30)});
+    QVERIFY2(!twoCorners.hasHoles(), "a two-corner ring was counted as a hole");
+    QVERIFY2(regionContains(twoCorners, 50, 30),
+             "a two-corner ring excluded a point from the region");
+    QVERIFY2(!subsetReachesAHole(twoCorners, 50, 30, 12),
+             "a subset was said to reach a hole that encloses nothing");
 }
 
 QTEST_MAIN(TestRoi)
