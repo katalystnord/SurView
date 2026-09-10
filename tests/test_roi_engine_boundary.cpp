@@ -142,8 +142,19 @@ void TestRoiEngineBoundary::a_run_measures_nothing_inside_a_triangular_hole()
     outer.vertices = {QPoint(40, 30), QPoint(200, 30),
                       QPoint(200, 130), QPoint(40, 130)};
 
+    // ⚑ BOTH SHAPES, and the rectangle is not the afterthought it looks like.
+    // A triangle is the BOUNDARY of the rule; a rectangle is what a user
+    // actually draws and what the open-hole tension example ships. Testing only
+    // the boundary leaves "three or more corners" and "fewer than four corners"
+    // indistinguishable, and the second of those honours a triangle while
+    // silently dropping every rectangular hole there is. Found by the sweep of
+    // 2026-09-10, against this very case.
     RegionOfInterest holed = outer;
     holed.holes.append({QPoint(60, 50), QPoint(170, 50), QPoint(115, 110)});
+
+    RegionOfInterest squareHoled = outer;
+    squareHoled.holes.append({QPoint(95, 55), QPoint(140, 55),
+                              QPoint(140, 100), QPoint(95, 100)});
 
     CorrelationSettings settings;
     settings.subsetRadius = 8;
@@ -184,6 +195,7 @@ void TestRoiEngineBoundary::a_run_measures_nothing_inside_a_triangular_hole()
              "hole would be, so this case asks nothing");
 
     QCOMPARE(countIn(measure(holed)), 0);
+    QCOMPARE(countIn(measure(squareHoled)), 0);
 }
 
 QTEST_MAIN(TestRoiEngineBoundary)
