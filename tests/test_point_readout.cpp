@@ -150,6 +150,11 @@ private slots:
     void a_good_point_reports_itself_without_a_single_warning();
     void only_the_row_that_cannot_carry_a_bare_number_warns();
     void a_correlation_exactly_at_the_strain_floor_is_not_excluded_by_it();
+    void a_click_exactly_at_the_reach_of_the_grid_still_finds_its_point();
+    void the_first_point_in_the_grid_reads_out_like_any_other();
+    void a_point_repaired_on_the_second_pass_reports_it_without_apology();
+    void a_strain_the_fit_declined_is_the_row_that_warns();
+    void a_displacement_exactly_at_its_own_noise_floor_is_marked();
     void two_points_the_same_distance_away_resolve_the_same_way_every_time();
     void a_displacement_is_compared_to_its_floor_as_a_length_not_as_one_axis();
 };
@@ -487,6 +492,126 @@ void TestPointReadout::a_displacement_is_compared_to_its_floor_as_a_length_not_a
     result.points[4].noiseFloor = 0.005f;
     QVERIFY2(anyLineWarns(pointReadout(result, 4)),
              "and one whose length falls under it is");
+}
+
+void TestPointReadout::a_click_exactly_at_the_reach_of_the_grid_still_finds_its_point()
+{
+    // The pick radius is one grid step, so every position in the field belongs
+    // to some point and a click between two of them goes to the nearer. At
+    // EXACTLY one step away the point is still within reach: narrowed to a
+    // strict comparison, a click that lands precisely on the limit reports
+    // "no point measured here" while a click one thousandth nearer reads out
+    // a full measurement. It is the boundary, and it is where a reader clicking
+    // at a grid line lands.
+    const CorrelationResult result = plainResult();
+    const float reach = pointPickRadius(result);
+    QCOMPARE(reach, float(result.step));
+
+    // Straight out from the last point in x, exactly one step.
+    const int found = pointNearestTo(result, result.originX + 2 * result.step + reach,
+                                     result.originY);
+    QVERIFY2(found >= 0, "a click exactly at the pick radius found no point");
+    QCOMPARE(found, 2);
+
+    // And a hair beyond it finds nothing, or the radius is not a radius.
+    QVERIFY2(pointNearestTo(result, result.originX + 2 * result.step + reach + 0.5f,
+                            result.originY) < 0,
+             "a click beyond the pick radius found a point anyway");
+}
+
+void TestPointReadout::the_first_point_in_the_grid_reads_out_like_any_other()
+{
+    // ⚑ The index check reads `index < 0 || index >= size`, and the cases here
+    // ask about the middle of the grid and about indices past the end. Neither
+    // can see the lower bound tightening to `index <= 0`, which refuses point
+    // ZERO: the top-left corner of every field would report "no point measured
+    // here" while every other point read out normally. The same shape of defect
+    // as a region whose first corner cannot be dragged.
+    const CorrelationResult result = plainResult();
+    const PointReadout first = pointReadout(result, 0);
+
+    QVERIFY2(first.measured,
+             "the first point in the grid reported nothing measured there");
+    QVERIFY2(!anyLineWarns(first),
+             qPrintable(warningLabels(first).join(QStringLiteral(", "))));
+    QVERIFY2(spoken(first).contains(QStringLiteral("2.5")),
+             qPrintable(spoken(first)));
+}
+
+void TestPointReadout::a_point_repaired_on_the_second_pass_reports_it_without_apology()
+{
+    // ⚑ A RECOVERED POINT IS A REAL MEASUREMENT. It reached its answer by a
+    // different route and the readout says so, as provenance rather than as a
+    // caveat - the project's own posture: permissive about what is attempted,
+    // strict about what is claimed, and a mark that is not an apology.
+    //
+    // The fixture had no repaired point in it, so the row that says all this
+    // was never built by any case, and the flag saying "this is not a warning"
+    // could be flipped with nothing going red. A readout that warns about
+    // everything warns about nothing.
+    CorrelationResult result = plainResult();
+    result.points[4].recovered = true;
+
+    const PointReadout readout = pointReadout(result, 4);
+    QVERIFY(readout.measured);
+    QVERIFY2(spoken(readout).contains(QStringLiteral("second pass")),
+             qPrintable(spoken(readout)));
+    QVERIFY2(!anyLineWarns(readout),
+             qPrintable(QStringLiteral("a repaired point warns about: %1")
+                            .arg(warningLabels(readout).join(QStringLiteral(", ")))));
+}
+
+void TestPointReadout::a_strain_the_fit_declined_is_the_row_that_warns()
+{
+    // The other direction, and the one the marks exist for. "Not fitted here"
+    // is the row a reader must not read as a strain of zero, so it carries the
+    // mark; unmarked, it is one more grey row among the facts.
+    CorrelationResult result = plainResult();
+    result.points[4].strainFitted = false;
+
+    const PointReadout readout = pointReadout(result, 4);
+    const QStringList warned = warningLabels(readout);
+    QCOMPARE(warned.size(), 1);
+    QVERIFY2(warned.first().contains(QStringLiteral("Strain")),
+             qPrintable(warned.join(QStringLiteral(", "))));
+
+    // A point with no noise floor of its own says so and does NOT warn: the row
+    // carries no number, and a row with no number cannot mislead anyone about
+    // how much weight it will carry.
+    CorrelationResult noFloor = plainResult();
+    noFloor.points[4].noiseFloorMeasured = false;
+    QVERIFY2(!anyLineWarns(pointReadout(noFloor, 4)),
+             qPrintable(warningLabels(pointReadout(noFloor, 4))
+                            .join(QStringLiteral(", "))));
+
+    // And a position with no point at all is an absence, not a fault.
+    QVERIFY2(!anyLineWarns(pointReadout(result, 99)),
+             "empty space warns as though a measurement had gone wrong");
+}
+
+void TestPointReadout::a_displacement_exactly_at_its_own_noise_floor_is_marked()
+{
+    // The boundary of "not distinguishable from image noise", which the case
+    // above steps over: it uses a displacement well under the floor, so a rule
+    // reading "below" and one reading "at or below" are the same rule to it.
+    // A displacement exactly equal to the floor is not distinguishable from it
+    // either, and this is the only place that sentence can be wrong.
+    CorrelationResult result = plainResult();
+    result.points[4].u = result.points[4].noiseFloor;
+    result.points[4].v = 0.f;
+
+    const PointReadout readout = pointReadout(result, 4);
+    QCOMPARE(warningLabels(readout).size(), 1);
+    QVERIFY2(warningLabels(readout).first().contains(QStringLiteral("Noise floor")),
+             qPrintable(warningLabels(readout).join(QStringLiteral(", "))));
+
+    // And a displacement a shade above it is a measurement like any other.
+    CorrelationResult above = plainResult();
+    above.points[4].u = above.points[4].noiseFloor * 1.5f;
+    above.points[4].v = 0.f;
+    QVERIFY2(!anyLineWarns(pointReadout(above, 4)),
+             qPrintable(warningLabels(pointReadout(above, 4))
+                            .join(QStringLiteral(", "))));
 }
 
 QTEST_MAIN(TestPointReadout)

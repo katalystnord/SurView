@@ -56,6 +56,17 @@
 // correlation builds, and which is what turns the check red.
 
 #include "core/Correlation.h"
+// ⚑ THREE SURVIVORS IN acceptRecoveryRound() ARE CLOSED BY ARGUMENT
+// (2026-09-10), all of them in the same bounds test. Widening `i < count` to
+// `<=` reads one past the end of two vectors; widening `index >= size` to `>`,
+// or joining the two halves with AND, writes past the end of the field's own
+// points. Every one of those is undefined behaviour and not an assertion, and
+// after the chunking family in Correlation.cpp - a mutant killed by an
+// allocator in one build and green in another - a case resting on what such a
+// write happens to do would be evidence of nothing. The fourth mutant in that
+// line, `index < 0` tightened to `<= 0`, is a real behaviour change and is
+// killed by the case below.
+
 #include "core/Recovery.h"
 
 #include <QTest>
@@ -119,6 +130,9 @@ private slots:
     void a_rejected_point_never_seeds_the_fit();
     void a_point_that_did_not_converge_never_seeds_however_high_its_correlation();
     void a_pass_with_no_seeds_at_all_cannot_run();
+    void a_pass_nobody_asked_for_and_a_field_with_nothing_to_repair_both_decline();
+    void a_field_with_exactly_enough_seeds_can_run();
+    void the_first_point_in_the_field_can_be_recovered_like_any_other();
 
     // which answers come back
     void a_better_answer_replaces_the_one_it_improves_on();
@@ -278,6 +292,84 @@ void TestRecovery::a_pass_with_no_seeds_at_all_cannot_run()
     const CorrelationResult field = fieldOf({rejected(0), rejected(1)});
 
     QVERIFY(!recoveryCanRun(field, RecoveryPolicy{}));
+}
+
+void TestRecovery::a_pass_nobody_asked_for_and_a_field_with_nothing_to_repair_both_decline()
+{
+    // The two refusals above the seed count, neither of which any case reached:
+    // a pass that is switched off, and a field where every point already solved
+    // well. Both must answer no, and each for its own reason - a pass that runs
+    // on a field with nothing to repair is work nobody asked for, and one that
+    // runs while switched off is the hidden behaviour this application forbids
+    // itself.
+    // Ten points, because the derived neighbourhood asks for nine neighbours
+    // and a field that cannot meet that would decline for the wrong reason.
+    const CorrelationResult perfect =
+        fieldOf({solved(0, 0.99f), solved(1, 0.99f), solved(2, 0.99f),
+                 solved(3, 0.99f), solved(4, 0.99f), solved(5, 0.99f),
+                 solved(6, 0.99f), solved(7, 0.99f), solved(8, 0.99f),
+                 solved(9, 0.99f)});
+
+    RecoveryPolicy off;
+    off.enabled = false;
+    QVERIFY2(!recoveryCanRun(perfect, off),
+             "a pass that was switched off reported that it could run");
+
+    // Switched on, the same field still has nothing to do: every point is well
+    // above the retry bar.
+    QVERIFY2(!recoveryCanRun(perfect, RecoveryPolicy{}),
+             "a field with nothing below the retry bar reported work to do");
+
+    // And a field with something to repair, and seeds to repair it from, can.
+    CorrelationResult repairable = perfect;
+    repairable.points[9] = rejected(9);
+    QVERIFY2(recoveryCanRun(repairable, RecoveryPolicy{}),
+             "a field with a failed point and nine good neighbours declined");
+}
+
+void TestRecovery::a_field_with_exactly_enough_seeds_can_run()
+{
+    // The boundary of the seed count: the fit needs a minimum number of
+    // reliable neighbours, and a field holding EXACTLY that many has enough.
+    // One fewer does not, and the pass says so rather than fitting an affine
+    // field to too little.
+    RecoveryPolicy policy;
+    policy.minNeighbours = 4;
+    policy.searchRadius = 1000.0;   // the whole field is in reach
+
+    CorrelationResult exactly =
+        fieldOf({solved(0, 0.99f), solved(1, 0.99f), solved(2, 0.99f),
+                 solved(3, 0.99f), rejected(4)});
+    QCOMPARE(recoverySeeds(exactly, policy).size(), 4);
+    QVERIFY2(recoveryCanRun(exactly, policy),
+             "a field with exactly the minimum number of seeds declined to run");
+
+    CorrelationResult oneFewer =
+        fieldOf({solved(0, 0.99f), solved(1, 0.99f), solved(2, 0.99f), rejected(3)});
+    QCOMPARE(recoverySeeds(oneFewer, policy).size(), 3);
+    QVERIFY2(!recoveryCanRun(oneFewer, policy),
+             "a field one seed short of the minimum ran anyway");
+}
+
+void TestRecovery::the_first_point_in_the_field_can_be_recovered_like_any_other()
+{
+    // ⚑ The bounds test on an accepted index reads `index < 0 || index >= size`,
+    // and every case here repairs a point in the middle of the field. Tightened
+    // to `index <= 0` it silently drops point ZERO from every round: the
+    // top-left corner of a field would be the one place a repair never took,
+    // and the run would report one fewer repair than it made without saying
+    // which.
+    CorrelationResult field = fieldOf({rejected(0), solved(1, 0.99f)});
+
+    CorrelationPoint recovered = solved(0, 0.96f);
+    recovered.u = 7.f;
+
+    const QVector<int> accepted = acceptRecoveryRound(field, {0}, {recovered});
+
+    QCOMPARE(accepted, QVector<int>{0});
+    QVERIFY2(field.points[0].converged, "the first point in the field was not repaired");
+    QCOMPARE(field.points[0].u, 7.f);
+    QVERIFY(field.points[0].recovered);
 }
 
 // --- which answers come back ------------------------------------------------

@@ -22,6 +22,13 @@
 //     "consecutive corners are 7.07107 apart" -- the diagonal of a 5 px cell.
 
 #include "core/Correlation.h"
+// ⚑ THREE SURVIVORS HERE ARE CLOSED BY ARGUMENT (2026-09-10). `cells <= 0`
+// narrowed to `< 0` builds an empty mesh instead of returning one, and an empty
+// mesh equals an empty mesh - checked, not argued. The two cell-bounds mutants
+// beside it can only send a grid index past the end of a QVector, which is
+// undefined behaviour rather than an assertion; the same guard, and the same
+// reasoning, as the one in KnownAnswer.cpp and FieldLayout.cpp.
+
 #include "core/FieldMesh.h"
 
 #include <QSet>
@@ -67,6 +74,7 @@ private slots:
     void a_grid_too_narrow_for_a_cell_still_keeps_its_points();
     void an_empty_result_makes_an_empty_mesh();
     void each_of_a_cells_four_corners_is_required_on_its_own();
+    void the_mesh_does_not_depend_on_the_order_the_points_arrive_in();
 };
 
 void TestFieldMesh::every_measured_point_becomes_a_point_of_the_mesh()
@@ -217,6 +225,61 @@ void TestFieldMesh::each_of_a_cells_four_corners_is_required_on_its_own()
                                            "attempted, claiming a surface over "
                                            "ground the instrument did not look at")
                                 .arg(missing)));
+    }
+}
+
+void TestFieldMesh::the_mesh_does_not_depend_on_the_order_the_points_arrive_in()
+{
+    // ⚑ A cell is built from the cell each point RECORDS, never from where the
+    // point sits in the list - a region makes the list sparse, and filling in
+    // list order slides the whole field sideways. The list order is therefore
+    // arbitrary, and the mesh must not change when it changes.
+    //
+    // It is also the only way to reach three of the four corner checks. Mesh
+    // point ZERO is whichever point comes first in the list, and the checks
+    // read `corner[n] < 0`: tightened to `<= 0`, the check silently drops every
+    // cell that has mesh point zero at that corner. With the points in grid
+    // order, mesh point zero is only ever the TOP-LEFT corner of one cell, so
+    // three of the four tightenings cost nothing and three mutants sat there.
+    // Bringing a different grid corner to the front of the list puts mesh point
+    // zero at a different corner of a cell, and then each check answers for
+    // itself.
+    const CorrelationResult grid = fullGrid(4, 3);
+    const FieldMesh expected = buildFieldMesh(grid);
+    QCOMPARE(expected.quads.size(), 6);
+
+    const int corners[4] = {0, 3, 11, 8};   // top-left, top-right, bottom-right, bottom-left
+    for (const int gridIndex : corners) {
+        CorrelationResult reordered = grid;
+        for (int i = 0; i < reordered.points.size(); i++) {
+            if (reordered.points.at(i).gridIndex != gridIndex)
+                continue;
+            reordered.points.move(i, 0);
+            break;
+        }
+        QCOMPARE(reordered.points.first().gridIndex, gridIndex);
+
+        const FieldMesh mesh = buildFieldMesh(reordered);
+        QVERIFY2(mesh.quads.size() == expected.quads.size(),
+                 qPrintable(QStringLiteral("with grid point %1 first in the list "
+                                           "the mesh has %2 cells instead of %3")
+                                .arg(gridIndex).arg(mesh.quads.size())
+                                .arg(expected.quads.size())));
+        QCOMPARE(mesh.pointSource.size(), expected.pointSource.size());
+
+        // And the cells cover the same ground: each quad's four corners, read
+        // back as grid indices, must be the same set of cells as before.
+        QSet<int> cellsCovered;
+        for (const FieldMeshQuad &quad : mesh.quads) {
+            cellsCovered.insert(
+                reordered.points.at(mesh.pointSource.at(quad.a)).gridIndex);
+        }
+        QSet<int> expectedCells;
+        for (const FieldMeshQuad &quad : expected.quads) {
+            expectedCells.insert(
+                grid.points.at(expected.pointSource.at(quad.a)).gridIndex);
+        }
+        QCOMPARE(cellsCovered, expectedCells);
     }
 }
 
