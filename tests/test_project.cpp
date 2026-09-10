@@ -30,6 +30,9 @@
 #include <QDir>
 #include <QFile>
 #include <QTemporaryDir>
+#include <QJsonArray>
+#include <QJsonDocument>
+#include <QJsonObject>
 #include <QTest>
 
 namespace
@@ -93,6 +96,49 @@ Project sampleProject(const QString &dir)
     return project;
 }
 
+
+// Removes every recorded sha256 from a project document, in place, and says
+// whether it found any. Written as a walk rather than a fixed path so it does
+// not have to know where the entries live.
+bool stripHashes(QJsonObject &object);
+
+bool stripHashesIn(QJsonValueRef value)
+{
+    if (value.isObject()) {
+        QJsonObject child = value.toObject();
+        const bool found = stripHashes(child);
+        value = child;
+        return found;
+    }
+    if (value.isArray()) {
+        QJsonArray array = value.toArray();
+        bool found = false;
+        for (int i = 0; i < array.size(); i++) {
+            QJsonValueRef item = array[i];
+            found = stripHashesIn(item) || found;
+        }
+        value = array;
+        return found;
+    }
+    return false;
+}
+
+bool stripHashes(QJsonObject &object)
+{
+    bool found = false;
+    const QStringList keys = object.keys();
+    for (const QString &key : keys) {
+        if (key == QStringLiteral("sha256")) {
+            object.remove(key);
+            found = true;
+            continue;
+        }
+        QJsonValueRef value = object[key];
+        found = stripHashesIn(value) || found;
+    }
+    return found;
+}
+
 }  // namespace
 
 class TestProject : public QObject
@@ -108,6 +154,8 @@ private slots:
     void an_image_that_changed_since_it_was_saved_is_reported();
     void something_that_is_not_a_project_is_refused_with_a_reason();
     void a_path_that_cannot_be_written_is_reported_as_a_reason();
+    void a_hole_of_three_corners_survives_the_round_trip();
+    void an_entry_with_no_recorded_hash_is_not_reported_as_changed();
 };
 
 void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
@@ -319,6 +367,81 @@ void TestProject::a_path_that_cannot_be_written_is_reported_as_a_reason()
     QVERIFY2(!reason.isEmpty(), "a failed save reported success");
     QVERIFY2(reason.contains(QStringLiteral("s.svproj")), qPrintable(reason));
 }
+
+
+void TestProject::a_hole_of_three_corners_survives_the_round_trip()
+{
+    // ⚑ Three corners is the SMALLEST ring that encloses anything, and the
+    // boundary of the rule that drops the ones that do not. Every hole in
+    // these cases is a rectangle, so "three or more" and "more than three"
+    // are the same rule to them -- and under the stricter one a triangular
+    // hole is silently dropped on the way in. The region then measures
+    // straight across a hole the user drew round, and the points inside it
+    // correlate background against itself and report that nothing moved.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    Project saved = sampleProject(dir.path());
+    saved.roi.holes.clear();
+    saved.roi.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(50, 60)});
+
+    const QString path = dir.filePath(QStringLiteral("triangle.svproj"));
+    QVERIFY2(saveProject(path, saved).isEmpty(), "saving reported a failure");
+
+    const ProjectLoad loaded = loadProject(path);
+    QVERIFY2(loaded.failure.isEmpty(), qPrintable(loaded.failure));
+    QCOMPARE(loaded.project.roi.holes.size(), 1);
+    QCOMPARE(loaded.project.roi.holes.first().size(), 3);
+    QCOMPARE(loaded.project.roi.holes.first(), saved.roi.holes.first());
+
+    // And a ring that encloses nothing is still dropped, so the case is about
+    // the boundary rather than about keeping everything.
+    Project degenerate = sampleProject(dir.path());
+    degenerate.roi.holes.clear();
+    degenerate.roi.holes.append({QPoint(40, 40), QPoint(60, 40)});
+    const QString twoPath = dir.filePath(QStringLiteral("two.svproj"));
+    QVERIFY(saveProject(twoPath, degenerate).isEmpty());
+    QVERIFY2(loadProject(twoPath).project.roi.holes.isEmpty(),
+             "a two-corner ring was carried in as a hole");
+}
+
+void TestProject::an_entry_with_no_recorded_hash_is_not_reported_as_changed()
+{
+    // A project written before hashes were recorded, or edited by hand, has
+    // entries with no sha256. Nothing is known about whether those images
+    // changed, and "unknown" must not be reported as "changed" -- a session
+    // that cries wolf about every image is one whose warnings stop being read,
+    // which costs exactly the case above.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const Project saved = sampleProject(dir.path());
+    const QString path = dir.filePath(QStringLiteral("hashless.svproj"));
+    QVERIFY(saveProject(path, saved).isEmpty());
+
+    // Strip every recorded hash, leaving the paths alone.
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::ReadOnly));
+    QJsonDocument document = QJsonDocument::fromJson(file.readAll());
+    file.close();
+    QJsonObject root = document.object();
+    QVERIFY(stripHashes(root));
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Truncate));
+    file.write(QJsonDocument(root).toJson());
+    file.close();
+
+    const ProjectLoad loaded = loadProject(path);
+    QVERIFY2(loaded.failure.isEmpty(), qPrintable(loaded.failure));
+    QVERIFY2(loaded.changed.isEmpty(),
+             qPrintable(QStringLiteral("images with no recorded hash were reported as "
+                                       "changed: %1")
+                            .arg(loaded.changed.join(QStringLiteral(", ")))));
+    QVERIFY2(loaded.missing.isEmpty(), "and none was reported missing");
+}
+
+// ⚑ One survivor in Project.cpp is EQUIVALENT: `bool exists = false` in
+// Resolved. resolve() assigns out.exists from QFileInfo::exists() before any
+// return, so the initialiser is dead and no input can observe it. `changed` is
+// a different matter and is checked above, because it keeps its initial value
+// whenever an entry carries no recorded hash.
 
 QTEST_MAIN(TestProject)
 #include "test_project.moc"
