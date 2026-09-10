@@ -940,6 +940,41 @@ as a backlog with everything in it.
   rather than the percentage: a survivor with an argument beside it is closed
   work, and the next person to run a sweep should not re-derive it.
 
+  ⚑ **AND A SWEEP OF `Correlation.cpp` ON 2026-09-10 CORRECTED THAT ACCOUNT
+  ONCE MORE, in the direction that matters.** Sixteen of its survivors were
+  recorded as closed by `tests/test_chunking.cpp`. They were not. Re-run in the
+  configuration a sweep actually uses - a fresh build directory with no
+  `CMAKE_BUILD_TYPE` - the mutant that takes this project's Debug build down
+  mid-case instead corrupts the heap quietly: every case reports PASS, Qt Test's
+  own crash handler prints a stack trace during teardown, and the process exits
+  ZERO, which ctest reads as green. The verdict on a mutant whose whole effect
+  is undefined behaviour was being decided by heap layout. They are held by an
+  assertion now - a stage cannot report more points than it has - and the same
+  hazard applies to any case anywhere in this suite that is "killed" by a
+  crash rather than by a failure.
+
+  Seventeen more of that file's survivors were killed on 2026-09-10 and six
+  closed by argument beside the cases they belong to: the reason a solver
+  combination is refused, the thread count every run is dispatched with (lifted
+  out of the run, since a number nothing can call is a number nothing can
+  check), what a stopped run reports about the points it never reached, the
+  agreement between the repair count and the repair marks, the stage names the
+  status bar shows, the strain measure handed to the engine, the points left out
+  of every fit, a target of a different height alone, and a hole with three
+  corners.
+
+  ⚑ **One gap that file exposed is worth more than the mutants that revealed
+  it**: the choice between the first- and second-order solvers can be INVERTED
+  with the whole suite green. Nothing in this repository deforms in a way a
+  first-order shape function cannot describe - every synthetic example is a
+  uniform deformation gradient by construction, which first order represents
+  exactly - and on the real photographs the two orders agree to within a
+  thousandth of a correlation in neither direction consistently. Closing it
+  needs a fixture with a QUADRATIC displacement field, and the generator's
+  exactness comes from a uniform F mapping a Gaussian blob to a Gaussian blob,
+  which a non-uniform one does not. Worth doing: it is the only way anything
+  here can tell whether a user asking for second order gets it.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
   nothing runs one on a schedule.
 
