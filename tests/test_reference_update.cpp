@@ -85,6 +85,9 @@ private slots:
     void a_few_points_that_can_never_be_measured_do_not_re_anchor_a_good_run();
     void a_point_that_was_not_measured_is_lost_rather_than_frozen();
     void a_lost_point_stays_lost_and_reports_nothing();
+    void a_lost_point_reports_no_strain_and_no_reliability_either();
+    void a_point_exactly_at_the_tracking_threshold_is_still_tracking();
+    void a_field_exactly_at_the_share_it_must_keep_does_not_re_anchor();
 };
 
 void TestReferenceUpdate::a_point_starts_where_it_was_placed_with_nothing_banked()
@@ -369,6 +372,88 @@ void TestReferenceUpdate::a_lost_point_stays_lost_and_reports_nothing()
     // happened to converge somewhere.
     bankIncrement(tracked, increment);
     QVERIFY(tracked.at(1).lost);
+}
+
+
+void TestReferenceUpdate::a_lost_point_reports_no_strain_and_no_reliability_either()
+{
+    // ⚑ The case above checks that a lost point is not reported as a
+    // DISPLACEMENT. It says nothing about the three flags beside it, and each
+    // is a separate line that could go on saying "measured". A point whose
+    // position in the current reference is unknown was solved against the
+    // wrong pixels, so its strain, its noise floor and its match conditioning
+    // are all statements about somewhere it is not -- and every one of them
+    // reaches the screen and the .vtu as an ordinary number.
+    QVector<TrackedPoint> tracked = startTracking(fieldAt(0.99f, 2));
+    tracked[1].lost = true;
+
+    CorrelationResult increment;
+    increment.gridColumns = 2;
+    increment.gridRows = 1;
+    increment.points.append(solved(0, 0.f, 0.f, 1.f, 0.f, 0.95f));
+
+    CorrelationPoint wrongPixels = solved(1, 1.f, 0.f, 9.f, 0.f, 0.95f);
+    wrongPixels.strainFitted = true;
+    wrongPixels.exx = 0.01f;
+    wrongPixels.noiseFloorMeasured = true;
+    wrongPixels.noiseFloor = 0.004f;
+    wrongPixels.conditioningMeasured = true;
+    wrongPixels.conditioning = 0.3f;
+    increment.points.append(wrongPixels);
+    increment.converged = 2;
+
+    const CorrelationResult total = composeTotalField(tracked, increment);
+    const CorrelationPoint &lost = total.points.at(1);
+
+    QVERIFY2(!lost.converged, "a lost point was reported as a measurement");
+    QVERIFY2(!lost.strainFitted,
+             "a lost point carried a strain fitted at a position it is not at");
+    QVERIFY2(!lost.noiseFloorMeasured,
+             "a lost point carried a noise floor from the wrong pixels");
+    QVERIFY2(!lost.conditioningMeasured,
+             "a lost point carried a match conditioning from the wrong pixels");
+
+    // The point beside it keeps everything, so the case cannot pass by
+    // clearing the whole field.
+    QVERIFY(total.points.at(0).converged);
+}
+
+void TestReferenceUpdate::a_point_exactly_at_the_tracking_threshold_is_still_tracking()
+{
+    // The policy says a point is still tracking AT or above the threshold, and
+    // the boundary is the only place that "at" can be lost. A field sitting
+    // exactly on it is a field that has not decayed, and re-anchoring it
+    // abandons every point that could not be measured on that frame for
+    // nothing.
+    ReferenceUpdatePolicy policy;
+    policy.enabled = true;
+    policy.znccThreshold = 0.9;
+    policy.percentile = 0.9;
+
+    QVERIFY2(!fieldNeedsReanchor(fieldAt(0.9f, 10), policy),
+             "a field correlating exactly at the threshold was called stale");
+    QVERIFY2(fieldNeedsReanchor(fieldAt(0.89f, 10), policy),
+             "and one just below it was not");
+}
+
+void TestReferenceUpdate::a_field_exactly_at_the_share_it_must_keep_does_not_re_anchor()
+{
+    // The other threshold, and the same reasoning: the share is what must
+    // STILL be tracking, so a field holding exactly that share is holding
+    // enough. Nine of ten points at a required share of nine tenths.
+    ReferenceUpdatePolicy policy;
+    policy.enabled = true;
+    policy.znccThreshold = 0.9;
+    policy.percentile = 0.9;
+
+    CorrelationResult field = fieldAt(0.99f, 10);
+    field.points[9].zncc = 0.5f;   // nine of ten still tracking
+    QVERIFY2(!fieldNeedsReanchor(field, policy),
+             "a field keeping exactly the share it must keep was re-anchored");
+
+    field.points[8].zncc = 0.5f;   // eight of ten
+    QVERIFY2(fieldNeedsReanchor(field, policy),
+             "and one keeping less than that was not");
 }
 
 QTEST_MAIN(TestReferenceUpdate)

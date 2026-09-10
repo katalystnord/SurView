@@ -44,7 +44,17 @@ bool fieldNeedsReanchor(const CorrelationResult &measured,
         if (!point.converged)
             continue;
         anyMeasurement++;
-        if (double(point.zncc) >= policy.znccThreshold)
+        // ⚑ COMPARED IN FLOAT, NOT IN DOUBLE, for the reason Recovery.cpp's
+        // isSeed() gives at length: a correlation is a float and a threshold
+        // typed into a spin box is a double, and widening the float to compare
+        // turns 0.9f into 0.899999976, which sits just under a threshold of
+        // 0.9. A field correlating at exactly the bar was therefore counted as
+        // having lost every one of its points, and re-anchored -- abandoning
+        // every point it could not measure on that frame, for nothing.
+        //
+        // The same fix as there, and it should have arrived with it: narrow
+        // the threshold once so both sides are in one representation.
+        if (point.zncc >= float(policy.znccThreshold))
             stillTracking++;
     }
 

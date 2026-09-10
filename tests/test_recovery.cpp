@@ -60,6 +60,8 @@
 
 #include <QTest>
 
+#include <cmath>
+
 namespace {
 
 CorrelationPoint at(int gridIndex, float x, float y, float zncc, bool converged)
@@ -124,6 +126,7 @@ private slots:
     void a_worse_answer_is_never_accepted();
     void an_unconverged_answer_is_never_accepted_however_high_its_correlation();
     void a_fitted_value_that_was_never_re_solved_is_never_accepted();
+    void an_answer_no_better_than_the_one_it_replaces_is_not_an_improvement();
     void a_point_that_stays_failed_keeps_its_failure_and_is_not_marked_recovered();
     void recovery_never_moves_a_point_or_changes_which_cell_it_reports_to();
 
@@ -488,6 +491,33 @@ void TestRecovery::the_derivation_says_on_screen_where_its_numbers_came_from()
     QVERIFY2(said.contains(QStringLiteral("9")),
              qPrintable(QStringLiteral("derivation must state the neighbour "
                                        "floor, said: ") + said));
+}
+
+
+void TestRecovery::an_answer_no_better_than_the_one_it_replaces_is_not_an_improvement()
+{
+    // ⚑ THE BOUNDARY OF "MAY NEVER MAKE A POINT WORSE", which the case above
+    // steps over: it offers 0.20 against 0.45, where strictly-better and
+    // not-worse are indistinguishable. An answer that correlates EXACTLY as
+    // well as the one already there is not an improvement, and accepting it
+    // would put the `recovered` mark on a point that gained nothing by it --
+    // the mark is provenance, so it has to mean the second pass actually did
+    // something.
+    CorrelationResult field = fieldOf({solved(0, 0.99f), solved(1, 0.45f)});
+
+    const QVector<int> accepted = acceptRecoveryRound(field, {1}, {solved(1, 0.45f)});
+
+    QVERIFY2(accepted.isEmpty(), "an equally good answer was accepted as a recovery");
+    QVERIFY2(!field.points[1].recovered,
+             "a point that gained nothing was marked as recovered");
+
+    // And the least possible improvement still is one, so the rule is
+    // strictly-better rather than better-by-some-margin.
+    CorrelationResult other = fieldOf({solved(0, 0.99f), solved(1, 0.45f)});
+    const QVector<int> improved =
+        acceptRecoveryRound(other, {1}, {solved(1, std::nextafter(0.45f, 1.0f))});
+    QCOMPARE(improved.size(), 1);
+    QVERIFY(other.points[1].recovered);
 }
 
 QTEST_MAIN(TestRecovery)
