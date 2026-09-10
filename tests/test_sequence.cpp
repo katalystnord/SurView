@@ -19,6 +19,28 @@
 //   - comparing whole paths instead of file names: the two-folder case failed.
 //   - leading zeros left in place: f_002 stopped preceding f_10.
 
+// ⚑ SIX SURVIVORS FROM THE SWEEP OF 2026-09-09 ARE EQUIVALENT, and this was
+// settled by brute force rather than by argument (2026-09-10). Each mutant was
+// compiled alongside the original and both were run over every ordered pair of
+// a generated corpus -- 596 names built from the alphabet a B 0 1 2 9 _ . up to
+// three characters, plus a dozen real frame names -- which is 355,216 pairs
+// each. Six produced an identical ordering on every one of them:
+//
+//   - the scan's `i < size` and `j < size`, and their `&&` widened to `||`.
+//     One character past the end of a QString reads as a terminating null,
+//     which is neither a digit nor equal to any character in the other name,
+//     so the comparison lands on the same answer by a different route.
+//   - the same widening in both digit-run scans.
+//   - `runLeft.size() < runRight.size() ? -1 : 1` widened to `<=`. That branch
+//     is only reached when the two sizes are known to DIFFER, three lines
+//     above, so the case the mutant changes cannot occur.
+//
+// The other four were not equivalent at all, and each broke a law an ordering
+// has to obey rather than merely producing a different answer. They are killed
+// by the two cases at the bottom of this file, and what they cost is worse than
+// a wrong order: std::sort on a comparator that is not a strict weak ordering
+// is undefined behaviour, and the project tree is sorted with this one.
+
 #include "core/ImageRecord.h"
 #include "core/Sequence.h"
 
@@ -79,6 +101,7 @@ private slots:
     void a_name_that_is_a_prefix_of_another_comes_first_either_way_round();
     void a_name_ending_in_a_digit_is_compared_without_running_off_the_end();
     void two_names_that_differ_in_nothing_precede_neither();
+    void a_padded_number_and_a_shorter_one_do_not_each_precede_the_other();
 };
 
 void TestSequence::frame_ten_comes_after_frame_two()
@@ -309,12 +332,59 @@ void TestSequence::two_names_that_differ_in_nothing_precede_neither()
     QVERIFY2(!precedesInSequence(QStringLiteral("frame_1.tif"),
                                  QStringLiteral("frame_1.tif")),
              "a name does not precede itself");
+
+    // ⚑ AND A NAME WHOSE NUMBER IS ALL ZEROS, which is not the same case and
+    // was the one the mutation sweep of 2026-09-09 walked through. The leading
+    // zeros are stripped down to the last digit, and stripping one further
+    // leaves an EMPTY run: the same name then compares shorter than itself and
+    // precedes itself, and std::sort is entitled to do anything at all with a
+    // comparator like that. "frame_1.tif" cannot see it, because a run of "1"
+    // has no leading zero to strip -- the fixture agreed with itself.
+    //
+    // image_0000.png is the reference frame of every real example that ships.
+    QVERIFY2(!precedesInSequence(QStringLiteral("image_0000.png"),
+                                 QStringLiteral("image_0000.png")),
+             "a frame numbered zero precedes itself");
+    QVERIFY2(!precedesInSequence(QStringLiteral("frame_00"),
+                                 QStringLiteral("frame_00")),
+             "and so does a bare padded zero");
     QVERIFY2(!precedesInSequence(QStringLiteral("a/frame_1.tif"),
                                  QStringLiteral("b/frame_1.tif")),
              "and neither of two names that differ only in their folder precedes the other");
     QVERIFY2(!precedesInSequence(QStringLiteral("b/frame_1.tif"),
                                  QStringLiteral("a/frame_1.tif")),
              "in either direction");
+}
+
+void TestSequence::a_padded_number_and_a_shorter_one_do_not_each_precede_the_other()
+{
+    // ⚑ Antisymmetry at the tail, which the prefix case above cannot reach.
+    // Here the two names carry the SAME number written to different widths, so
+    // the digit runs compare equal and one name is exhausted while the other
+    // still has characters left. Answering that from the wrong side makes both
+    // names precede each other, and a comparator that says so is not an
+    // ordering: std::sort's behaviour on it is undefined, on a list of frames
+    // nobody would think to suspect.
+    //
+    // The pair comes from a brute-force check over every ordered pair of a
+    // generated corpus, not from taste: with the tail test taken from the
+    // wrong side, these two are the shape that breaks and a true prefix is not.
+    const QString padded = QStringLiteral("frame_00");
+    const QString shorter = QStringLiteral("frame_0.tif");
+
+    const bool paddedFirst = precedesInSequence(padded, shorter);
+    const bool shorterFirst = precedesInSequence(shorter, padded);
+    QVERIFY2(paddedFirst != shorterFirst,
+             qPrintable(QStringLiteral("%1 before %2 is %3, and the other way "
+                                       "round is %4: each precedes the other")
+                            .arg(padded).arg(shorter)
+                            .arg(paddedFirst).arg(shorterFirst)));
+
+    // And a sort of the pair gives the same answer whichever way it goes in,
+    // which is what the property is for.
+    const QStringList oneWay = sortIntoSequenceOrder({padded, shorter});
+    const QStringList theOther = sortIntoSequenceOrder({shorter, padded});
+    QCOMPARE(oneWay, theOther);
 }
 
 QTEST_MAIN(TestSequence)
