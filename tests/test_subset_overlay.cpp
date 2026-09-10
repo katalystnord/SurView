@@ -79,6 +79,8 @@ private slots:
     void a_hole_takes_the_points_it_covers_out_of_the_neighbourhood();
     void nothing_is_drawn_for_a_subregion_no_strain_will_be_fitted_in();
     void settings_that_can_place_no_point_draw_nothing_and_say_why();
+    void a_neighbour_exactly_on_the_grids_own_edge_is_one_of_its_points();
+    void a_strain_subregion_of_exactly_no_radius_is_not_a_subregion();
 };
 
 void TestSubsetOverlay::the_square_drawn_is_the_subset_the_engine_will_correlate()
@@ -298,6 +300,98 @@ void TestSubsetOverlay::settings_that_can_place_no_point_draw_nothing_and_say_wh
     QVERIFY(!overlayAt(320.0, 240.0, 0, 10).valid);
     QVERIFY(!overlayAt(320.0, 240.0, 16, 0).valid);
 }
+
+
+void TestSubsetOverlay::a_neighbour_exactly_on_the_grids_own_edge_is_one_of_its_points()
+{
+    // ⚑ The extent's bounds are INCLUSIVE, so a neighbour landing exactly on
+    // firstX or lastX is a point the run measures at, and dropping it makes
+    // the panel's count -- the rigorous answer to "will this fit have enough
+    // points" -- wrong by a whole row wherever the subregion reaches a border.
+    // Every case above sits comfortably inside the picture or right in its
+    // corner, where several rows are clipped at once and one row either way
+    // cannot be told apart.
+    //
+    // ⚑ AND THE STEP IS 1 HERE, WHICH IS THE ONLY WAY TO ASK THE QUESTION.
+    // lastX is the last position that FITS, not the last position the lattice
+    // lands on: at 640 px wide with a 16 px radius it is 623, while the lattice
+    // at a 10 px step stops at 616. The span between the bounds is 607, which
+    // is prime, so NO step divides it and no grid point can ever sit on lastX.
+    // A step of 1 makes every integer a grid point, which is what puts a
+    // neighbour on the bound itself. Learned by printing the extent after this
+    // case failed against correct code.
+    const int step = 1;
+    const PoiGridExtent extent =
+        poiGridExtent(kWidth, kHeight, 16, step, RegionOfInterest());
+    QVERIFY(extent.valid);
+    QCOMPARE(extent.step, step);
+
+    const double reach = 2.0;
+    const SubsetOverlay near =
+        overlayAt(double(extent.firstX) + reach, double(extent.firstY) + reach,
+                  16, step, true, reach);
+    QVERIFY(near.valid && near.hasSubregion);
+
+    bool touchesFirstX = false;
+    bool touchesFirstY = false;
+    for (const QPointF &point : near.neighbours) {
+        if (std::abs(point.x() - double(extent.firstX)) < 1e-9)
+            touchesFirstX = true;
+        if (std::abs(point.y() - double(extent.firstY)) < 1e-9)
+            touchesFirstY = true;
+    }
+    QVERIFY2(touchesFirstX,
+             "the neighbour sitting exactly on the grid's first column was dropped");
+    QVERIFY2(touchesFirstY,
+             "the neighbour sitting exactly on the grid's first row was dropped");
+
+    // The far bounds are a separate pair of comparisons in the code.
+    const SubsetOverlay far =
+        overlayAt(double(extent.lastX) - reach, double(extent.lastY) - reach,
+                  16, step, true, reach);
+    QVERIFY(far.valid && far.hasSubregion);
+
+    bool touchesLastX = false;
+    bool touchesLastY = false;
+    for (const QPointF &point : far.neighbours) {
+        if (std::abs(point.x() - double(extent.lastX)) < 1e-9)
+            touchesLastX = true;
+        if (std::abs(point.y() - double(extent.lastY)) < 1e-9)
+            touchesLastY = true;
+    }
+    QVERIFY2(touchesLastX,
+             "the neighbour sitting exactly on the grid's last column was dropped");
+    QVERIFY2(touchesLastY,
+             "the neighbour sitting exactly on the grid's last row was dropped");
+}
+
+void TestSubsetOverlay::a_strain_subregion_of_exactly_no_radius_is_not_a_subregion()
+{
+    // Zero is the boundary of the refusal, and the case above uses a radius of
+    // 25 against a switch that is off -- so a guard at "no larger than zero"
+    // and one at "smaller than zero" are indistinguishable to it. A subregion
+    // of no radius encloses the centre point and nothing else, which is not a
+    // neighbourhood to fit a plane through.
+    const SubsetOverlay none = overlayAt(320.0, 240.0, 16, 10, true, 0.0);
+    QVERIFY(none.valid);
+    QVERIFY2(!none.hasSubregion, "a subregion of no radius is not drawn");
+    QVERIFY2(none.neighbours.isEmpty(), "and has no neighbours");
+
+    const SubsetOverlay negative = overlayAt(320.0, 240.0, 16, 10, true, -5.0);
+    QVERIFY2(!negative.hasSubregion, "nor is one of negative radius");
+
+    // One step across is the smallest that holds anything beyond the centre.
+    const SubsetOverlay small = overlayAt(320.0, 240.0, 16, 10, true, 10.0);
+    QVERIFY2(small.hasSubregion, "a subregion one grid step across is drawn");
+    QVERIFY2(small.neighbours.size() > 1, "and holds more than its own centre");
+}
+
+// ⚑ Two survivors in SubsetOverlay.cpp are EQUIVALENT and are recorded rather
+// than chased: `overlay.centreX + dx` becoming `- dx`, and the same for y. The
+// lattice walk runs the offsets from -reach to +reach inclusive, so the set of
+// offsets is symmetric about zero and subtracting them visits exactly the same
+// positions in the opposite order. No input distinguishes the two, and the
+// filters that follow are applied per position rather than per step.
 
 QTEST_MAIN(TestSubsetOverlay)
 #include "test_subset_overlay.moc"
