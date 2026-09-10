@@ -35,6 +35,7 @@ private slots:
     void an_image_with_no_pixels_is_not_valid();
     void integer_pixels_have_a_type_range_and_float_pixels_do_not();
     void range_use_is_measured_against_the_types_range_not_the_datas();
+    void range_use_is_a_span_on_a_type_that_starts_below_zero_too();
     void clipping_shares_are_counted_against_the_pixels_actually_present();
     void an_uncounted_image_reports_no_share_rather_than_zero_percent();
     void the_pixel_type_is_named_in_words();
@@ -141,6 +142,35 @@ void TestImageRecord::provenance_survives_a_file_that_cannot_be_decoded()
     QVERIFY(record.filePath.endsWith(QStringLiteral("speckle_0042.tif")));
     QVERIFY(!record.isValid());
     QVERIFY(record.decoderClass.isEmpty());
+}
+
+
+void TestImageRecord::range_use_is_a_span_on_a_type_that_starts_below_zero_too()
+{
+    // ⚑ THE CASE ABOVE CANNOT SEE A SPAN AT ALL. It uses an unsigned type, so
+    // typeMin is zero and typeMax - typeMin is the same number as
+    // typeMax + typeMin; its data starts at zero too, so the same is true of
+    // the data's own extent. Both subtractions could be additions and it would
+    // read exactly the same figure.
+    //
+    // A signed type starts below zero, which is what makes a span a span. A
+    // 16-bit signed file spans 65535 whatever its data does, and data from
+    // -1000 to 3095 uses 4096 of it -- where the additions give -1 and 2095,
+    // which is not a proportion of anything.
+    ImageRecord record;
+    record.width = 100;
+    record.height = 50;
+    record.components = 1;
+    record.scalarType = VTK_SHORT;
+    record.dataMin = -1000.0;
+    record.dataMax = 3095.0;
+
+    QCOMPARE(record.typeMin(), -32768.0);
+    QCOMPARE(record.typeMax(), 32767.0);
+    QVERIFY2(qAbs(record.rangeUtilization() - (4095.0 / 65535.0)) < 1e-9,
+             qPrintable(QStringLiteral("range use read %1, expected %2")
+                            .arg(record.rangeUtilization())
+                            .arg(4095.0 / 65535.0)));
 }
 
 QTEST_MAIN(TestImageRecord)

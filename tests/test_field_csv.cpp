@@ -33,6 +33,7 @@
 
 #include <QFile>
 #include <QTemporaryDir>
+#include <QRegularExpression>
 #include <QTest>
 
 namespace
@@ -119,6 +120,71 @@ QString columnNames(const QString &text)
 }
 
 // The value of one named column in one row.
+
+// A reader that honours RFC 4180 quoting, which is what any real consumer of
+// this file is. Written here rather than reusing the naive split above,
+// because the naive split is exactly what CANNOT tell a quoted comma from a
+// column break -- and that difference is the whole subject of the case that
+// uses this.
+QStringList csvRecords(const QString &text)
+{
+    QStringList records;
+    QString current;
+    bool inQuotes = false;
+    for (int i = 0; i < text.size(); i++) {
+        const QChar c = text.at(i);
+        if (c == QLatin1Char('"')) {
+            inQuotes = !inQuotes;
+            current.append(c);
+        } else if (c == QLatin1Char('\n') && !inQuotes) {
+            if (!current.isEmpty())
+                records << current;
+            current.clear();
+        } else {
+            current.append(c);
+        }
+    }
+    if (!current.isEmpty())
+        records << current;
+
+    // The comment block the writer puts above the table is not part of it.
+    QStringList table;
+    for (const QString &record : records) {
+        if (!record.startsWith(QLatin1Char('#')))
+            table << record;
+    }
+    return table;
+}
+
+QStringList csvFields(const QString &record)
+{
+    QStringList fields;
+    QString current;
+    bool inQuotes = false;
+    for (int i = 0; i < record.size(); i++) {
+        const QChar c = record.at(i);
+        if (c == QLatin1Char('"')) {
+            // A doubled quote inside a quoted field is one literal quote, which
+            // is how RFC 4180 escapes them. Dropping the pair instead loses a
+            // character out of the text, and then this reader is the thing that
+            // is wrong rather than the file.
+            if (inQuotes && i + 1 < record.size() && record.at(i + 1) == QLatin1Char('"')) {
+                current.append(QLatin1Char('"'));
+                i++;
+            } else {
+                inQuotes = !inQuotes;
+            }
+        } else if (c == QLatin1Char(',') && !inQuotes) {
+            fields << current;
+            current.clear();
+        } else {
+            current.append(c);
+        }
+    }
+    fields << current;
+    return fields;
+}
+
 QString cell(const QString &text, int row, const QString &column)
 {
     const QStringList names = columnNames(text).split(QLatin1Char(','));
@@ -156,6 +222,7 @@ private slots:
 
     void a_result_with_no_points_is_refused_rather_than_written_empty();
     void a_path_that_cannot_be_written_is_reported_as_a_reason();
+    void a_reason_carrying_a_comma_or_a_quote_does_not_break_the_columns();
 };
 
 void TestFieldCsv::every_attempted_point_gets_a_row()
@@ -375,6 +442,80 @@ void TestFieldCsv::a_path_that_cannot_be_written_is_reported_as_a_reason()
 
     // Named, because "could not save" leaves a user with nothing to act on.
     QVERIFY2(reason.contains(QStringLiteral("field.csv")), qPrintable(reason));
+}
+
+
+void TestFieldCsv::a_reason_carrying_a_comma_or_a_quote_does_not_break_the_columns()
+{
+    // ⚑ THE FAILURE REASONS ARE PROSE, AND PROSE HAS COMMAS IN IT. An
+    // unquoted comma shifts every column to its right by one, for that row
+    // only -- so a spreadsheet opens the file without complaint and puts a
+    // point's strain under the heading for its correlation. Nothing on screen
+    // and nothing in the file says so.
+    //
+    // The case above uses "subset outside the image", which has no comma, no
+    // quote and no newline, so the quoting was never exercised at all. Each of
+    // the three characters is a separate condition and each is tried here on
+    // its own.
+    struct Awkward
+    {
+        QString reason;
+        const char *what;
+    };
+    const QVector<Awkward> awkward{
+        {QStringLiteral("subset left the image, so nothing was correlated"), "a comma"},
+        {QStringLiteral("the solver called it \"unreliable\""), "a quote"},
+        {QStringLiteral("first line\nsecond line"), "a newline"},
+    };
+
+    for (const Awkward &entry : awkward) {
+        QTemporaryDir dir;
+        const QString path = dir.filePath(QStringLiteral("field.csv"));
+
+        CorrelationResult result = plainResult();
+        result.points[1].converged = false;
+        result.points[1].failureReason = entry.reason;
+
+        QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
+        const QString text = contentsOf(path);
+
+        // ⚑ THE FIELD COUNT IS THE ASSERTION, and it took a negative check to
+        // learn why: the reason is the LAST column, so an unquoted comma
+        // simply appends a field and every column before it still reads
+        // correctly. Checking the cells either side of the damage sees
+        // nothing. What a reader actually gets is a row with more fields than
+        // the file has headings, which is what this counts -- through a parser
+        // that honours quoting, as any real consumer does.
+        const int headings = columnNames(text).split(QLatin1Char(',')).size();
+        const QStringList records = csvRecords(text);
+        QCOMPARE(records.size(), 1 + result.points.size());   // headings + rows
+
+        for (int row = 0; row < records.size(); row++) {
+            QCOMPARE(csvFields(records.at(row)).size(), headings);
+        }
+
+        // ⚑ AND THE TEXT COMES BACK AS IT WENT IN. A quote inside the field
+        // shifts no column at all -- there is nothing after it to shift -- so
+        // the field count above cannot see it. What it breaks is the escaping:
+        // read back through a parser that honours quoting, an unescaped quote
+        // is consumed as a delimiter and the reason returns without it. The
+        // rejection is prose a person reads, so losing characters out of it is
+        // the whole damage.
+        const int rejectionColumn =
+            columnNames(text).split(QLatin1Char(',')).indexOf(QStringLiteral("rejection"));
+        QVERIFY(rejectionColumn >= 0);
+        const QStringList rejectedRow = csvFields(records.at(2));   // headings, point 0, point 1
+        QCOMPARE(rejectedRow.at(rejectionColumn), entry.reason);
+
+        // And the reason survives, rather than being dropped to keep the
+        // columns straight.
+        const QString firstWord = entry.reason.section(QRegularExpression(
+                                                           QStringLiteral("[,\"\n]")),
+                                                       0, 0);
+        QVERIFY2(text.contains(firstWord),
+                 qPrintable(QStringLiteral("a reason with %1 lost its text: %2")
+                                .arg(QString::fromUtf8(entry.what), text)));
+    }
 }
 
 QTEST_MAIN(TestFieldCsv)
