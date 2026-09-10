@@ -155,6 +155,7 @@ private slots:
     void a_point_repaired_on_the_second_pass_reports_it_without_apology();
     void a_strain_the_fit_declined_is_the_row_that_warns();
     void a_displacement_exactly_at_its_own_noise_floor_is_marked();
+    void the_magnitude_row_is_the_length_of_the_displacement_it_follows();
     void two_points_the_same_distance_away_resolve_the_same_way_every_time();
     void a_displacement_is_compared_to_its_floor_as_a_length_not_as_one_axis();
 };
@@ -612,6 +613,39 @@ void TestPointReadout::a_displacement_exactly_at_its_own_noise_floor_is_marked()
     QVERIFY2(!anyLineWarns(pointReadout(above, 4)),
              qPrintable(warningLabels(pointReadout(above, 4))
                             .join(QStringLiteral(", "))));
+}
+
+void TestPointReadout::the_magnitude_row_is_the_length_of_the_displacement_it_follows()
+{
+    // ⚑ THE NUMBER ON THE PANEL, not the one the floor comparison uses. Those
+    // are two separate expressions, and only the second had a case: a
+    // difference of squares in place of a sum reads as an ordinary number
+    // whenever the point moves further in x than in y, and as "nan px" the
+    // moment it does not.
+    //
+    // The fixture moves 2.5 px in x and 0.5 in y, where a sum of squares and a
+    // difference of them are 2.55 and 2.45 -- both entirely plausible on a
+    // panel. A 3, 4, 5 triangle separates them, and puts the mutant on the
+    // wrong side of a square root.
+    CorrelationResult result = plainResult();
+    result.points[4].u = 3.f;
+    result.points[4].v = -4.f;
+
+    const PointReadout readout = pointReadout(result, 4);
+
+    bool found = false;
+    for (const ReadoutLine &line : readout.lines) {
+        if (!line.label.contains(QStringLiteral("Magnitude")))
+            continue;
+        found = true;
+        QVERIFY2(line.value.startsWith(QStringLiteral("5")),
+                 qPrintable(QStringLiteral("a point that moved 3 px by 4 px "
+                                           "reports a magnitude of %1")
+                                .arg(line.value)));
+        QVERIFY2(!line.value.contains(QStringLiteral("nan"), Qt::CaseInsensitive),
+                 qPrintable(line.value));
+    }
+    QVERIFY2(found, "the readout has no magnitude row at all");
 }
 
 QTEST_MAIN(TestPointReadout)

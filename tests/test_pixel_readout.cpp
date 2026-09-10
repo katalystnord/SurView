@@ -86,6 +86,8 @@ private slots:
     void a_record_that_never_counted_its_extremes_still_says_what_it_means();
     void a_colour_pixel_and_a_grey_one_are_labelled_differently();
     void the_stretch_is_mentioned_only_when_there_is_one();
+    void being_off_the_picture_is_an_absence_rather_than_a_fault();
+    void an_image_extreme_short_of_the_types_own_limit_does_not_claim_it();
 };
 
 void TestPixelReadout::the_value_reported_is_the_one_in_the_file()
@@ -406,6 +408,52 @@ void TestPixelReadout::the_stretch_is_mentioned_only_when_there_is_one()
     QVERIFY2(!hidden.contains(QStringLiteral("on screen")),
              qPrintable(QStringLiteral("an image that is not displayed was "
                                        "described as displayed: %1").arg(hidden)));
+}
+
+void TestPixelReadout::being_off_the_picture_is_an_absence_rather_than_a_fault()
+{
+    // The pointer leaves the image constantly, and the row that says so is an
+    // ordinary fact about where the pointer is. Marked as a warning it would
+    // put a caution on the panel every time the mouse crossed the edge, and a
+    // panel that cautions constantly is one whose cautions stop being read --
+    // which costs exactly the case that warns about a real clipped pixel.
+    const ImageRecord record = eightBitGrey();
+    const QVector<ReadoutLine> lines =
+        pixelReadoutLines(pixelReading(record, -5, 4, {}), record);
+
+    QVERIFY(!lines.isEmpty());
+    for (const ReadoutLine &line : lines) {
+        QVERIFY2(!line.warning,
+                 qPrintable(QStringLiteral("a pointer off the picture warns: %1")
+                                .arg(line.label)));
+    }
+}
+
+void TestPixelReadout::an_image_extreme_short_of_the_types_own_limit_does_not_claim_it()
+{
+    // ⚑ THE TYPE'S LIMIT IS A STRONGER STATEMENT than the image's own extreme,
+    // and the two are separate conditions -- one for a pixel at the top of the
+    // range, one for a pixel at the bottom. The fixture's darkest pixel is 0,
+    // which IS the type's floor, so every case here has both facts true at once
+    // and the floor half of that test could be missing entirely.
+    //
+    // An image whose darkest pixel is 17 is at ITS lowest value and nowhere
+    // near what a byte can hold, and the sentence must say the first and not
+    // the second. This is the same distinction the panel exists to draw: 12-bit
+    // data in a 16-bit file clips at 4095 while the type allows 65535.
+    ImageRecord record = eightBitGrey();
+    record.dataMin = 17.0;
+    record.dataMax = 240.0;
+
+    const QString said =
+        allText(pixelReadoutLines(pixelReading(record, 3, 4, {17.0}), record));
+
+    QVERIFY2(said.contains(QStringLiteral("lowest value in this image")),
+             qPrintable(said));
+    QVERIFY2(!said.contains(QStringLiteral("pixel type's own limit")),
+             qPrintable(QStringLiteral("a pixel at 17 in an 8-bit image was said "
+                                       "to be at the type's own limit: %1")
+                            .arg(said)));
 }
 
 QTEST_MAIN(TestPixelReadout)
