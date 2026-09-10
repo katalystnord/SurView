@@ -39,6 +39,8 @@ set(SURVIEW_UNIT_TESTS
     test_measured_accuracy
     test_project
     test_speckle_quality
+    test_stopped_run
+    test_run_refusals
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

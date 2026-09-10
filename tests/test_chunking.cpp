@@ -107,6 +107,7 @@ private slots:
     void dividing_the_queue_does_not_change_what_is_measured();
     void the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none();
     void a_divided_queue_reports_progress_more_than_once();
+    void the_run_names_the_stage_it_is_in_and_counts_forward_through_it();
 };
 
 void TestChunking::the_solve_leaves_a_core_for_the_interface_and_never_asks_for_none()
@@ -192,6 +193,77 @@ void TestChunking::dividing_the_queue_does_not_change_what_is_measured()
                                 .arg(double(b.u))
                                 .arg(double(b.v))));
     }
+}
+
+void TestChunking::the_run_names_the_stage_it_is_in_and_counts_forward_through_it()
+{
+    // What the status bar says while a run is going: "estimating displacement
+    // - 300 of 494 points", then "refining to sub-pixel". Both halves of that
+    // sentence come from this loop, and neither was checked anywhere.
+    //
+    // The solve is two passes over the same queue -- a whole-pixel estimate
+    // first, then the sub-pixel refinement that uses it as its starting guess
+    // -- and they are not interchangeable: told the wrong way round, the
+    // status bar says the run is refining while it is still estimating, and a
+    // reader watching a long run has no way to know which half they are in.
+    // Two mutants sat here: one swapping the two names, and one running a
+    // THIRD pass, which repeats the refinement under the name of the second
+    // and sends the progress count backwards under an unchanged label.
+    CorrelationSettings settings = coarseSettings();
+    settings.strainEnabled = false;
+    settings.recovery.enabled = false;   // its rounds restart the count by design
+
+    CorrelationRunner runner(settings, RegionOfInterest(),
+                             fixture(QStringLiteral("shift_reference.tif")),
+                             fixture(QStringLiteral("shift_target.tif")));
+    runner.setChunkPoints(kRaggedChunk);
+
+    QVector<QPair<QString, int>> reports;
+    CorrelationResult result;
+    QObject::connect(&runner, &CorrelationRunner::finished,
+                     [&result](const CorrelationResult &r) { result = r; });
+    QObject::connect(&runner, &CorrelationRunner::progress,
+                     [&reports](int done, int, const QString &stage) {
+                         reports.append({stage, done});
+                     });
+
+    runner.run();
+    QVERIFY(result.total() > 0);
+    QVERIFY(!reports.isEmpty());
+
+    QStringList stagesInOrder;
+    for (const auto &report : reports) {
+        if (stagesInOrder.isEmpty() || stagesInOrder.last() != report.first)
+            stagesInOrder.append(report.first);
+    }
+
+    // Three, with strain and the repair pass switched off: the two solve
+    // passes, and the reliability pass, which has no setting to turn it off
+    // because under tenet 9 the account of how far a measurement can be
+    // trusted is not an optional extra.
+    QCOMPARE(stagesInOrder.size(), 3);
+    QVERIFY2(stagesInOrder.at(0).contains(QStringLiteral("estimating")),
+             qPrintable(stagesInOrder.join(QStringLiteral(", "))));
+    QVERIFY2(stagesInOrder.at(1).contains(QStringLiteral("refining")),
+             qPrintable(stagesInOrder.join(QStringLiteral(", "))));
+    QVERIFY2(stagesInOrder.at(2).contains(QStringLiteral("reliability")),
+             qPrintable(stagesInOrder.join(QStringLiteral(", "))));
+
+    // ⚑ And the count only ever goes forward under one name. A progress bar
+    // that runs to the end and starts again while the label is unchanged says
+    // the run is doing something other than what it is doing.
+    for (int i = 1; i < reports.size(); i++) {
+        if (reports.at(i).first != reports.at(i - 1).first)
+            continue;
+        QVERIFY2(reports.at(i).second > reports.at(i - 1).second,
+                 qPrintable(QStringLiteral("%1 counted %2 after %3")
+                                .arg(reports.at(i).first)
+                                .arg(reports.at(i).second)
+                                .arg(reports.at(i - 1).second)));
+    }
+
+    // Each pass finishes the whole queue before the next begins.
+    QCOMPARE(reports.last().second, result.total());
 }
 
 void TestChunking::a_divided_queue_reports_progress_more_than_once()

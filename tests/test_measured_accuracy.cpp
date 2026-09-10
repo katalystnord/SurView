@@ -152,8 +152,10 @@ private slots:
     void a_known_sub_pixel_translation_is_measured_to_a_hundredth_of_a_pixel();
     void a_known_uniaxial_tension_is_measured_as_the_strain_it_was_given();
     void a_known_rigid_rotation_is_measured_as_no_strain_at_all();
+    void the_two_strain_measures_report_their_own_answers_to_one_rotation();
     void points_recovered_by_the_second_pass_measure_the_right_displacement();
     void the_second_pass_measures_far_more_of_a_hard_frame();
+    void the_number_of_repaired_points_is_the_number_that_carry_the_mark();
     void a_virtual_extensometer_reads_the_strain_the_sequence_was_given();
 };
 
@@ -282,6 +284,59 @@ void TestMeasuredAccuracy::a_known_rigid_rotation_is_measured_as_no_strain_at_al
     }
 }
 
+void TestMeasuredAccuracy::the_two_strain_measures_report_their_own_answers_to_one_rotation()
+{
+    // ⚑ THE TWO MEASURES GENUINELY DISAGREE, and a rigid rotation is where they
+    // disagree most legibly: Green-Lagrange reads exactly zero, because the
+    // specimen is not deformed, while the linear form reads cos(angle) - 1,
+    // which is its own well-known error at large rotation. Both are correct
+    // answers to different questions, and the panel lets a user pick.
+    //
+    // Nothing measured that. The case above turns the specimen by one degree,
+    // where the linear form's error is 1.5e-4 and its bound is 2e-4 -- so the
+    // two measures are indistinguishable there, and the mutation sweep of
+    // 2026-09-09 found exactly that: the line handing the measure to the engine
+    // could be inverted, swapping every user's choice for the other one, and
+    // the whole suite stayed green.
+    //
+    // Seven degrees separates them by fifty times the bound.
+    const QJsonObject stated = statedAnswer(QStringLiteral("rotation"), 3);
+    QCOMPARE(stated[QStringLiteral("amount")].toDouble(), 7.0);
+    const double linearError = std::cos(7.0 * M_PI / 180.0) - 1.0;
+
+    CorrelationSettings linear = settings();
+    linear.strainMeasure = StrainMeasure::Cauchy;
+    CorrelationSettings quadratic = settings();
+    quadratic.strainMeasure = StrainMeasure::GreenLagrange;
+
+    const CorrelationResult measuredLinear =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"),
+                linear);
+    const CorrelationResult measuredGreen =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"),
+                quadratic);
+
+    const Mean linearMean = interiorMean(measuredLinear, 80.0);
+    const Mean greenMean = interiorMean(measuredGreen, 80.0);
+    QVERIFY2(linearMean.fitted > 20 && greenMean.fitted > 20,
+             qPrintable(QStringLiteral("too few interior points: %1 and %2")
+                            .arg(linearMean.fitted).arg(greenMean.fitted)));
+
+    // The result says which measure it was fitted in, and it must be the one
+    // that was asked for: the number means a different thing in each.
+    QVERIFY(measuredLinear.strainMeasure == StrainMeasure::Cauchy);
+    QVERIFY(measuredGreen.strainMeasure == StrainMeasure::GreenLagrange);
+
+    QVERIFY2(std::abs(linearMean.exx - linearError) < 5e-4,
+             qPrintable(QStringLiteral("the linear form read %1 where the "
+                                       "rotation makes it read %2")
+                            .arg(linearMean.exx).arg(linearError)));
+    QVERIFY2(std::abs(greenMean.exx) < 5e-4,
+             qPrintable(QStringLiteral("Green-Lagrange read %1 on a specimen "
+                                       "that was only turned")
+                            .arg(greenMean.exx)));
+}
+
 void TestMeasuredAccuracy::points_recovered_by_the_second_pass_measure_the_right_displacement()
 {
     // ⚑ THE CASE THIS FEATURE MOST NEEDS. A recovered point starts from a
@@ -368,6 +423,61 @@ void TestMeasuredAccuracy::the_second_pass_measures_far_more_of_a_hard_frame()
                             .arg(with.converged).arg(without.converged)));
     QVERIFY2(!without.recoveryRequested && with.recoveryRequested,
              "the result must say whether the pass was asked for");
+}
+
+void TestMeasuredAccuracy::the_number_of_repaired_points_is_the_number_that_carry_the_mark()
+{
+    // ⚑ THE REPORT AND THE MAP MUST AGREE. A reader is told how many points the
+    // second pass repaired, and can then colour the field by the repair mark
+    // and look at where they are. Those are two accounts of one fact, and the
+    // code carries a comment saying they once disagreed by one -- a point that
+    // improved in two rounds, counted twice -- which is why the count is taken
+    // from the marks rather than summed over the rounds.
+    //
+    // Nothing checked it. The sweep of 2026-09-09 found three mutants living
+    // in that accounting: marking every point repaired before the pass begins,
+    // counting the points that were NOT repaired, and running the pass on a run
+    // where it was switched off.
+    const CorrelationResult with =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"));
+
+    int marked = 0;
+    for (const CorrelationPoint &point : with.points) {
+        if (point.recovered)
+            marked++;
+    }
+
+    QCOMPARE(with.recoveredPoints, marked);
+    QVERIFY2(marked > 100,
+             qPrintable(QStringLiteral("only %1 points carry the mark, too few "
+                                       "for this case to mean anything")
+                            .arg(marked)));
+
+    // And the pass repaired SOME of the field, not all of it: a run that claims
+    // every point it measured was a repair is not reporting a repair at all.
+    QVERIFY2(with.recoveredPoints < with.total(),
+             qPrintable(QStringLiteral("every one of the %1 points in the grid "
+                                       "was reported as repaired")
+                            .arg(with.total())));
+
+    // The other side: a run that never asked for the pass must not have one.
+    // ⚑ Switched off is not the same as "found nothing to do" -- the report
+    // says which, and a pass that ran anyway would be work nobody asked for
+    // and a field fuller than the solver alone produced, which is the hidden
+    // behaviour this application forbids itself.
+    CorrelationSettings off = settings();
+    off.recovery.enabled = false;
+    const CorrelationResult without =
+        measure(QStringLiteral("rotation_00.tif"), QStringLiteral("rotation_03.tif"),
+                off);
+
+    QCOMPARE(without.recoveredPoints, 0);
+    for (const CorrelationPoint &point : without.points) {
+        QVERIFY2(!point.recovered,
+                 qPrintable(QStringLiteral("point at %1,%2 was marked repaired "
+                                           "by a run with the pass switched off")
+                                .arg(point.x).arg(point.y)));
+    }
 }
 
 void TestMeasuredAccuracy::a_virtual_extensometer_reads_the_strain_the_sequence_was_given()

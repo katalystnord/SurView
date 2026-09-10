@@ -58,11 +58,10 @@ CorrelationSettings baseSettings()
     return settings;
 }
 
-CorrelationResult runOnce(const CorrelationSettings &settings)
+CorrelationResult runOn(const QString &reference, const QString &target,
+                        const CorrelationSettings &settings)
 {
-    CorrelationRunner runner(settings, RegionOfInterest(),
-                             fixture(QStringLiteral("shift_reference.tif")),
-                             fixture(QStringLiteral("shift_target.tif")));
+    CorrelationRunner runner(settings, RegionOfInterest(), reference, target);
 
     CorrelationResult result;
     QString failure;
@@ -75,6 +74,12 @@ CorrelationResult runOnce(const CorrelationSettings &settings)
     if (!failure.isEmpty())
         qWarning("%s", qPrintable(failure));
     return result;
+}
+
+CorrelationResult runOnce(const CorrelationSettings &settings)
+{
+    return runOn(fixture(QStringLiteral("shift_reference.tif")),
+                 fixture(QStringLiteral("shift_target.tif")), settings);
 }
 
 // Largest absolute value of a channel over every point that carries one.
@@ -100,6 +105,7 @@ private slots:
     void a_point_the_fit_could_not_reach_is_marked_not_zeroed();
     void the_run_reports_the_subregion_and_measure_it_actually_used();
     void no_strain_is_reported_where_the_displacement_it_describes_was_not();
+    void the_points_left_out_of_every_fit_are_the_ones_that_correlated_too_poorly();
 };
 
 void TestStrainMeasure::a_rigid_translation_is_not_a_strain()
@@ -206,6 +212,61 @@ void TestStrainMeasure::a_point_the_fit_could_not_reach_is_marked_not_zeroed()
         // would read as a measurement if the flag were ever dropped.
         QVERIFY(point.exx == 0.f);
     }
+}
+
+void TestStrainMeasure::the_points_left_out_of_every_fit_are_the_ones_that_correlated_too_poorly()
+{
+    // A solved point that correlated below 0.9 is excluded from every fit it
+    // falls inside -- the engine's own default, adopted rather than invented --
+    // and the run says how many were excluded, because a sparse strain map over
+    // a dense displacement map otherwise reads as a fault.
+    //
+    // The count had no test. The sweep of 2026-09-09 found the comparison could
+    // be turned around entirely, so that a run over a perfectly correlated
+    // specimen reported EVERY point as too poor to fit, and nothing noticed.
+    //
+    // The number is checked against the points themselves rather than against
+    // an expected figure: the report and the field are two accounts of one
+    // fact, and it is their agreement that is worth holding.
+    // ⚑ The clean fixture cannot ask this question: its points either solve
+    // near a correlation of one or fail outright, so the floor never falls
+    // between two solved points. A specimen turned seven degrees does populate
+    // both sides -- the subsets away from the centre of rotation are matched
+    // by a first-order shape function that cannot quite describe what happened
+    // to them, and they converge poorly rather than failing.
+    CorrelationSettings settings = baseSettings();
+    settings.subsetRadius = 16;
+    settings.gridStep = 24;
+    settings.maxIterations = 15;
+    settings.convergence = 0.001;
+
+    const CorrelationResult result =
+        runOn(QStringLiteral(SURVIEW_EXAMPLES "/real/01_tension_without_holes/image_0000.png"),
+              QStringLiteral(SURVIEW_EXAMPLES "/real/01_tension_without_holes/image_0004.png"),
+              settings);
+
+    int below = 0;
+    int above = 0;
+    for (const CorrelationPoint &point : result.points) {
+        if (!point.converged)
+            continue;
+        if (point.zncc < double(kStrainFitCorrelationFloor))
+            below++;
+        else
+            above++;
+    }
+
+    QVERIFY2(below > 0 && above > 0,
+             qPrintable(QStringLiteral("%1 solved points below the floor and %2 "
+                                       "above it: this case needs both")
+                            .arg(below).arg(above)));
+    QCOMPARE(result.belowStrainFloor, below);
+
+    // And a run that correlates cleanly leaves nobody out, which is the other
+    // half of the same claim: the count reports the specimen, not the code.
+    const CorrelationResult clean = runOnce(baseSettings());
+    QVERIFY(clean.converged > 0);
+    QCOMPARE(clean.belowStrainFloor, 0);
 }
 
 void TestStrainMeasure::the_run_reports_the_subregion_and_measure_it_actually_used()
