@@ -289,6 +289,15 @@ private:
     // The records themselves, held here rather than in the viewport: an image
     // is recorded when it is imported, whether or not it is ever displayed.
     ImageRecord m_referenceRecord;
+
+    // ⚑ The reference image's speckle, prepared once. What the estimate costs
+    // is the gradient pass over the whole image, and that depends on the image
+    // and the subset radius - not on the region. Recomputed per edit it froze
+    // the window for about a second every time a corner moved; held here, a new
+    // boundary costs a walk over its own bounding box. Rebuilt when the image
+    // or the radius changes, which are the only two things it depends on.
+    SpeckleField m_speckleField;
+    int m_speckleFieldRadius = 0;
     QVector<ImageRecord> m_targetRecords;
 
     // The region the next run will measure inside. Held here rather than in the

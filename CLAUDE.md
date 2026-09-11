@@ -1362,7 +1362,21 @@ decisions:
   project treats as absent. That listing is itself a fix - written as one line
   the sentence was the half the dock elided, while a case asserting "the screen
   says dragging is possible" passed on the strength of a string nobody could
-  read. Still to be designed: the live speckle-quality indicator.
+  read. **The speckle estimate is live** (2026-09-11): it follows the region and the
+  subset radius, and says which of the two it is describing. ⚑ What made it
+  affordable was splitting it in half. The cost is a windowed gradient pass over
+  the WHOLE image, which depends on the image and the radius and not at all on
+  the boundary - so `prepareSpeckleField()` does that once and
+  `speckleQualityIn(field, roi)` walks the region's own bounding box. Measured
+  before the split: about a second per call on the images that ship, recomputed
+  on every change to the region, which with four editing gestures is a frozen
+  window a reader meets constantly.
+  ⚑ A cache buys staleness, and a stale estimate is worse than a slow one: a
+  figure computed for a 16 px subset printed beside the words "32 px subset"
+  reads exactly like a true one. The field is rebuilt when the image or the
+  radius changes, and the case pinning that compares the RESOLUTION rather than
+  the sentence, because the sentence names the radius from the control and
+  changes whether or not the estimate behind it did.
 - **VTK `.vtu` export**: confirmed a real differentiator empirically - only
   1 of 11 tools reviewed has any VTK-family export. **Built 2026-08-19** (see
   *The field leaving the application* above): points and quad cells, every

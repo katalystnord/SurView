@@ -65,6 +65,7 @@
 #include "core/Roi.h"
 #include "core/SpeckleQuality.h"
 
+#include <QElapsedTimer>
 #include <QTest>
 
 #include <cmath>
@@ -102,6 +103,8 @@ private slots:
     void a_subset_radius_of_one_pixel_is_the_smallest_there_is();
     void a_region_reaching_past_the_picture_measures_the_picture();
     void a_frame_with_no_speckle_says_so_rather_than_reporting_a_resolution();
+    void a_prepared_image_answers_for_any_region_without_reading_it_again();
+    void preparing_once_is_what_makes_asking_repeatedly_affordable();
 };
 
 void TestSpeckleQuality::a_speckled_region_reports_what_it_can_resolve()
@@ -333,6 +336,100 @@ void TestSpeckleQuality::a_region_reaching_past_the_picture_measures_the_picture
                             .arg(exact.meanSssig)));
     QVERIFY2(std::abs(overhanging.resolutionPx - exact.resolutionPx) < 1e-12,
              "and reports the same resolution");
+}
+
+void TestSpeckleQuality::a_prepared_image_answers_for_any_region_without_reading_it_again()
+{
+    // ⚑ THE EXPENSIVE HALF DOES NOT DEPEND ON THE REGION. Reading the image,
+    // running the windowed gradient pass over all of it and estimating the
+    // noise are decided by the image and the subset radius alone; only the
+    // averaging is about the region. Asked the one-shot way, every question
+    // about a new boundary redoes all of it.
+    //
+    // So the prepared field must answer exactly what the one-shot call answers,
+    // for any region - otherwise the saving is bought with a different number.
+    const QString image = fixture(QStringLiteral("shift_reference.tif"));
+    const SpeckleField field = prepareSpeckleField(image, 16);
+    QVERIFY2(field.isValid(), qPrintable(field.note));
+
+    for (const RegionOfInterest &roi : {boxAt(40, 40, 120, 80),
+                                        boxAt(20, 20, 60, 60),
+                                        RegionOfInterest()}) {
+        const SpeckleQuality once = speckleQualityIn(image, roi, 16);
+        const SpeckleQuality prepared = speckleQualityIn(field, roi);
+
+        QCOMPARE(prepared.measured, once.measured);
+        QVERIFY2(std::abs(prepared.resolutionPx - once.resolutionPx) < 1e-12,
+                 qPrintable(QStringLiteral("prepared %1 against one-shot %2")
+                                .arg(prepared.resolutionPx).arg(once.resolutionPx)));
+        QVERIFY2(std::abs(prepared.meanSssig - once.meanSssig) < 1e-9,
+                 qPrintable(QStringLiteral("prepared %1 against one-shot %2")
+                                .arg(prepared.meanSssig).arg(once.meanSssig)));
+        QCOMPARE(prepared.noiseStdDev, once.noiseStdDev);
+        QCOMPARE(prepared.note, once.note);
+    }
+
+    // ⚑ A field carries the radius it was prepared at, because the windows it
+    // averaged ARE that radius. Asked for a different one it would answer with
+    // the wrong subset's figure, which is indistinguishable from the right one.
+    const SpeckleField finer = prepareSpeckleField(image, 8);
+    QVERIFY(finer.isValid());
+    QCOMPARE(finer.subsetRadiusPx, 8);
+    QCOMPARE(field.subsetRadiusPx, 16);
+    QVERIFY2(speckleQualityIn(finer, boxAt(40, 40, 120, 80)).resolutionPx
+                 != speckleQualityIn(field, boxAt(40, 40, 120, 80)).resolutionPx,
+             "two radii gave the same answer, so the radius is not being carried");
+
+    // A field that could not be prepared refuses in words rather than answering
+    // from an empty map.
+    const SpeckleField missing = prepareSpeckleField(
+        fixture(QStringLiteral("no_such_image.tif")), 16);
+    QVERIFY(!missing.isValid());
+    QVERIFY(!missing.note.isEmpty());
+    const SpeckleQuality nothing = speckleQualityIn(missing, boxAt(40, 40, 120, 80));
+    QVERIFY(!nothing.measured);
+    QVERIFY(!nothing.note.isEmpty());
+}
+
+void TestSpeckleQuality::preparing_once_is_what_makes_asking_repeatedly_affordable()
+{
+    // ⚑ THE SPEED IS THE FEATURE, so it is checked rather than assumed. This
+    // estimate is shown while a boundary is being drawn and adjusted and is
+    // recomputed on every change: measured 2026-09-11, the one-shot call takes
+    // about a second on the larger images that ship, which is a second of
+    // frozen window per corner dragged.
+    //
+    // ⚑ THE PROPERTY IS THE MARGINAL COST, not a ratio over some number of
+    // asks. Asking N times from a prepared field can never beat N one-shot
+    // calls by more than about N, so a bound stated that way is measuring the
+    // count rather than the saving - the first version of this case demanded a
+    // factor of five from five asks, which is the theoretical ceiling, and
+    // failed against a working implementation. What matters is that asking
+    // AGAIN is nearly free.
+    const QString image = fixture(QStringLiteral("shift_reference.tif"));
+    const RegionOfInterest roi = boxAt(40, 40, 120, 80);
+    constexpr int kAsks = 20;
+
+    QElapsedTimer timer;
+    timer.start();
+    speckleQualityIn(image, roi, 16);
+    const qint64 oneShot = timer.elapsed();
+
+    const SpeckleField field = prepareSpeckleField(image, 16);
+    QVERIFY(field.isValid());
+    timer.restart();
+    for (int i = 0; i < kAsks; i++)
+        speckleQualityIn(field, roi);
+    const double perAsk = double(timer.elapsed()) / kAsks;
+
+    // A tenth of a one-shot call, against a difference that is really two
+    // orders of magnitude: loose enough that a busy machine does not fail it,
+    // tight enough that folding the preparation back into every ask does.
+    QVERIFY2(perAsk * 10.0 < double(oneShot),
+             qPrintable(QStringLiteral("asking a prepared field costs %1 ms "
+                                       "against %2 ms from scratch: the "
+                                       "preparation is no longer being reused")
+                            .arg(perAsk).arg(oneShot)));
 }
 
 QTEST_MAIN(TestSpeckleQuality)

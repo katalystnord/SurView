@@ -103,22 +103,35 @@ RoiDetection detectSpeckleRegion(const QString &imagePath)
 }
 
 
-SpeckleQuality speckleQualityIn(const QString &imagePath,
-                                const RegionOfInterest &roi, int subsetRadius)
+// What one image's speckle is, independent of any region: the engine's windowed
+// gradient maps and the image's own noise. See SpeckleQuality.h for why this is
+// separated from the averaging.
+class SpeckleFieldData
+{
+public:
+    Eigen::MatrixXf mig;
+    Eigen::MatrixXf sssig;
+    double noiseStdDev = 0.0;
+    int width = 0;
+    int height = 0;
+};
+
+SpeckleField prepareSpeckleField(const QString &imagePath, int subsetRadius)
 {
     using namespace opencorr;
 
-    SpeckleQuality quality;
+    SpeckleField field;
+    field.subsetRadiusPx = subsetRadius;
     if (subsetRadius < 1) {
-        quality.note = QObject::tr("A subset radius must be at least 1 px.");
-        return quality;
+        field.note = QObject::tr("A subset radius must be at least 1 px.");
+        return field;
     }
 
     try {
         Image2D image(imagePath.toStdString());
         if (image.width <= 0 || image.height <= 0) {
-            quality.note = QObject::tr("The reference image could not be read.");
-            return quality;
+            field.note = QObject::tr("The reference image could not be read.");
+            return field;
         }
 
         // The window IS the subset, so the map answers the question actually
@@ -126,74 +139,102 @@ SpeckleQuality speckleQualityIn(const QString &imagePath,
         SpeckleQualityMap map(subsetRadius);
         map.computeGradientMaps(image);
 
-        const Eigen::MatrixXf &mig = map.migMap();
-        const Eigen::MatrixXf &sssig = map.sssigMap();
-
-        // The engine's own polygon test, as Correlation.cpp uses, so a pixel is
-        // inside the region here exactly when it will be inside it for the run.
-        std::unique_ptr<Polygon2D> region;
-        if (roi.isValid()) {
-            std::vector<int> vertex_x;
-            std::vector<int> vertex_y;
-            vertex_x.reserve(size_t(roi.vertices.size()));
-            vertex_y.reserve(size_t(roi.vertices.size()));
-            for (const QPoint &vertex : roi.vertices) {
-                vertex_x.push_back(vertex.x());
-                vertex_y.push_back(vertex.y());
-            }
-            region = std::make_unique<Polygon2D>(vertex_x, vertex_y);
-        }
-
-        double migSum = 0.0;
-        double sssigSum = 0.0;
-        int counted = 0;
-
-        const QRect box = roi.isValid() ? roi.bounds()
-                                        : QRect(0, 0, image.width, image.height);
-        for (int y = std::max(0, box.top()); y <= std::min(image.height - 1, box.bottom()); y++) {
-            for (int x = std::max(0, box.left()); x <= std::min(image.width - 1, box.right()); x++) {
-                if (region && !region->contains(x, y))
-                    continue;
-                migSum += double(mig(y, x));
-                sssigSum += double(sssig(y, x));
-                counted++;
-            }
-        }
-
-        if (counted == 0) {
-            quality.note = QObject::tr("The region does not lie over the image.");
-            return quality;
-        }
-
-        quality.meanMig = migSum / counted;
-        quality.meanSssig = sssigSum / counted;
-        quality.noiseStdDev = double(Uncertainty2D::noiseStdDev(image));
-
-        if (!(quality.meanSssig > 0.0) || !(quality.noiseStdDev > 0.0)) {
-            quality.note = QObject::tr("There is no gradient here to measure "
-                                       "against: this region carries no speckle.");
-            return quality;
-        }
-
-        // sigma = sqrt(2 * noise^2 / min(sum gx^2, sum gy^2)), which is what the
-        // run reports per point. SSSIG sums BOTH axes, so the weaker axis is
-        // taken as half of it -- an equal-in-both-directions assumption, stated
-        // in the note rather than buried here.
-        const double perAxis = quality.meanSssig / 2.0;
-        quality.resolutionPx =
-            std::sqrt(2.0 * quality.noiseStdDev * quality.noiseStdDev / perAxis);
-        quality.measured = true;
-        quality.note = QObject::tr(
-            "Estimated from the reference image alone, taking the speckle to be "
-            "equally strong in both directions. A pattern with a grain to it "
-            "will do worse than this in its weaker direction. The run reports "
-            "the real figure at every point.");
-        return quality;
+        auto data = std::make_shared<SpeckleFieldData>();
+        data->mig = map.migMap();
+        data->sssig = map.sssigMap();
+        data->noiseStdDev = double(Uncertainty2D::noiseStdDev(image));
+        data->width = image.width;
+        data->height = image.height;
+        field.data = std::move(data);
+        return field;
     } catch (const std::string &message) {
-        quality.note = QString::fromStdString(message);
-        return quality;
+        field.note = QString::fromStdString(message);
+        return field;
     } catch (const std::exception &error) {
-        quality.note = QString::fromLatin1(error.what());
+        field.note = QString::fromLatin1(error.what());
+        return field;
+    }
+}
+
+SpeckleQuality speckleQualityIn(const SpeckleField &field,
+                                const RegionOfInterest &roi)
+{
+    using namespace opencorr;
+
+    SpeckleQuality quality;
+    if (!field.isValid()) {
+        quality.note = field.note.isEmpty()
+                           ? QObject::tr("The reference image could not be read.")
+                           : field.note;
         return quality;
     }
+
+    const SpeckleFieldData &data = *field.data;
+
+    // The engine's own polygon test, as Correlation.cpp uses, so a pixel is
+    // inside the region here exactly when it will be inside it for the run.
+    std::unique_ptr<Polygon2D> region;
+    if (roi.isValid()) {
+        std::vector<int> vertex_x;
+        std::vector<int> vertex_y;
+        vertex_x.reserve(size_t(roi.vertices.size()));
+        vertex_y.reserve(size_t(roi.vertices.size()));
+        for (const QPoint &vertex : roi.vertices) {
+            vertex_x.push_back(vertex.x());
+            vertex_y.push_back(vertex.y());
+        }
+        region = std::make_unique<Polygon2D>(vertex_x, vertex_y);
+    }
+
+    double migSum = 0.0;
+    double sssigSum = 0.0;
+    int counted = 0;
+
+    const QRect box = roi.isValid() ? roi.bounds()
+                                    : QRect(0, 0, data.width, data.height);
+    for (int y = std::max(0, box.top()); y <= std::min(data.height - 1, box.bottom()); y++) {
+        for (int x = std::max(0, box.left()); x <= std::min(data.width - 1, box.right()); x++) {
+            if (region && !region->contains(x, y))
+                continue;
+            migSum += double(data.mig(y, x));
+            sssigSum += double(data.sssig(y, x));
+            counted++;
+        }
+    }
+
+    if (counted == 0) {
+        quality.note = QObject::tr("The region does not lie over the image.");
+        return quality;
+    }
+
+    quality.meanMig = migSum / counted;
+    quality.meanSssig = sssigSum / counted;
+    quality.noiseStdDev = data.noiseStdDev;
+
+    if (!(quality.meanSssig > 0.0) || !(quality.noiseStdDev > 0.0)) {
+        quality.note = QObject::tr("There is no gradient here to measure "
+                                   "against: this region carries no speckle.");
+        return quality;
+    }
+
+    // sigma = sqrt(2 * noise^2 / min(sum gx^2, sum gy^2)), which is what the
+    // run reports per point. SSSIG sums BOTH axes, so the weaker axis is taken
+    // as half of it -- an equal-in-both-directions assumption, stated in the
+    // note rather than buried here.
+    const double perAxis = quality.meanSssig / 2.0;
+    quality.resolutionPx =
+        std::sqrt(2.0 * quality.noiseStdDev * quality.noiseStdDev / perAxis);
+    quality.measured = true;
+    quality.note = QObject::tr(
+        "Estimated from the reference image alone, taking the speckle to be "
+        "equally strong in both directions. A pattern with a grain to it "
+        "will do worse than this in its weaker direction. The run reports "
+        "the real figure at every point.");
+    return quality;
+}
+
+SpeckleQuality speckleQualityIn(const QString &imagePath,
+                                const RegionOfInterest &roi, int subsetRadius)
+{
+    return speckleQualityIn(prepareSpeckleField(imagePath, subsetRadius), roi);
 }

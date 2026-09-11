@@ -526,6 +526,9 @@ void MainWindow::newProject()
 {
     m_projectPath.clear();
     m_referenceRecord = ImageRecord();
+    // The prepared speckle belongs to the image that has just gone.
+    m_speckleField = SpeckleField();
+    m_speckleFieldRadius = 0;
     m_targetRecords.clear();
     m_roi = RegionOfInterest();
     m_frames.clear();
@@ -1149,8 +1152,15 @@ void MainWindow::updateSpeckleQuality()
         return;
     }
 
-    const SpeckleQuality quality =
-        speckleQualityIn(m_referenceRecord.filePath, m_roi, m_subsetRadius->value());
+    // Prepared only when the image or the radius has changed; every other call
+    // is asking an image already read about a different boundary.
+    const int radius = m_subsetRadius->value();
+    if (!m_speckleField.isValid() || m_speckleFieldRadius != radius) {
+        m_speckleField = prepareSpeckleField(m_referenceRecord.filePath, radius);
+        m_speckleFieldRadius = radius;
+    }
+
+    const SpeckleQuality quality = speckleQualityIn(m_speckleField, m_roi);
 
     if (!quality.measured) {
         m_speckleAdvice->setText(quality.note);
@@ -1498,6 +1508,9 @@ void MainWindow::openReferenceImage(const QString &path)
     }
 
     m_referenceRecord = m_viewport->record();
+    // A new reference means the prepared speckle describes the wrong picture.
+    m_speckleField = SpeckleField();
+    m_speckleFieldRadius = 0;
     const ImageRecord &record = m_referenceRecord;
     m_record->setRecord(record);
     updateSpeckleQuality();

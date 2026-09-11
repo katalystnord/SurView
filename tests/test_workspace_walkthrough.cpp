@@ -382,6 +382,7 @@ private slots:
     void a_corner_can_be_added_to_an_edge_and_taken_out_again_on_the_image();
     void a_refusal_to_remove_a_corner_does_not_take_the_picture_with_it();
     void a_region_moves_bodily_while_a_click_inside_it_still_pins_a_reading();
+    void the_speckle_estimate_describes_the_image_and_radius_in_force();
     void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
     void the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it();
@@ -3126,6 +3127,73 @@ void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_sti
                                 .arg((after.vertices.at(i) - before.vertices.at(i)).y())
                                 .arg(shift.x()).arg(shift.y())));
     }
+}
+
+void TestWorkspaceWalkthrough::the_speckle_estimate_describes_the_image_and_radius_in_force()
+{
+    // ⚑ THE ESTIMATE IS CACHED, AND A STALE ONE IS WORSE THAN A SLOW ONE. What
+    // it costs is a gradient pass over the whole image, which depends on the
+    // image and the subset radius and not at all on the region - so the image
+    // is prepared once and every boundary asks the same prepared field.
+    // Recomputed per edit it froze the window for about a second each time a
+    // corner moved, which with four editing gestures is a stall a reader meets
+    // constantly.
+    //
+    // The risk that buys is staleness: a panel describing the speckle of an
+    // image that is no longer on screen, in a sentence that looks exactly like
+    // a true one. That is what this case is for.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    const QString speckled = visibleText(&window);
+    QVERIFY2(speckled.contains(QStringLiteral("should resolve"), Qt::CaseInsensitive),
+             qPrintable(speckled));
+
+    // ⚑ The radius is half of what the preparation depends on. Changed, the
+    // estimate has to be recomputed rather than answered from the windows of
+    // the old one - a subset of a different size sees different speckle.
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    QVERIFY(radius);
+    const int wider = radius->value() * 2;
+    radius->setValue(wider);
+    QTest::qWait(50);
+    const QString atWiderRadius = visibleText(&window);
+    QVERIFY2(atWiderRadius.contains(QString::number(wider)), qPrintable(atWiderRadius));
+
+    // ⚑ THE RESOLUTION ITSELF, not the sentence. The sentence names the radius
+    // from the control, so it changes whether or not the estimate behind it
+    // did - comparing the whole text passed happily against a field that was
+    // never rebuilt, which is exactly the lie: a figure computed for a 16 px
+    // subset, printed beside the words "32 px subset". The number is what has
+    // to move.
+    static const QRegularExpression resolves(
+        QStringLiteral("resolve about ([0-9.eE+-]+) px"));
+    const QRegularExpressionMatch before = resolves.match(speckled);
+    const QRegularExpressionMatch after = resolves.match(atWiderRadius);
+    QVERIFY2(before.hasMatch() && after.hasMatch(),
+             qPrintable(speckled + QStringLiteral("\n--\n") + atWiderRadius));
+    QVERIFY2(before.captured(1) != after.captured(1),
+             qPrintable(QStringLiteral("the resolution stayed at %1 px when the "
+                                       "subset radius doubled, so it is being "
+                                       "answered from the windows of the old one")
+                            .arg(before.captured(1))));
+
+    // ⚑ And the other half: a different reference image. A blank frame carries
+    // no speckle at all, so a panel still describing the speckled one is caught
+    // by what it says rather than by a number nobody can check.
+    window.openReferenceImage(fixture(QStringLiteral("flat_frame.tif")));
+    QTest::qWait(50);
+    const QString flat = visibleText(&window);
+    QVERIFY2(!flat.contains(QStringLiteral("should resolve"), Qt::CaseInsensitive),
+             qPrintable(QStringLiteral("a frame with no gradient at all is still "
+                                       "described as resolving something, which "
+                                       "means the panel is describing the image "
+                                       "before it:\n%1").arg(flat)));
+    QVERIFY2(flat.contains(QStringLiteral("speckle"), Qt::CaseInsensitive),
+             qPrintable(flat));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)
