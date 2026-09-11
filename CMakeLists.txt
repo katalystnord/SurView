@@ -56,6 +56,35 @@ if(SURVIEW_COVERAGE)
     add_link_options(--coverage)
 endif()
 
+# ⚑ ADDRESS AND UNDEFINED-BEHAVIOUR SANITIZERS, for the class no assertion can
+# reach. A read or write one element past the end of a vector returns whatever
+# sits there and changes nothing downstream: no test can see it, and the
+# mutation sweep of 2026-09-10/11 reported dozens of exactly that shape as
+# survivors with a note beside each saying no case was coming. This is what
+# closes them, by catching the access itself rather than its consequences.
+#
+# ⚑ LEAK DETECTION IS OFF, deliberately, and that is a scoping decision rather
+# than a convenience. Qt and VTK hold singletons and caches alive to exit by
+# design, so LeakSanitizer in this application reports their housekeeping at a
+# volume that buries anything of ours. The target class here is memory ERRORS -
+# out-of-bounds, use-after-free, undefined arithmetic - which ASan and UBSan
+# report exactly. Leaks in our own code are a separate job needing a
+# suppression file for the toolkits, and are not what the survivors are made of.
+# (The engine fork has no Qt or VTK, so its own sanitizer run keeps leaks ON and
+# found one immediately.)
+#
+# Off by default and built into its own directory, for the same reason coverage
+# is: the instrumentation changes the object code.
+option(SURVIEW_SANITIZE "Build with address and undefined-behaviour sanitizers (see tools/sanitize.sh)" OFF)
+if(SURVIEW_SANITIZE)
+    # -fno-sanitize-recover is what makes this a test rather than a log: without
+    # it UBSan prints a diagnostic, carries on, and the suite stays green while
+    # telling the truth where nobody reads it.
+    add_compile_options(-fsanitize=address,undefined -fno-sanitize-recover=all
+                        -fno-omit-frame-pointer -g -O1)
+    add_link_options(-fsanitize=address,undefined)
+endif()
+
 # Which OpenCorr engine commit this build is verified against. Advisory: it
 # reports drift and continues. Full three-way check: tools/check-engine.sh
 include(cmake/OpenCorrPin.cmake)

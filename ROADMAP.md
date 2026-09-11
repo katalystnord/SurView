@@ -1071,6 +1071,22 @@ as a backlog with everything in it.
   segfaults - where a single condition turned into an AND lets a cell missing
   exactly that corner through, and the case had removed one corner of four.
 
+  ⚑ **AND THE LARGEST REMAINING CLASS IS NOW CLOSED BY A DIFFERENT TOOL.** Of
+  the survivors that stand with a note saying no case is coming, the large
+  majority are reads or writes ONE ELEMENT past the end of a vector: what comes
+  back is whatever sits there, nothing downstream need change, and no assertion
+  can see it. `tools/sanitize.sh` catches the ACCESS rather than its
+  consequences, which is the only thing that closes them, and it has its own CI
+  job so it stays true. The whole suite is green under it, walkthrough and
+  accuracy cases included - so on every path the suite exercises there is no
+  out-of-bounds access and no undefined arithmetic.
+
+  ⚑ Leak detection is OFF there, deliberately: Qt and VTK keep singletons alive
+  to exit by design and LeakSanitizer buries our own signal in that
+  housekeeping. The engine fork has no Qt or VTK, so its run keeps leaks ON -
+  and found a real one in its first minute, a whole output volume that
+  `IO3D::saveMap3D()` allocated and never gave back.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
   nothing runs one on a schedule. What this round showed is that the cheap half
   is the valuable half - replaying the SURVIVOR list is minutes of setup and

@@ -98,6 +98,86 @@ jobs:
         # with no display is exactly the environment that proves it.
         run: ctest --test-dir SurView/build-ninja --output-on-failure
 
+
+  sanitizers:
+    name: SurView under address + UB sanitizers
+    runs-on: ubuntu-26.04
+    # ⚑ THE CLASS NO ASSERTION CAN CATCH. A read one element past the end of a
+    # vector returns whatever sits there and changes nothing downstream, so a
+    # test cannot see it and a mutation sweep reports it as a survivor with
+    # nothing to be done. The sweeps of 2026-09-10/11 left dozens of exactly
+    # that shape standing, each with a note saying no case was coming. This is
+    # the job that closes them.
+    #
+    # Instrumented code is several times slower, so it gets its own run and its
+    # own budget rather than a place beside the ordinary build.
+    timeout-minutes: 60
+    steps:
+      - name: Check out SurView
+        uses: actions/checkout@v4
+        with:
+          path: SurView
+
+      - name: No em-dashes
+        # The half that survives a fresh clone and --no-verify. Cheap enough to
+        # run before anything is installed, so a style-only mistake fails in
+        # seconds rather than after a full build.
+        run: SurView/tools/check-no-em-dashes.sh
+
+      - name: Read the engine pin
+        id: pin
+        # The pin is the single source of truth for which engine commit this
+        # build is verified against. CI resolves it the same way CMake does,
+        # rather than tracking a branch -- a CI that silently followed
+        # surview-dev would stop testing what the repository actually claims.
+        run: |
+          . SurView/cmake/opencorr.pin
+          echo "sha=$SURVIEW_OPENCORR_PIN" >> "$GITHUB_OUTPUT"
+          echo "remote=$SURVIEW_OPENCORR_REMOTE" >> "$GITHUB_OUTPUT"
+          echo "Engine pin: $SURVIEW_OPENCORR_PIN ($SURVIEW_OPENCORR_PIN_NOTE)"
+
+      - name: Check out the pinned engine
+        run: |
+          git clone --filter=blob:none "${{ steps.pin.outputs.remote }}" OpenCorr
+          git -C OpenCorr checkout --detach "${{ steps.pin.outputs.sha }}"
+          echo "Engine at $(git -C OpenCorr rev-parse --short HEAD)"
+
+      - name: Install dependencies
+        # ⚑ The hardening lives in one place now. These two jobs drifted apart
+        # once -- the retries added on 2026-08-18 went into one and not the
+        # other, and the one without them died on an outage its twin survived --
+        # and a third caller (the AppImage release) was the moment to stop
+        # copying it again. What each job still owns is its own package list.
+        uses: ./SurView/.github/actions/apt-deps
+        # The download is the slowest thing in this workflow; the timeout has to
+        # live here, on the caller, because a composite action cannot carry one.
+        timeout-minutes: 25
+        with:
+          cache-key: apt-surview-26.04
+          need-vtk-qt: 'true'
+          packages: >-
+            ninja-build cmake g++
+            qt6-base-dev qt6-base-dev-tools libgl1-mesa-dev
+            libopencv-dev libeigen3-dev libfftw3-dev libnanoflann-dev
+            libomp-dev xvfb
+
+      - name: Configure with sanitizers
+        run: cmake -S SurView -B SurView/build-asan -G Ninja -DSURVIEW_SANITIZE=ON
+
+      - name: Build
+        run: cmake --build SurView/build-asan
+
+      - name: Test under the sanitizers
+        # Leaks are off on purpose: Qt and VTK keep singletons alive to exit by
+        # design, and LeakSanitizer buries our own signal in their housekeeping.
+        # Memory ERRORS are the class being hunted, and those are reported.
+        # -fno-sanitize-recover is compiled in, so a diagnostic is a failure
+        # rather than a line in a log nobody reads.
+        env:
+          ASAN_OPTIONS: detect_leaks=0:halt_on_error=1
+          UBSAN_OPTIONS: print_stacktrace=1
+        run: ctest --test-dir SurView/build-asan --output-on-failure
+
   engine:
     name: Engine (pinned fork) smoke tests
     runs-on: ubuntu-latest
