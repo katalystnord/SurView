@@ -1055,6 +1055,16 @@ as a backlog with everything in it.
   and the file they cover is swept separately; and a sweep edits `src/` in
   place, so it wants its own git worktree if anyone is working in the tree
   meanwhile.
+
+  ⚑ **And stop one with SIGTERM, never SIGKILL.** A sweep holds a mutated
+  source file and a running ctest with test binaries under it. Killed outright
+  it leaves both behind: a deliberately broken source that looks like someone's
+  work in progress, and orphaned test processes that go on holding the machine
+  (three sweeps' worth were found still running at a load average of 31 on
+  2026-09-11). `tools/mutants.py` now handles SIGTERM and SIGINT by putting the
+  source back and taking its children down with it, and runs ctest in its own
+  process group so one kill reaches the test binaries too. SIGKILL still cannot
+  be caught, which is why this says which signal to use.
 - **Coverage reporting** is present but not tracked over time.
 - The **walkthrough suite races with the X server's own pointer motion**;
   synthetic and real mouse moves arrive in an order that is not deterministic.

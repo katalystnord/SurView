@@ -34,6 +34,7 @@ import os
 import random
 import re
 import shutil
+import signal
 import subprocess
 import sys
 import time
@@ -233,15 +234,45 @@ def tests_covering(path, root):
     return "^(" + "|".join(covering) + ")$"
 
 
+# The child currently running, so a signal can take it down with us. ⚑ A sweep
+# is hours long and gets interrupted; killed without this, the python exits and
+# leaves ctest and every test binary it started running on. Found the hard way
+# on 2026-09-11, with orphaned test processes from three earlier sweeps still
+# holding the machine at a load average of 31.
+_running = None
+
+
 def run(cmd, cwd, timeout):
+    global _running
     try:
-        p = subprocess.run(cmd, cwd=cwd, timeout=timeout,
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-        return p.returncode
+        # Its own process group, so one kill reaches ctest AND the test binaries
+        # ctest started. Without the group, killing ctest alone orphans them.
+        p = subprocess.Popen(cmd, cwd=cwd, stdout=subprocess.DEVNULL,
+                             stderr=subprocess.DEVNULL, start_new_session=True)
+        _running = p
+        try:
+            return p.wait(timeout=timeout)
+        finally:
+            _running = None
     except subprocess.TimeoutExpired:
+        kill_group(p)
         # A mutant that makes the suite hang is caught, not ignored: an
         # infinite loop is a behaviour change a user would certainly notice.
         return 124
+
+
+def kill_group(process):
+    """Take down a child and everything it started."""
+    if process is None or process.poll() is not None:
+        return
+    try:
+        os.killpg(os.getpgid(process.pid), signal.SIGKILL)
+    except (ProcessLookupError, PermissionError):
+        pass
+    try:
+        process.wait(timeout=10)
+    except subprocess.TimeoutExpired:
+        pass
 
 
 def main():
@@ -405,6 +436,28 @@ def main():
     print(f"=== {len(mutants)} mutants "
           f"({total_found} found across {len(files)} files) ===\n")
 
+    # ⚑ AN INTERRUPTED SWEEP MUST LEAVE THE TREE AS IT FOUND IT. It edits
+    # src/ in place and restores from a backup it holds in memory, so a sweep
+    # killed between writing a mutant and restoring leaves a deliberately broken
+    # source behind -- indistinguishable from someone's work in progress, which
+    # is the same hazard the dirty-tree check above refuses to risk. Happened on
+    # 2026-09-10: a stopped sweep left a mutated Sequence.cpp in the worktree.
+    #
+    # SIGTERM and SIGINT are handled; SIGKILL cannot be, which is why the
+    # message says which signal to use.
+    restoring = {}
+
+    def put_everything_back(*_):
+        for target, text in restoring.items():
+            Path(target).write_text(text)
+        kill_group(_running)
+        print("\nmutants.py: interrupted; source restored and children stopped.",
+              file=sys.stderr)
+        sys.exit(130)
+
+    signal.signal(signal.SIGINT, put_everything_back)
+    signal.signal(signal.SIGTERM, put_everything_back)
+
     killed, survived, not_viable = [], [], []
     # Worked out once: reading every test source per mutant would be its own
     # small waste, and the sources do not change while a sweep runs.
@@ -419,6 +472,7 @@ def main():
     for i, m in enumerate(mutants, 1):
         path = m["path"]
         backup = path.read_text()
+        restoring[str(path)] = backup
         try:
             path.write_text(m["mutated"])
             built = subprocess.run(["cmake", "--build", str(build)] + build_args,
@@ -457,6 +511,7 @@ def main():
                     verdict = "killed"
         finally:
             path.write_text(backup)
+            restoring.pop(str(path), None)
 
         rate = (time.time() - started) / i
         print(f"[{i}/{len(mutants)}] {verdict:10} "
