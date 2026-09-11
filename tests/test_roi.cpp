@@ -132,6 +132,20 @@ void TestRoi::a_region_reports_how_it_came_to_exist()
     QVERIFY(!drawn.originText().isEmpty());
     QVERIFY(!detected.originText().isEmpty());
     QVERIFY(drawn.originText() != detected.originText());
+
+    // ⚑ AND WHICH IS WHICH, which asking only that they DIFFER cannot see. The
+    // two sentences could be swapped wholesale and this case would still pass,
+    // while the viewport told a user that the boundary they drew by hand was
+    // detected from the speckle pattern - and that the proposal an algorithm
+    // made was their own work. That is provenance reported backwards, on the
+    // one line that says where the region came from, and a detected region is
+    // the one carrying a caveat about what its detector could not guarantee.
+    QVERIFY2(drawn.originText().contains(QStringLiteral("drawn"),
+                                         Qt::CaseInsensitive),
+             qPrintable(drawn.originText()));
+    QVERIFY2(detected.originText().contains(QStringLiteral("detected"),
+                                            Qt::CaseInsensitive),
+             qPrintable(detected.originText()));
 }
 
 void TestRoi::a_detected_region_carries_its_makers_limitation()
