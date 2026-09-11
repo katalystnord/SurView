@@ -119,6 +119,7 @@ private slots:
     void a_reading_between_grid_points_is_interpolated_from_the_four_around_it();
     void a_reading_with_any_of_its_four_corners_unmeasured_is_no_reading();
     void a_reading_outside_the_measured_grid_is_no_reading();
+    void each_of_a_cells_four_corners_is_required_on_its_own();
 
     // the extensometer
     void an_extensometer_on_an_undeformed_field_reads_no_strain();
@@ -187,7 +188,20 @@ private slots:
     //                                    differ only at x == 0, where both
     //                                    give 0. Equivalent by construction,
     //                                    not merely unobserved.
-    //   the four-corner rule (1)         The segfault above.
+    //   the four-corner rule (1)         The segfault above -- and NOT the
+    //                                      whole story. The sweep of
+    //                                      2026-09-10 showed a SINGLE `||`
+    //                                      turned into `&&` groups one
+    //                                      condition with its neighbour and
+    //                                      lets a cell missing exactly that
+    //                                      corner through, where the wholesale
+    //                                      swap crashes on any of them. The
+    //                                      case here removed one corner of the
+    //                                      four; each_of_a_cells_four_corners_
+    //                                      is_required_on_its_own removes all
+    //                                      four in turn, and each dies at exit
+    //                                      139 -- a null dereference, which is
+    //                                      a kill that travels between builds.
     //
     // Recorded at this length because the alternative is the next person
     // running the sweep, seeing 15 survivors, and doing all of it again.
@@ -822,6 +836,48 @@ void TestSeries::two_movements_of_equal_size_and_opposite_sign_resolve_the_same_
                                        "magnitudes wins, so the answer does not depend "
                                        "on the order the points are stored in")
                             .arg(largest.points[0].value)));
+}
+
+void TestSeries::each_of_a_cells_four_corners_is_required_on_its_own()
+{
+    // ⚑ THE CASE ABOVE REMOVES ONE CORNER, so three of the rule's four
+    // conditions are never asked anything. The rule is that ALL FOUR corners of
+    // a cell must have been measured, and a rule about four things needs four
+    // cases: the sweep of 2026-09-10 turned any single one of those conditions
+    // into an AND - which groups it with its neighbour and lets a cell missing
+    // that one corner through - and the suite stayed green.
+    //
+    // What gets through is not a wrong reading but a null pointer taken for a
+    // measured point, which is the same shape of defect FieldMesh carries a
+    // case for, one map along.
+    const int step = 10;
+    const struct { const char *corner; float x; float y; } corners[] = {
+        {"top-left", 10.f, 10.f},
+        {"top-right", 20.f, 10.f},
+        {"bottom-left", 10.f, 20.f},
+        {"bottom-right", 20.f, 20.f},
+    };
+
+    for (const auto &corner : corners) {
+        // Six by six so there is a cell far from the one under test: the
+        // corner taken out belongs to four cells at once, and a neighbour of
+        // the cell being broken is not evidence that the loss stayed local.
+        CorrelationResult field = stretchedField(6, 6, step, 0.01);
+        // The cell is whole before the corner is taken out, or the case proves
+        // nothing about the corner.
+        QVERIFY2(sampleFieldAt(field, 15.0, 15.0).measured, corner.corner);
+
+        takeOutPointAt(field, corner.x, corner.y);
+
+        QVERIFY2(!sampleFieldAt(field, 15.0, 15.0).measured,
+                 qPrintable(QStringLiteral("a cell whose %1 corner was never "
+                                           "measured still gave a reading")
+                                .arg(QString::fromLatin1(corner.corner))));
+
+        // And the loss is local: a cell well clear of the missing corner still
+        // reads perfectly well, so the rule costs only what it must.
+        QVERIFY2(sampleFieldAt(field, 45.0, 45.0).measured, corner.corner);
+    }
 }
 
 QTEST_MAIN(TestSeries)
