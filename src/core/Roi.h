@@ -134,6 +134,19 @@ RegionOfInterest withCornerInserted(const RegionOfInterest &roi, int edge,
 // is worse than a gesture that declines.
 RegionOfInterest withCornerRemoved(const RegionOfInterest &roi, int corner);
 
+// `roi` shifted bodily by `by`, boundary and holes together.
+//
+// ⚑ THE HOLES MOVE WITH IT. A hole is part of the region, and a move that left
+// one behind would be the worst kind of wrong: the boundary lands where the
+// reader put it while the void it was drawn around stays where the specimen no
+// longer is, and the run measures straight across a hole and reports confident
+// numbers off the back of it.
+//
+// Nothing is clamped to the image. A region dragged off the picture is refused
+// by the grid, in words, at the moment a run is asked for - which is a better
+// place to say it than under a pointer that has stopped following the hand.
+RegionOfInterest withRegionMoved(const RegionOfInterest &roi, const QPoint &by);
+
 // The edge whose line passes within `reach` of `at`, as the index of the corner
 // it begins at, or -1.
 //

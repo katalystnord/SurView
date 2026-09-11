@@ -1347,16 +1347,22 @@ decisions:
   Undo/Close/Cancel, an Auto-detect button over the same `AutoROI`, and the
   region restricting the POI grid via the engine's own `Polygon2D::contains()`.
   **Editing a committed boundary is built** (2026-09-11): drag a corner to move
-  it, double-click an edge to add one there, right-click a corner to take it
-  out, with three corners as the floor and the refusal said rather than done
-  silently. ⚑ All three are LISTED IN THE PROJECT TREE, because none of them is
+  it, drag inside it to move the whole region, double-click an edge to add a
+  corner there, right-click a corner to take it out, with three corners as the
+  floor and the refusal said rather than done silently. ⚑ Moving the region
+  SHARES its gesture with pinning a point reading, and the two are told apart by
+  whether the hand actually moved: without that threshold every attempt to pin a
+  reading inside the region would nudge the boundary by a pixel or two, which is
+  the sort of damage nobody notices until a run reports a different field. A
+  synthetic click cannot see that - it sends press and release at one position
+  and never consults the threshold - so the case carries a click with two pixels
+  of tremor in it, which is the only kind a hand makes. ⚑ All three are LISTED IN THE PROJECT TREE, because none of them is
   visible on the image: the handles only announce themselves once the pointer is
   already over one, and a capability nobody has a reason to look for is one this
   project treats as absent. That listing is itself a fix - written as one line
   the sentence was the half the dock elided, while a case asserting "the screen
   says dragging is possible" passed on the strength of a string nobody could
-  read. Still to be designed: the live speckle-quality indicator, and moving a
-  whole region rather than its corners one at a time.
+  read. Still to be designed: the live speckle-quality indicator.
 - **VTK `.vtu` export**: confirmed a real differentiator empirically - only
   1 of 11 tools reviewed has any VTK-family export. **Built 2026-08-19** (see
   *The field leaving the application* above): points and quad cells, every

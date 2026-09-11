@@ -381,6 +381,7 @@ private slots:
     void a_committed_region_can_be_adjusted_without_drawing_it_again();
     void a_corner_can_be_added_to_an_edge_and_taken_out_again_on_the_image();
     void a_refusal_to_remove_a_corner_does_not_take_the_picture_with_it();
+    void a_region_moves_bodily_while_a_click_inside_it_still_pins_a_reading();
     void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
     void the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it();
@@ -3037,6 +3038,94 @@ void TestWorkspaceWalkthrough::a_refusal_to_remove_a_corner_does_not_take_the_pi
     QVERIFY2(log->toPlainText().contains(QStringLiteral("three corners"),
                                          Qt::CaseInsensitive),
              qPrintable(log->toPlainText()));
+}
+
+void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_still_pins_a_reading()
+{
+    // The last edit a boundary could not take: a region the right SHAPE in the
+    // wrong PLACE had to be dragged corner by corner, and distorted on the way.
+    //
+    // ⚑ THE GESTURE IS SHARED, and that is the whole difficulty. A press inside
+    // the boundary already meant "pin the reading here", so the two are told
+    // apart by whether the hand actually moved. Without that, every attempt to
+    // pin a reading inside the region would nudge the boundary by a pixel or
+    // two - the sort of damage nobody notices until a run reports a different
+    // field from the one before it.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
+                                QPoint(170, 110), QPoint(60, 110)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    const RegionOfInterest before = window.roi();
+    QCOMPARE(before.vertices.size(), 4);
+
+    // The screen says so before the test does it.
+    QVERIFY2(projectLine(&window, QStringLiteral("Region of interest"))
+                 .contains(QStringLiteral("move the whole region"), Qt::CaseInsensitive),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
+
+    // ⚑ A CLICK INSIDE IT FIRST, which must leave the boundary exactly where it
+    // is and pin a reading instead. This is the half that a move done without a
+    // threshold would break, and it is checked BEFORE the move so a broken
+    // threshold cannot be hidden by the drag that follows.
+    const QPoint middle = widgetPointForPixel(viewport, 115, 80);
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, middle);
+    QTest::qWait(50);
+    QCOMPARE(window.roi().vertices, before.vertices);
+    QVERIFY2(pointPanelText(&window).contains(QStringLiteral("pinned"),
+                                              Qt::CaseInsensitive),
+             qPrintable(pointPanelText(&window)));
+
+    // ⚑ AND A CLICK THAT WOBBLES, which is the only kind a hand makes. A
+    // synthetic click sends press and release at one position with nothing in
+    // between, so it never consults the threshold at all and cannot tell a
+    // sound one from none: with the threshold removed, the click above still
+    // passed. Two pixels of tremor is what a real click carries, and it has to
+    // still be a click.
+    //
+    // It lands on the same pixel, so it RELEASES the pin it just set - which is
+    // the panel's own rule, and is why the reading is checked before this.
+    QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, middle);
+    QTest::mouseMove(viewport, middle + QPoint(2, 1));
+    QTest::qWait(20);
+    QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, middle + QPoint(2, 1));
+    QTest::qWait(50);
+    QVERIFY2(window.roi().vertices == before.vertices,
+             "a click with a couple of pixels of tremor in it dragged the whole "
+             "region, which is how a boundary moves without anyone meaning it to");
+
+    // And now a drag, which moves every corner by the same amount.
+    const QPoint to = widgetPointForPixel(viewport, 135, 90);
+    QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, middle);
+    QTest::mouseMove(viewport, to);
+    QTest::qWait(30);
+    QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, to);
+    QTest::qWait(50);
+
+    const RegionOfInterest after = window.roi();
+    QCOMPARE(after.vertices.size(), before.vertices.size());
+
+    const QPoint shift = after.vertices.at(0) - before.vertices.at(0);
+    QVERIFY2(!shift.isNull(), "the region did not move at all");
+    for (int i = 1; i < after.vertices.size(); i++) {
+        QVERIFY2(after.vertices.at(i) - before.vertices.at(i) == shift,
+                 qPrintable(QStringLiteral("corner %1 moved by %2,%3 while the "
+                                           "first moved by %4,%5: the region was "
+                                           "distorted rather than moved")
+                                .arg(i)
+                                .arg((after.vertices.at(i) - before.vertices.at(i)).x())
+                                .arg((after.vertices.at(i) - before.vertices.at(i)).y())
+                                .arg(shift.x()).arg(shift.y())));
+    }
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

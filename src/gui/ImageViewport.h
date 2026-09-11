@@ -340,6 +340,18 @@ private:
     // meant placing all of them again.
     int m_draggingCorner = -1;
 
+    // ⚑ Moving the WHOLE region shares its gesture with pinning a point
+    // reading, and the two are told apart by whether the hand actually moved.
+    // A press inside the boundary is remembered here; it only becomes a move
+    // once the pointer has travelled far enough that no one could have meant a
+    // click. Without that threshold every attempt to pin a reading inside the
+    // region would nudge the boundary by a pixel or two, which is the sort of
+    // damage nobody notices until a run reports a different field.
+    bool m_maybeMovingRegion = false;
+    bool m_movingRegion = false;
+    QPoint m_regionMoveFrom;
+    QPointF m_regionMovePressedAt;
+
     // How far from a corner, in IMAGE pixels, still counts as grabbing it. Kept
     // as a screen distance and converted, so a handle is the same size under
     // the pointer however far the view is zoomed in or out.

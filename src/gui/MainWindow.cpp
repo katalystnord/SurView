@@ -1958,6 +1958,7 @@ void MainWindow::showRoiInProject()
     // edge or a right-click, and a capability nobody has a reason to look for
     // is one this project treats as absent.
     for (const QString &gesture : {tr("Drag a corner to move it"),
+                                   tr("Drag inside it to move the whole region"),
                                    tr("Double-click an edge to add a corner"),
                                    tr("Right-click a corner to take it out")}) {
         auto *line = new QTreeWidgetItem(m_roiItem);

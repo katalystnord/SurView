@@ -1130,6 +1130,22 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
     // reads as a broken control, where a sentence explains a rule the reader
     // can then work with. Three is the same floor the drawing mode states while
     // a boundary is being placed.
+    // A press inside the boundary might be the start of a move, or might be a
+    // click meaning "pin the reading here". Which one it was is not known yet,
+    // so it is remembered and decided on the first movement.
+    if (event->button() == Qt::LeftButton && m_roiShown.isValid()) {
+        QPoint pixel;
+        if (widgetToImagePixel(event->position(), pixel)
+            && regionContains(m_roiShown, pixel.x(), pixel.y())) {
+            m_maybeMovingRegion = true;
+            m_movingRegion = false;
+            m_regionMoveFrom = pixel;
+            m_regionMovePressedAt = event->position();
+            // Not accepted: if the hand never moves this stays a click, and the
+            // code below still pins the reading.
+        }
+    }
+
     if (event->button() == Qt::RightButton && m_roiShown.isValid()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
@@ -1186,6 +1202,28 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
         return;
     }
 
+    if (m_maybeMovingRegion) {
+        // Far enough that nobody meant a click. Below this the press is still
+        // undecided and the reading will be pinned on release, as it always was.
+        constexpr double kMoveThresholdPx = 4.0;
+        const QPointF travelled = event->position() - m_regionMovePressedAt;
+        if (!m_movingRegion
+            && std::hypot(travelled.x(), travelled.y()) >= kMoveThresholdPx) {
+            m_movingRegion = true;
+            setCursor(Qt::ClosedHandCursor);
+        }
+        if (m_movingRegion) {
+            QPoint pixel;
+            if (widgetToImagePixel(event->position(), pixel)) {
+                m_roiShown = withRegionMoved(m_roiShown, pixel - m_regionMoveFrom);
+                m_regionMoveFrom = pixel;
+                refreshRoiGeometry();
+            }
+            event->accept();
+            return;
+        }
+    }
+
     // The cursor is the affordance: a handle that can be picked up says so
     // before it is pressed, which is the only warning a reader gets that these
     // corners are not just decoration.
@@ -1200,6 +1238,13 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
                 // picked up, the edges are added to, and a reader who has been
                 // told both needs to see which one is under the pointer.
                 setCursor(Qt::CrossCursor);
+            } else if (regionContains(m_roiShown, pixel.x(), pixel.y())) {
+                // Inside, where a drag moves the whole boundary - and where a
+                // CLICK still pins a reading, which is why the threshold above
+                // exists and why this cursor is the four-way arrow rather than
+                // a hand: it says the region can be moved without claiming that
+                // is the only thing a press here does.
+                setCursor(Qt::SizeAllCursor);
             } else {
                 unsetCursor();
             }
@@ -1260,6 +1305,22 @@ void ImageViewport::mouseReleaseEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+
+    if (event->button() == Qt::LeftButton && m_maybeMovingRegion) {
+        const bool moved = m_movingRegion;
+        m_maybeMovingRegion = false;
+        m_movingRegion = false;
+        if (moved) {
+            unsetCursor();
+            emit roiDrawn(m_roiShown);
+            event->accept();
+            return;
+        }
+        // The hand never moved, so this was a click after all: it falls through
+        // to the readout below, which is what it did before the region could be
+        // moved at all.
+    }
+
     QVTKOpenGLNativeWidget::mouseReleaseEvent(event);
 }
 

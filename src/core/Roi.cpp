@@ -130,6 +130,26 @@ RegionOfInterest withCornerRemoved(const RegionOfInterest &roi, int corner)
     return reduced;
 }
 
+RegionOfInterest withRegionMoved(const RegionOfInterest &roi, const QPoint &by)
+{
+    if (by.isNull())
+        return roi;
+
+    RegionOfInterest moved = roi;
+    for (QPoint &vertex : moved.vertices)
+        vertex += by;
+    // The holes travel with the boundary. See the header for what leaving them
+    // behind would cost.
+    for (QVector<QPoint> &hole : moved.holes) {
+        for (QPoint &vertex : hole)
+            vertex += by;
+    }
+
+    moved.origin = RegionOfInterest::Drawn;
+    moved.limitation.clear();
+    return moved;
+}
+
 int edgeNear(const RegionOfInterest &roi, const QPoint &at, double reach)
 {
     if (!roi.isValid())

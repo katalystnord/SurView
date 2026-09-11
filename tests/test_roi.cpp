@@ -78,6 +78,7 @@ private slots:
     void a_corner_can_be_added_to_an_edge_without_redrawing_the_region();
     void a_corner_can_be_taken_out_unless_it_is_one_of_the_last_three();
     void the_edge_under_the_pointer_is_the_one_a_new_corner_joins();
+    void a_whole_region_moves_with_its_holes_and_keeps_its_shape();
     void a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it();
     void a_triangular_hole_is_a_hole_wherever_the_question_is_asked();
 };
@@ -686,6 +687,68 @@ void TestRoi::the_edge_under_the_pointer_is_the_one_a_new_corner_joins()
     RegionOfInterest line;
     line.vertices = {QPoint(0, 0), QPoint(100, 0)};
     QCOMPARE(edgeNear(line, QPoint(50, 0), 6.0), -1);
+}
+
+void TestRoi::a_whole_region_moves_with_its_holes_and_keeps_its_shape()
+{
+    // The last edit a boundary could not take. A region drawn in the right
+    // SHAPE but the wrong PLACE - the specimen shifted between setup and
+    // capture, or the outline was traced from the wrong frame - had to be
+    // rebuilt corner by corner, or dragged one corner at a time and distorted
+    // in the process.
+    RegionOfInterest region;
+    region.vertices = {QPoint(10, 10), QPoint(60, 10), QPoint(60, 40), QPoint(10, 40)};
+    // ⚑ WITH A HOLE IN IT, because a hole is part of the region and a move that
+    // left it behind would be the worst kind of wrong: the boundary lands where
+    // the reader put it while the void it was drawn around stays where the
+    // specimen no longer is, and the run measures across a hole and reports
+    // confident numbers off the back of it.
+    region.holes.append({QPoint(20, 20), QPoint(30, 20), QPoint(30, 30), QPoint(20, 30)});
+
+    const QPoint by(100, 5);
+    const RegionOfInterest moved = withRegionMoved(region, by);
+
+    QCOMPARE(moved.vertices.size(), region.vertices.size());
+    for (int i = 0; i < moved.vertices.size(); i++)
+        QCOMPARE(moved.vertices.at(i), region.vertices.at(i) + by);
+
+    QCOMPARE(moved.holes.size(), 1);
+    for (int i = 0; i < moved.holes.at(0).size(); i++)
+        QCOMPARE(moved.holes.at(0).at(i), region.holes.at(0).at(i) + by);
+
+    // The shape is carried, not redrawn: what was inside is inside at the new
+    // place, what was in the hole is still in the hole, and what was outside
+    // stays outside.
+    QVERIFY(regionContains(region, 15, 15));
+    QVERIFY(regionContains(moved, 15 + by.x(), 15 + by.y()));
+    QVERIFY(!regionContains(region, 25, 25));          // in the hole
+    QVERIFY(!regionContains(moved, 25 + by.x(), 25 + by.y()));
+    QVERIFY(!regionContains(moved, 15, 15));           // where it used to be
+
+    // ⚑ Moving by nothing is not a move, and what that guard protects is the
+    // PROVENANCE rather than the coordinates: adding zero to every vertex
+    // leaves them where they were either way, so a case comparing vertices
+    // cannot see it. A detected boundary nobody has actually dragged is still
+    // the detector's, and must not be restated as something a person drew -
+    // that word travels into the project file and the exported .vtu.
+    RegionOfInterest untouched = region;
+    untouched.origin = RegionOfInterest::Detected;
+    untouched.limitation = QStringLiteral("single outline, no holes");
+    const RegionOfInterest still = withRegionMoved(untouched, QPoint(0, 0));
+    QCOMPARE(still.vertices, region.vertices);
+    QVERIFY2(still.origin == RegionOfInterest::Detected,
+             "a region that was not moved was restated as drawn by hand");
+    QVERIFY2(!still.limitation.isEmpty(),
+             "a region that was not moved lost the detector's own caveat");
+
+    // ⚑ And an adjusted region is the reader's, not the detector's - the same
+    // rule every other edit follows.
+    RegionOfInterest detected = region;
+    detected.origin = RegionOfInterest::Detected;
+    detected.limitation = QStringLiteral("single outline, no holes");
+    const RegionOfInterest adjusted = withRegionMoved(detected, by);
+    QVERIFY(adjusted.origin == RegionOfInterest::Drawn);
+    QVERIFY(adjusted.limitation.isEmpty());
 }
 
 QTEST_MAIN(TestRoi)
