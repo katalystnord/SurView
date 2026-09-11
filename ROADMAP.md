@@ -1109,6 +1109,25 @@ as a backlog with everything in it.
   source back and taking its children down with it, and runs ctest in its own
   process group so one kill reaches the test binaries too. SIGKILL still cannot
   be caught, which is why this says which signal to use.
+- ⚑ **NOTHING HAS EVER CHECKED SURVIEW AGAINST ANYTHING BUT ITSELF, and that is
+  now the largest single gap in this project's evidence.** The synthetic
+  examples are ours, the answers they state are ours, and the accuracy bounds
+  they are measured against are ours. That is sound verification of the
+  IMPLEMENTATION - it says the code computes what we intended - and it says
+  nothing at all about whether what we intended agrees with the field.
+
+  Two steps, cheapest first. Run the examples that ship through Ncorr or DICe
+  and compare the fields point for point: both are open, both read the same
+  images, and a disagreement between two independent implementations on one
+  photograph is worth more than any number of internal bounds. Then the
+  Society for Experimental Mechanics publishes DIC Challenge datasets with
+  known displacement fields, made precisely so codes can be set beside each
+  other - worth checking the current terms, and worth doing before any
+  outward-facing claim about accuracy.
+
+  Everything else in this file is a check we wrote marking work we did. This is
+  the one that is not.
+
 - **Coverage reporting** is present but not tracked over time.
 - The **walkthrough suite races with the X server's own pointer motion**;
   synthetic and real mouse moves arrive in an order that is not deterministic.
