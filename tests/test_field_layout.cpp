@@ -75,6 +75,7 @@ private slots:
     void a_reliability_channel_reads_the_opposite_way_from_the_rest();
     void the_recovered_channel_separates_a_repaired_point_from_a_first_solve_one();
     void a_flag_channel_is_not_drawn_or_described_like_a_measurement();
+    void a_flag_channel_spans_both_states_whatever_the_run_found();
     void the_noise_floor_is_put_against_the_movement_it_qualifies();
     void one_bad_point_does_not_set_the_number_that_speaks_for_the_field();
     void the_reported_spread_of_the_noise_floor_is_the_fields_not_its_worst_points();
@@ -443,6 +444,46 @@ void TestFieldLayout::a_flag_channel_is_not_drawn_or_described_like_a_measuremen
     QVERIFY(!fieldChannelIsStrain(FieldChannel::RecoveredOnSecondPass));
     QVERIFY(!fieldChannelIsReliability(FieldChannel::RecoveredOnSecondPass));
     QVERIFY(!fieldChannelIsCentredOnZero(FieldChannel::RecoveredOnSecondPass));
+}
+
+void TestFieldLayout::a_flag_channel_spans_both_states_whatever_the_run_found()
+{
+    // ⚑ A FLAG'S SCALE IS ITS TWO STATES, NOT ITS DATA. Ranged over what the
+    // run happens to hold, a field where nothing was repaired gives lowest ==
+    // highest == 0, and every measured point then takes the extreme colour: a
+    // map painted entirely in "repaired" on a run that repaired nothing. That
+    // is the most misleading picture this channel can produce, and it appears
+    // exactly on the runs a reader is least suspicious of.
+    //
+    // The case beside this one asks whether the channel IS a flag. Nothing
+    // asked what its colour range comes out as, so the branch that answers
+    // could be made to report no range at all.
+    CorrelationResult nothingRepaired;
+    nothingRepaired.gridColumns = 3;
+    nothingRepaired.gridRows = 1;
+    nothingRepaired.recoveryRequested = true;
+    nothingRepaired.points << measured(0, 1.f, 0.f) << measured(1, 1.f, 0.f)
+                           << measured(2, 1.f, 0.f);
+
+    double lowest = 0.0;
+    double highest = 0.0;
+    QVERIFY2(fieldColourRange(nothingRepaired, FieldChannel::RecoveredOnSecondPass,
+                              lowest, highest),
+             "a run that repaired nothing left the repair map with no scale");
+    QCOMPARE(lowest, 0.0);
+    QCOMPARE(highest, 1.0);
+
+    // And a run where every point was repaired reads the same way round, so the
+    // two states keep the same colours between runs. A scale that flipped with
+    // the data would make two runs of the same specimen look opposite.
+    CorrelationResult allRepaired = nothingRepaired;
+    for (CorrelationPoint &point : allRepaired.points)
+        point.recovered = true;
+
+    QVERIFY(fieldColourRange(allRepaired, FieldChannel::RecoveredOnSecondPass,
+                             lowest, highest));
+    QCOMPARE(lowest, 0.0);
+    QCOMPARE(highest, 1.0);
 }
 
 void TestFieldLayout::a_reliability_channel_reads_the_opposite_way_from_the_rest()

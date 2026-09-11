@@ -24,6 +24,14 @@
 // NEGATIVE CHECK (2026-08-19): recorded against the cases below.
 
 #include "core/Correlation.h"
+// ⚑ ONE SURVIVOR IN bankIncrement() IS CLOSED BY ARGUMENT (2026-09-11): its
+// loop bound widened from `i < count` to `<=` reads one past the end of two
+// vectors, which is undefined behaviour and not an assertion. The same
+// reasoning as the identical mutants in Recovery.cpp and KnownAnswer.cpp, and
+// the same lesson the chunking family in Correlation.cpp taught: a verdict that
+// depends on what an out-of-bounds read happens to do is a verdict that does
+// not travel between builds.
+
 #include "core/ReferenceUpdate.h"
 
 #include <QTest>
