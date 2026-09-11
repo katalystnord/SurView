@@ -1346,8 +1346,17 @@ decisions:
   polygon drawing in the viewport with an on-screen mode bar carrying its own
   Undo/Close/Cancel, an Auto-detect button over the same `AutoROI`, and the
   region restricting the POI grid via the engine's own `Polygon2D::contains()`.
-  Still to be designed: the live speckle-quality indicator, and editing a
-  boundary after it is committed (today it is redrawn, not adjusted).
+  **Editing a committed boundary is built** (2026-09-11): drag a corner to move
+  it, double-click an edge to add one there, right-click a corner to take it
+  out, with three corners as the floor and the refusal said rather than done
+  silently. ⚑ All three are LISTED IN THE PROJECT TREE, because none of them is
+  visible on the image: the handles only announce themselves once the pointer is
+  already over one, and a capability nobody has a reason to look for is one this
+  project treats as absent. That listing is itself a fix - written as one line
+  the sentence was the half the dock elided, while a case asserting "the screen
+  says dragging is possible" passed on the strength of a string nobody could
+  read. Still to be designed: the live speckle-quality indicator, and moving a
+  whole region rather than its corners one at a time.
 - **VTK `.vtu` export**: confirmed a real differentiator empirically - only
   1 of 11 tools reviewed has any VTK-family export. **Built 2026-08-19** (see
   *The field leaving the application* above): points and quad cells, every

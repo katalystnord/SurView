@@ -1,5 +1,7 @@
 #include "core/Roi.h"
 
+#include <algorithm>
+
 #include <QCoreApplication>
 
 QRect RegionOfInterest::bounds() const
@@ -52,6 +54,35 @@ int cornerNear(const RegionOfInterest &roi, const QPoint &at, double reach)
     return nearest;
 }
 
+namespace {
+
+// Squared distance from a point to a segment, so nothing takes a square root to
+// answer a question that only compares.
+double squaredDistanceToSegment(const QPoint &at, const QPoint &from, const QPoint &to)
+{
+    const double dx = to.x() - from.x();
+    const double dy = to.y() - from.y();
+    const double lengthSquared = dx * dx + dy * dy;
+    if (lengthSquared <= 0.0) {
+        // A segment of no length is its own endpoint.
+        const double px = at.x() - from.x();
+        const double py = at.y() - from.y();
+        return px * px + py * py;
+    }
+    // Where the foot of the perpendicular falls along the segment, clamped to
+    // its ends: past either end the nearest point IS that end, and an unclamped
+    // projection would measure to a point the edge does not reach.
+    double t = ((at.x() - from.x()) * dx + (at.y() - from.y()) * dy) / lengthSquared;
+    t = std::clamp(t, 0.0, 1.0);
+    const double nearestX = from.x() + t * dx;
+    const double nearestY = from.y() + t * dy;
+    const double ox = at.x() - nearestX;
+    const double oy = at.y() - nearestY;
+    return ox * ox + oy * oy;
+}
+
+}  // namespace
+
 RegionOfInterest withCornerMoved(const RegionOfInterest &roi, int corner,
                                  const QPoint &to)
 {
@@ -67,6 +98,61 @@ RegionOfInterest withCornerMoved(const RegionOfInterest &roi, int corner,
     moved.limitation.clear();
     return moved;
 }
+
+RegionOfInterest withCornerInserted(const RegionOfInterest &roi, int edge,
+                                    const QPoint &at)
+{
+    if (edge < 0 || edge >= roi.vertices.size())
+        return roi;
+
+    RegionOfInterest grown = roi;
+    grown.vertices.insert(edge + 1, at);
+
+    // As withCornerMoved(): what a person has adjusted is theirs, not the
+    // detector's, and the detector's caveat stops describing it.
+    grown.origin = RegionOfInterest::Drawn;
+    grown.limitation.clear();
+    return grown;
+}
+
+RegionOfInterest withCornerRemoved(const RegionOfInterest &roi, int corner)
+{
+    if (corner < 0 || corner >= roi.vertices.size())
+        return roi;
+    // Three corners are the fewest that enclose anything. See the header.
+    if (roi.vertices.size() <= 3)
+        return roi;
+
+    RegionOfInterest reduced = roi;
+    reduced.vertices.remove(corner);
+    reduced.origin = RegionOfInterest::Drawn;
+    reduced.limitation.clear();
+    return reduced;
+}
+
+int edgeNear(const RegionOfInterest &roi, const QPoint &at, double reach)
+{
+    if (!roi.isValid())
+        return -1;
+
+    const double reachSquared = reach * reach;
+    int nearest = -1;
+    double nearestDistance = reachSquared;
+
+    for (int i = 0; i < roi.vertices.size(); i++) {
+        // The edge from corner i to the next one, wrapping at the end so the
+        // closing edge is one of them.
+        const QPoint &from = roi.vertices.at(i);
+        const QPoint &to = roi.vertices.at((i + 1) % roi.vertices.size());
+        const double distance = squaredDistanceToSegment(at, from, to);
+        if (distance <= nearestDistance) {
+            nearest = i;
+            nearestDistance = distance;
+        }
+    }
+    return nearest;
+}
+
 
 bool RegionOfInterest::hasHoles() const
 {

@@ -379,6 +379,8 @@ private slots:
     void the_shipped_examples_can_be_opened_from_the_menu();
     void a_session_saved_and_reopened_is_the_session_that_was_saved();
     void a_committed_region_can_be_adjusted_without_drawing_it_again();
+    void a_corner_can_be_added_to_an_edge_and_taken_out_again_on_the_image();
+    void a_refusal_to_remove_a_corner_does_not_take_the_picture_with_it();
     void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
     void the_repaired_points_can_be_seen_on_the_map_and_counted_beside_it();
@@ -2901,10 +2903,19 @@ void TestWorkspaceWalkthrough::the_region_says_it_can_be_adjusted_where_the_pane
     for (int c = 0; c < region->childCount(); c++)
         lines << region->child(c)->text(0);
 
-    QVERIFY2(lines.filter(QStringLiteral("Drag"), Qt::CaseInsensitive).size() == 1,
-             qPrintable(QStringLiteral("nothing under the region tells a reader "
-                                       "the corners can be dragged; it lists: %1")
-                            .arg(lines.join(QStringLiteral(" | ")))));
+    // ⚑ ALL THREE GESTURES, each in words. Moving a corner, adding one and
+    // taking one out are three different things a region answers to, and not
+    // one of them is visible on the image: a reader has no reason to try an
+    // edge or a right-click unless the panel says so.
+    for (const QString &gesture : {QStringLiteral("drag"),
+                                   QStringLiteral("add a corner"),
+                                   QStringLiteral("take it out")}) {
+        QVERIFY2(!lines.filter(gesture, Qt::CaseInsensitive).isEmpty(),
+                 qPrintable(QStringLiteral("nothing under the region mentions "
+                                           "\"%1\"; it lists: %2")
+                                .arg(gesture)
+                                .arg(lines.join(QStringLiteral(" | ")))));
+    }
 
     // ⚑ Expanded, not folded. A hint behind a disclosure arrow is a hint nobody
     // has, which is the same rule the Analysis panel follows for a section that
@@ -2922,6 +2933,110 @@ void TestWorkspaceWalkthrough::the_region_says_it_can_be_adjusted_where_the_pane
                                        "will be elided by the dock: %2")
                             .arg(region->text(0).size())
                             .arg(region->text(0))));
+}
+
+void TestWorkspaceWalkthrough::a_corner_can_be_added_to_an_edge_and_taken_out_again_on_the_image()
+{
+    // ⚑ ONE CORNER TOO FEW USED TO COST THE WHOLE BOUNDARY. Moving a corner was
+    // the only edit a committed region allowed, so following a curve a little
+    // better, or working round a fixture that turned out to be in shot, meant
+    // placing every corner again from the first.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
+                                QPoint(170, 110), QPoint(60, 110)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    QCOMPARE(window.roi().vertices.size(), 4);
+
+    // The screen has to say both gestures are possible before a test may use
+    // them, which is the rule this whole suite is written under.
+    const QString said = projectLine(&window, QStringLiteral("Region of interest"));
+    QVERIFY2(said.contains(QStringLiteral("add a corner"), Qt::CaseInsensitive),
+             qPrintable(said));
+    QVERIFY2(said.contains(QStringLiteral("take it out"), Qt::CaseInsensitive),
+             qPrintable(said));
+
+    // Halfway down the right-hand edge, which is far from both of its ends -
+    // the reason the viewport asks which EDGE is under the pointer rather than
+    // which corner is nearest.
+    const QPoint onTheEdge = widgetPointForPixel(viewport, 170, 80);
+    QTest::mouseDClick(viewport, Qt::LeftButton, Qt::NoModifier, onTheEdge);
+    QTest::qWait(50);
+
+    const RegionOfInterest grown = window.roi();
+    QCOMPARE(grown.vertices.size(), 5);
+    // ⚑ In the ring's own order, between the corners whose edge it was placed
+    // on. Appended at the end instead, the boundary crosses itself and what
+    // counts as inside stops meaning what the reader drew.
+    QCOMPARE(grown.vertices.at(1), QPoint(170, 50));
+    QCOMPARE(grown.vertices.at(3), QPoint(170, 110));
+    QVERIFY2(qAbs(grown.vertices.at(2).x() - 170) <= 2
+                 && qAbs(grown.vertices.at(2).y() - 80) <= 2,
+             qPrintable(QStringLiteral("the new corner landed at %1,%2")
+                            .arg(grown.vertices.at(2).x())
+                            .arg(grown.vertices.at(2).y())));
+
+    // And out again, on the corner itself.
+    QTest::mouseClick(viewport, Qt::RightButton, Qt::NoModifier, onTheEdge);
+    QTest::qWait(50);
+    QCOMPARE(window.roi().vertices.size(), 4);
+}
+
+void TestWorkspaceWalkthrough::a_refusal_to_remove_a_corner_does_not_take_the_picture_with_it()
+{
+    // ⚑ WRITTEN BECAUSE THE FIRST VERSION DID EXACTLY THAT. The refusal was
+    // reported through ImageViewport::showMessage(), which is the viewport's
+    // EMPTY-STATE text: it tears down the image and the boundary with it,
+    // because a message there means there are no pixels to show. Right-clicking
+    // the third corner of a triangle wiped the specimen off the screen.
+    //
+    // Found by driving the application and looking at it. No assertion about
+    // the region would have noticed: the region was correctly left alone.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50), QPoint(60, 110)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    QCOMPARE(window.roi().vertices.size(), 3);
+
+    QTest::mouseClick(viewport, Qt::RightButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, 170, 50));
+    QTest::qWait(50);
+
+    // The corner stays, because three is the fewest that enclose anything.
+    QCOMPARE(window.roi().vertices.size(), 3);
+
+    // ⚑ And so does everything else on screen. The image is still there, and
+    // the boundary is still drawn over it.
+    QVERIFY2(viewport->record().isValid(),
+             "the refusal took the image off the screen with it");
+    QVERIFY2(window.roi().isValid(),
+             "the refusal cleared the region it had just declined to change");
+
+    // The reader is told why, rather than left with a gesture that appears to
+    // do nothing.
+    auto *log = window.findChild<QPlainTextEdit *>();
+    QVERIFY(log);
+    QVERIFY2(log->toPlainText().contains(QStringLiteral("three corners"),
+                                         Qt::CaseInsensitive),
+             qPrintable(log->toPlainText()));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

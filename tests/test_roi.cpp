@@ -75,6 +75,9 @@ private slots:
     void a_subset_of_no_size_reaches_only_what_it_sits_on();
     void moving_a_corner_that_does_not_exist_leaves_the_region_alone();
     void the_first_corner_of_a_region_moves_like_any_other();
+    void a_corner_can_be_added_to_an_edge_without_redrawing_the_region();
+    void a_corner_can_be_taken_out_unless_it_is_one_of_the_last_three();
+    void the_edge_under_the_pointer_is_the_one_a_new_corner_joins();
     void a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it();
     void a_triangular_hole_is_a_hole_wherever_the_question_is_asked();
 };
@@ -574,6 +577,115 @@ void TestRoi::a_triangular_hole_is_a_hole_wherever_the_question_is_asked()
              "a two-corner ring excluded a point from the region");
     QVERIFY2(!subsetReachesAHole(twoCorners, 50, 30, 12),
              "a subset was said to reach a hole that encloses nothing");
+}
+
+void TestRoi::a_corner_can_be_added_to_an_edge_without_redrawing_the_region()
+{
+    // ⚑ ONE CORNER TOO FEW COST THE WHOLE BOUNDARY. A region could be drawn and
+    // its corners moved, and that was all: following a curve a little better,
+    // or working round a fixture that turned out to be in shot, meant placing
+    // every corner again from the first. On a specimen outline of a dozen
+    // corners that is the difference between an adjustment and a redraw.
+    //
+    // The new corner goes AFTER the edge's first corner, which is what keeps
+    // the ring in order: inserted anywhere else the boundary crosses itself,
+    // and a self-crossing ring is not a region at all - its inside is decided
+    // by a parity rule that no longer means what the reader drew.
+    RegionOfInterest square;
+    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+
+    const RegionOfInterest five = withCornerInserted(square, 1, QPoint(100, 50));
+    QCOMPARE(five.vertices.size(), 5);
+    QCOMPARE(five.vertices.at(2), QPoint(100, 50));
+
+    // The corners either side of it are the ones the edge joined, in the order
+    // they were in.
+    QCOMPARE(five.vertices.at(1), QPoint(100, 0));
+    QCOMPARE(five.vertices.at(3), QPoint(100, 100));
+
+    // The shape is unchanged by a corner placed ON its edge: a point inside
+    // stays inside, one outside stays outside.
+    QVERIFY(regionContains(five, 50, 50));
+    QVERIFY(!regionContains(five, 150, 50));
+
+    // An index that names no edge leaves the region alone rather than growing
+    // it somewhere arbitrary.
+    QCOMPARE(withCornerInserted(square, -1, QPoint(50, 50)).vertices, square.vertices);
+    QCOMPARE(withCornerInserted(square, 9, QPoint(50, 50)).vertices, square.vertices);
+
+    // ⚑ And an adjusted region is no longer the detector's proposal, the same
+    // rule moving a corner already follows.
+    RegionOfInterest detected = square;
+    detected.origin = RegionOfInterest::Detected;
+    detected.limitation = QStringLiteral("single outline, no holes");
+    const RegionOfInterest adjusted = withCornerInserted(detected, 0, QPoint(50, 0));
+    QVERIFY(adjusted.origin == RegionOfInterest::Drawn);
+    QVERIFY(adjusted.limitation.isEmpty());
+}
+
+void TestRoi::a_corner_can_be_taken_out_unless_it_is_one_of_the_last_three()
+{
+    // The other half: a corner placed by mistake, or one left over from a
+    // boundary that has been adjusted past needing it.
+    RegionOfInterest five;
+    five.vertices = {QPoint(0, 0), QPoint(50, 0), QPoint(100, 0),
+                     QPoint(100, 100), QPoint(0, 100)};
+
+    const RegionOfInterest four = withCornerRemoved(five, 1);
+    QCOMPARE(four.vertices.size(), 4);
+    QCOMPARE(four.vertices.at(0), QPoint(0, 0));
+    QCOMPARE(four.vertices.at(1), QPoint(100, 0));
+    QVERIFY(regionContains(four, 50, 50));
+
+    // ⚑ THREE CORNERS IS THE FLOOR, and the rule is the same one the drawing
+    // mode states: fewer than three enclose nothing. Taking the fourth corner
+    // out of a triangle would leave a region that cannot be measured in, so it
+    // is refused and the region comes back as it was - rather than accepted,
+    // leaving a reader with a boundary that has silently stopped being one.
+    RegionOfInterest triangle;
+    triangle.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(50, 100)};
+    QCOMPARE(withCornerRemoved(triangle, 1).vertices, triangle.vertices);
+
+    // An index that names no corner leaves it alone, both ends.
+    QCOMPARE(withCornerRemoved(five, -1).vertices, five.vertices);
+    QCOMPARE(withCornerRemoved(five, 5).vertices, five.vertices);
+
+    // ⚑ The FIRST corner comes out like any other, which the cases above this
+    // file have twice found to be where an index check is tightened by mistake.
+    const RegionOfInterest withoutFirst = withCornerRemoved(five, 0);
+    QCOMPARE(withoutFirst.vertices.size(), 4);
+    QCOMPARE(withoutFirst.vertices.at(0), QPoint(50, 0));
+
+    RegionOfInterest detected = five;
+    detected.origin = RegionOfInterest::Detected;
+    const RegionOfInterest adjusted = withCornerRemoved(detected, 1);
+    QVERIFY(adjusted.origin == RegionOfInterest::Drawn);
+}
+
+void TestRoi::the_edge_under_the_pointer_is_the_one_a_new_corner_joins()
+{
+    // The viewport has to turn a click into an edge before it can add a corner
+    // to it, and "nearest corner" is the wrong question: a click halfway along
+    // a side is far from both of its ends.
+    RegionOfInterest square;
+    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+
+    // Halfway down the right-hand side: the edge from corner 1 to corner 2.
+    QCOMPARE(edgeNear(square, QPoint(100, 50), 6.0), 1);
+    // Halfway along the top: the edge from corner 0 to corner 1.
+    QCOMPARE(edgeNear(square, QPoint(50, 0), 6.0), 0);
+    // ⚑ The CLOSING edge, from the last corner back to the first, which is the
+    // one an implementation walking pairs of vertices forgets.
+    QCOMPARE(edgeNear(square, QPoint(0, 50), 6.0), 3);
+
+    // Well clear of every edge is no edge at all, rather than the least bad one.
+    QCOMPARE(edgeNear(square, QPoint(50, 50), 6.0), -1);
+    QCOMPARE(edgeNear(square, QPoint(200, 200), 6.0), -1);
+
+    // A ring that encloses nothing has no edge to offer.
+    RegionOfInterest line;
+    line.vertices = {QPoint(0, 0), QPoint(100, 0)};
+    QCOMPARE(edgeNear(line, QPoint(50, 0), 6.0), -1);
 }
 
 QTEST_MAIN(TestRoi)

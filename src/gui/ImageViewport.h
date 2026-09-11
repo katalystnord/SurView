@@ -179,6 +179,17 @@ signals:
     // it hands the ring over and the window decides what to attach it to.
     void holeDrawn(const QVector<QPoint> &ring);
 
+    // A region edit the viewport declined, with the reason in the words the
+    // reader should see.
+    //
+    // ⚑ A SIGNAL RATHER THAN showMessage(). That method is the viewport's
+    // EMPTY-STATE text: it tears down the image and the boundary with it,
+    // because a message means there are no pixels to show. Used for a refusal
+    // it wipes the specimen off the screen - which is what it did, until
+    // driving the application showed it. A refusal is a sentence about a
+    // gesture, not the end of the picture.
+    void editRefused(const QString &reason);
+
     // Entering or leaving drawing mode, so the rest of the window can keep its
     // own controls consistent with a mode the user can see they are in.
     void roiDrawingChanged(bool drawing);

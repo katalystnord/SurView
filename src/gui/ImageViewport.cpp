@@ -1125,6 +1125,31 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
         }
     }
 
+    // ⚑ A corner taken out, on the corner itself. The refusal at three corners
+    // is SAID rather than done silently: a gesture that appears to do nothing
+    // reads as a broken control, where a sentence explains a rule the reader
+    // can then work with. Three is the same floor the drawing mode states while
+    // a boundary is being placed.
+    if (event->button() == Qt::RightButton && m_roiShown.isValid()) {
+        QPoint pixel;
+        if (widgetToImagePixel(event->position(), pixel)) {
+            const int corner =
+                cornerNear(m_roiShown, pixel, grabReachInPixels(event->position()));
+            if (corner >= 0) {
+                if (m_roiShown.vertices.size() <= 3) {
+                    emit editRefused(tr("A region needs at least three corners, "
+                                        "so that one cannot be taken out."));
+                } else {
+                    m_roiShown = withCornerRemoved(m_roiShown, corner);
+                    refreshRoiGeometry();
+                    emit roiDrawn(m_roiShown);
+                }
+                event->accept();
+                return;
+            }
+        }
+    }
+
     if (event->button() == Qt::LeftButton) {
         QPoint pixel;
         bool inside = false;
@@ -1166,9 +1191,18 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
     // corners are not just decoration.
     if (!m_roiDrawing && m_roiShown.isValid()) {
         QPoint pixel;
-        if (widgetToImagePixel(event->position(), pixel)
-            && cornerNear(m_roiShown, pixel, grabReachInPixels(event->position())) >= 0) {
-            setCursor(Qt::OpenHandCursor);
+        if (widgetToImagePixel(event->position(), pixel)) {
+            const double reach = grabReachInPixels(event->position());
+            if (cornerNear(m_roiShown, pixel, reach) >= 0) {
+                setCursor(Qt::OpenHandCursor);
+            } else if (edgeNear(m_roiShown, pixel, reach) >= 0) {
+                // A different cursor for a different gesture: the corners are
+                // picked up, the edges are added to, and a reader who has been
+                // told both needs to see which one is under the pointer.
+                setCursor(Qt::CrossCursor);
+            } else {
+                unsetCursor();
+            }
         } else {
             unsetCursor();
         }
@@ -1239,6 +1273,30 @@ void ImageViewport::mouseDoubleClickEvent(QMouseEvent *event)
         event->accept();
         return;
     }
+
+    // ⚑ A corner added to the edge under the pointer, on a region already
+    // committed. One corner too few used to cost the whole boundary: following
+    // a curve a little better meant placing every corner again from the first.
+    //
+    // The EDGE is asked for rather than the nearest corner, because a click
+    // halfway along a side is far from both of its ends - and the new corner
+    // goes into the ring in that edge's place, so the boundary cannot cross
+    // itself.
+    if (!m_roiDrawing && event->button() == Qt::LeftButton && m_roiShown.isValid()) {
+        QPoint pixel;
+        if (widgetToImagePixel(event->position(), pixel)) {
+            const int edge =
+                edgeNear(m_roiShown, pixel, grabReachInPixels(event->position()));
+            if (edge >= 0) {
+                m_roiShown = withCornerInserted(m_roiShown, edge, pixel);
+                refreshRoiGeometry();
+                emit roiDrawn(m_roiShown);
+                event->accept();
+                return;
+            }
+        }
+    }
+
     QVTKOpenGLNativeWidget::mouseDoubleClickEvent(event);
 }
 

@@ -158,6 +158,14 @@ MainWindow::MainWindow(QWidget *parent)
     setCentralWidget(m_viewport);
 
     connect(m_viewport, &ImageViewport::roiDrawn, this, &MainWindow::onRoiDrawn);
+    // Said in both places a reader looks: the status bar, which is where the
+    // window answers a gesture, and the log, which is where the session's own
+    // account of itself is kept.
+    connect(m_viewport, &ImageViewport::editRefused, this,
+            [this](const QString &reason) {
+                statusBar()->showMessage(reason, 6000);
+                log(reason);
+            });
     connect(m_viewport, &ImageViewport::holeDrawn, this, &MainWindow::onHoleDrawn);
     connect(m_viewport, &ImageViewport::extensometerPlaced, this,
             &MainWindow::onExtensometerPlaced);
@@ -1944,8 +1952,17 @@ void MainWindow::showRoiInProject()
     m_roiItem->setText(0, summary);
 
     qDeleteAll(m_roiItem->takeChildren());
-    auto *adjust = new QTreeWidgetItem(m_roiItem);
-    adjust->setText(0, tr("Drag a corner to adjust it"));
+    // ⚑ EVERY GESTURE THE REGION ANSWERS TO, in words, because none of them is
+    // visible on the image itself. The handles look grabbable once the pointer
+    // is over one and the cursor changes, but a reader has no reason to try an
+    // edge or a right-click, and a capability nobody has a reason to look for
+    // is one this project treats as absent.
+    for (const QString &gesture : {tr("Drag a corner to move it"),
+                                   tr("Double-click an edge to add a corner"),
+                                   tr("Right-click a corner to take it out")}) {
+        auto *line = new QTreeWidgetItem(m_roiItem);
+        line->setText(0, gesture);
+    }
     auto *extent = new QTreeWidgetItem(m_roiItem);
     extent->setText(0, tr("%1 x %2 px box").arg(box.width()).arg(box.height()));
     m_roiItem->setExpanded(true);

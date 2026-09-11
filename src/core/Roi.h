@@ -111,5 +111,37 @@ bool subsetReachesAHole(const RegionOfInterest &roi, int x, int y, int subsetRad
 RegionOfInterest withCornerMoved(const RegionOfInterest &roi, int corner,
                                  const QPoint &to);
 
+// `roi` with a corner added to the edge that begins at `edge`, placed at `at`.
+// An index naming no edge returns it untouched.
+//
+// ⚑ The new corner goes immediately AFTER that edge's first corner, which is
+// what keeps the ring in order. Appended anywhere else the boundary crosses
+// itself, and a self-crossing ring is not a region: what counts as inside is
+// then decided by a parity rule that no longer means what the reader drew.
+//
+// Like withCornerMoved(), the result is always Drawn: a region a person has
+// adjusted is no longer the one the detector proposed.
+RegionOfInterest withCornerInserted(const RegionOfInterest &roi, int edge,
+                                    const QPoint &at);
+
+// `roi` with one corner taken out. An index naming no corner returns it
+// untouched.
+//
+// ⚑ AND SO DOES A REGION OF THREE. Three corners is the fewest that enclose
+// anything - the same floor the drawing mode states while a boundary is being
+// placed - so the last three are refused rather than removed. Accepting would
+// leave a reader holding a boundary that has silently stopped being one, which
+// is worse than a gesture that declines.
+RegionOfInterest withCornerRemoved(const RegionOfInterest &roi, int corner);
+
+// The edge whose line passes within `reach` of `at`, as the index of the corner
+// it begins at, or -1.
+//
+// ⚑ Asked instead of "which corner is nearest" because a click halfway along a
+// side is far from both of its ends. Includes the CLOSING edge from the last
+// corner back to the first, which is the one a walk over pairs of vertices
+// leaves out.
+int edgeNear(const RegionOfInterest &roi, const QPoint &at, double reach);
+
 // Carried as a signal argument from the viewport to the window.
 Q_DECLARE_METATYPE(RegionOfInterest)
