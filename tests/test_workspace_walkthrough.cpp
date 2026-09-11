@@ -111,13 +111,25 @@ QAction *actionLabelled(QWidget *root, const QString &text)
 }
 
 // The project tree line whose text starts with a given heading.
+// ⚑ The heading's line AND the lines under it, because that is what the panel
+// SHOWS. It used to return the top-level text alone, and a case asking whether
+// the screen tells a reader the corners can be dragged was answered by a
+// sentence the dock was eliding: the string was in the item, and the reader
+// could not see it. Splitting the facts onto children is what fixed that, and
+// this helper had to learn where the screen puts text or every case built on it
+// would have gone red for the wrong reason.
 QString projectLine(QWidget *root, const QString &heading)
 {
     for (QTreeWidget *tree : root->findChildren<QTreeWidget *>()) {
         for (int i = 0; i < tree->topLevelItemCount(); i++) {
-            const QString text = tree->topLevelItem(i)->text(0);
-            if (text.startsWith(heading))
-                return text;
+            QTreeWidgetItem *top = tree->topLevelItem(i);
+            const QString text = top->text(0);
+            if (!text.startsWith(heading))
+                continue;
+            QStringList shown{text};
+            for (int c = 0; c < top->childCount(); c++)
+                shown << top->child(c)->text(0);
+            return shown.join(QStringLiteral(" \u00b7 "));
         }
     }
     return QString();
@@ -339,6 +351,7 @@ private slots:
     void moving_down_and_right_on_screen_moves_down_and_right_in_the_image();
     void a_region_drawn_on_screen_is_reported_in_the_project();
     void cancelling_keeps_the_region_that_was_already_in_force();
+    void the_region_says_it_can_be_adjusted_where_the_panel_can_show_it();
     void a_correlation_inside_a_region_recovers_a_known_shift();
 
     void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
@@ -2498,12 +2511,32 @@ void TestWorkspaceWalkthrough::what_the_camera_recorded_is_readable_before_any_c
     const ImageRecord &record = viewport->record();
     QVERIFY(record.isValid());
 
-    // Point at the middle of the picture, with no correlation anywhere.
+    // ⚑ READ FROM A CLICK, NEVER A HOVER. A synthetic mouse move races with the
+    // X server's own pointer motion and the last one wins, so the panel answers
+    // about wherever the pointer actually sat - which is how this case came to
+    // fail on a loaded machine while passing on a quiet one. The rule was
+    // established on 2026-09-02 and applied to every other reading in this
+    // suite; this case was missed, and went on reading a hover until it was
+    // caught here on 2026-09-11.
+    //
+    // A click is unambiguous, and it is what the panel itself instructs: "Click
+    // to pin a reading so it stays while you look away". The walkthrough is
+    // still only doing what the screen tells it to.
     const QPoint at = widgetPointForPixel(viewport, record.width / 2.0,
                                           record.height / 2.0);
-    QTest::mouseMove(viewport, at);
-    QTest::qWait(80);
-    QTest::mouseMove(viewport, at + QPoint(1, 0));
+
+    // ⚑ What the panel says BEFORE anything is pinned, which is where it tells a
+    // reader what comes next. Once a reading is pinned the panel is showing that
+    // reading and the invitation it replaced is no longer on screen, so the
+    // sentence about a run adding a measurement is asked for here, in the state
+    // that carries it, rather than demanded of a state that does not.
+    const QString inviting = pointPanelText(&window);
+    QVERIFY2(inviting.contains(QStringLiteral("measure"), Qt::CaseInsensitive),
+             qPrintable(QStringLiteral("before a run, the panel does not say a "
+                                       "correlation will add a measurement at "
+                                       "the same point:\n%1").arg(inviting)));
+
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at);
     QTest::qWait(80);
 
     const QString said = pointPanelText(&window);
@@ -2536,9 +2569,9 @@ void TestWorkspaceWalkthrough::what_the_camera_recorded_is_readable_before_any_c
                             .arg(sampled.first()).arg(said)));
     QVERIFY2(said.contains(record.pixelTypeName()), qPrintable(said));
 
-    // And it says a field would add to this rather than replacing it, so the
-    // next step is visible from here.
-    QVERIFY2(said.contains(QStringLiteral("measure"), Qt::CaseInsensitive),
+    // And the pinned reading says it is pinned, so the reader knows why it is
+    // staying put and how to let it go.
+    QVERIFY2(said.contains(QStringLiteral("pinned"), Qt::CaseInsensitive),
              qPrintable(said));
 }
 
@@ -2819,6 +2852,76 @@ void TestWorkspaceWalkthrough::a_folded_section_still_governs_the_run()
     QVERIFY2(result.strainRequested,
              "the folded Strain section stopped being asked for");
     QVERIFY2(result.strainFitted > 0, "no strain was fitted under folded settings");
+}
+
+void TestWorkspaceWalkthrough::the_region_says_it_can_be_adjusted_where_the_panel_can_show_it()
+{
+    // ⚑ A CAPABILITY NOBODY CAN SEE IS ONE THIS PROJECT TREATS AS ABSENT. The
+    // corners of a committed region can be dragged, the handles look grabbable
+    // and the cursor changes over one - but a reader has to be over a corner
+    // already to learn any of that, so the project tree is what says so.
+    //
+    // ⚑ AND IT HAS TO FIT. Written as one line the sentence was the half the
+    // panel threw away: at the dock's own width the item elided to "Region of
+    // interest - drawn by hand, 4 corn...", and the comment beside the code
+    // claimed the tree told the reader something the screen did not. Found by
+    // driving the application and looking at it, 2026-09-11.
+    //
+    // This case cannot see an elision - the text is in the item either way -
+    // so it pins the property that MAKES the sentence survivable: the
+    // affordance is an item of its own, short, rather than a tail on a line
+    // that also carries the facts. A line long enough to be elided is a line
+    // this rule has stopped protecting.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    const QPoint centre(viewport->width() / 2, viewport->height() / 2);
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre);
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(60, 0));
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(60, 40));
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(0, 40));
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+
+    QTreeWidgetItem *region = nullptr;
+    for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
+        for (int i = 0; i < tree->topLevelItemCount(); i++) {
+            QTreeWidgetItem *top = tree->topLevelItem(i);
+            if (top->text(0).startsWith(QStringLiteral("Region of interest")))
+                region = top;
+        }
+    }
+    QVERIFY2(region, "the project does not list the region of interest at all");
+
+    QStringList lines;
+    for (int c = 0; c < region->childCount(); c++)
+        lines << region->child(c)->text(0);
+
+    QVERIFY2(lines.filter(QStringLiteral("Drag"), Qt::CaseInsensitive).size() == 1,
+             qPrintable(QStringLiteral("nothing under the region tells a reader "
+                                       "the corners can be dragged; it lists: %1")
+                            .arg(lines.join(QStringLiteral(" | ")))));
+
+    // ⚑ Expanded, not folded. A hint behind a disclosure arrow is a hint nobody
+    // has, which is the same rule the Analysis panel follows for a section that
+    // acts.
+    QVERIFY2(region->isExpanded(),
+             "the region's own lines are folded away, so the affordance is "
+             "hidden behind a disclosure arrow");
+
+    // And the parent stays short enough for a dock to show it. The number is
+    // the dock's own order of magnitude rather than a measured pixel width:
+    // what is being prevented is a line that grows until the panel eats its
+    // tail, which is exactly what happened.
+    QVERIFY2(region->text(0).size() < 60,
+             qPrintable(QStringLiteral("the region's line is %1 characters and "
+                                       "will be elided by the dock: %2")
+                            .arg(region->text(0).size())
+                            .arg(region->text(0))));
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

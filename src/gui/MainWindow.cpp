@@ -1915,6 +1915,7 @@ void MainWindow::showRoiInProject()
     if (!m_roi.isValid()) {
         m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
         m_roiItem->setToolTip(0, QString());
+        qDeleteAll(m_roiItem->takeChildren());
         m_viewport->clearRoi();
         return;
     }
@@ -1924,19 +1925,37 @@ void MainWindow::showRoiInProject()
     // The handles look grabbable and the cursor changes over one, but a reader
     // has to be over a corner already to learn that, and a capability nobody
     // has a reason to look for is one this project treats as absent.
-    const QString summary = tr("Region of interest - %1, %2 corners, %3×%4 px box "
-                               "(drag a corner to adjust it)")
-                                .arg(m_roi.originText())
+    //
+    // ⚑ AND IT HAS TO FIT. Written as one line it did not: at the dock's own
+    // width the item elided to "Region of interest - drawn by hand, 4 corn...",
+    // so the sentence that carries the whole affordance was the half thrown
+    // away, and the comment above was asserting something the screen did not
+    // do. Found by driving the application and looking at it, which is the only
+    // thing that can find it -- the text is present in the item either way, so
+    // no test of the item's text can see the panel eat it.
+    //
+    // So the facts go on the parent, short enough to survive, and the rest on
+    // children of their own. They are expanded below rather than left folded,
+    // for the reason the Analysis panel folds nothing that acts: a hint nobody
+    // can see is a hint nobody has.
+    const QString summary = tr("Region of interest - %1 corners, %2")
                                 .arg(m_roi.vertices.size())
-                                .arg(box.width())
-                                .arg(box.height());
+                                .arg(m_roi.originText());
     m_roiItem->setText(0, summary);
+
+    qDeleteAll(m_roiItem->takeChildren());
+    auto *adjust = new QTreeWidgetItem(m_roiItem);
+    adjust->setText(0, tr("Drag a corner to adjust it"));
+    auto *extent = new QTreeWidgetItem(m_roiItem);
+    extent->setText(0, tr("%1 x %2 px box").arg(box.width()).arg(box.height()));
+    m_roiItem->setExpanded(true);
 
     // What the region does NOT do sits beside it rather than in a manual. Both
     // sentences are easy to assume wrongly, and assuming either one wrongly
     // changes how the resulting field should be read.
     QStringList notes;
-    notes << summary;
+    notes << tr("%1, %2 x %3 px box. Drag a corner to adjust it.")
+                 .arg(summary).arg(box.width()).arg(box.height());
     notes << tr("Selects the point centres that get measured. Each subset still "
                 "reaches up to its radius beyond the boundary, so pixels just "
                 "outside it contribute to the points near its edge.");
