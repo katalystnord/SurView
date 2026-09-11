@@ -1043,6 +1043,34 @@ as a backlog with everything in it.
   instead of thirty-three for most core files; `Correlation.h` is included by
   nineteen of them, so the central types benefit least.
 
+  ⚑ **A COMPLETE FRESH SWEEP OF CORE, 2026-09-10/11 overnight, is the first
+  one this project has had: 84.8%, 612 killed of 722 viable, 110 survivors**
+  out of 1062 mutants generated (340 did not compile and are excluded). Not a
+  replay of a recorded list - every mutant generated afresh, so the figure is
+  the suite's own, measured against the tree as it now stands.
+
+  It is a FLOOR, for the reason the fast half always is: the slow cases are
+  excluded, so anything only they would catch is counted as a survivor. Sampled
+  afterwards against the complete suite, 8 of the first 14 survivors died at
+  once - so the real figure is meaningfully higher, and the honest number to
+  quote is the floor with that sample beside it rather than an extrapolation.
+
+  The localisation is what made a fresh sweep possible at all, and the run
+  reports its own quality: **601 of the 612 kills were found by the narrow test
+  set alone, and only 11 needed the whole suite.** The include graph is a good
+  guide to coverage on this project, and now says so with a number.
+
+  Four more gaps came out of the night's survivors, each one a case that covered
+  a rule and missed the shape everybody uses: a hole with FOUR corners (the case
+  used a triangle, which is the boundary, so "three or more" and "fewer than
+  four" were the same rule to it); a flag channel's colour scale, which could
+  report no range at all and paint a whole field as "repaired" on a run that
+  repaired nothing; the provenance sentence, where asking that "drawn by hand"
+  and "detected from the speckle" merely DIFFER lets them be swapped; and the
+  four-corner rule in Series.cpp, recorded as closed because the wholesale swap
+  segfaults - where a single condition turned into an AND lets a cell missing
+  exactly that corner through, and the case had removed one corner of four.
+
   It is still not ROUTINE, which is the actual debt: a sweep costs hours and
   nothing runs one on a schedule. What this round showed is that the cheap half
   is the valuable half - replaying the SURVIVOR list is minutes of setup and
