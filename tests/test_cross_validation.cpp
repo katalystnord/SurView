@@ -310,15 +310,17 @@ void TestCrossValidation::an_external_rigid_shift_is_measured_as_the_shift_it_st
             agreementWithStatedShift(result.points, stated);
 
         QVERIFY2(agreement.measured, qPrintable(QStringLiteral("nothing solved on ") + name));
-        // ⚑ 841 OF 900, AND THE MISSING 59 ARE STRUCTURAL RATHER THAN A
-        // PROPERTY OF THIS SET. They are exactly the grid's first row and
-        // first column -- the points whose subset touches pixel 0 -- and they
-        // fail on every frame including the one shifted by nothing at all, so
-        // they are not about the shift, the noise or the speckle. A subset
-        // starting exactly at the image edge leaves the target interpolator no
-        // pixel outside itself to work with. Recorded in the ROADMAP; the bar
-        // here is set below it so this case measures ACCURACY and does not
-        // silently become the place that grid defect is pinned.
+        // ⚑ 841 OF 900, AND THE MISSING 59 ARE OURS RATHER THAN A PROPERTY OF
+        // THIS SET. They are exactly the grid's first row and first column, and
+        // they fail on every frame including the one shifted by nothing at all.
+        // The grid lays its first point at exactly one subset radius from the
+        // edge, so that subset's outermost sample sits at 0, and the engine's
+        // BicubicBspline refuses any sample below 1. Verified rather than
+        // inferred, and the ROADMAP carries the two wrong explanations tried
+        // first. The bar here is set below it deliberately: this case measures
+        // ACCURACY, and must not quietly become the place that grid defect is
+        // pinned -- when it is fixed, this number rises and nothing here should
+        // have to change.
         QVERIFY2(agreement.solved > 800,
                  qPrintable(QStringLiteral("only %1 of %2 points solved on %3")
                                 .arg(agreement.solved)

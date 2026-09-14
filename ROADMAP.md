@@ -1186,7 +1186,7 @@ as a backlog with everything in it.
      it ships a synthetic accuracy benchmark, and its BSD-3-Clause licence is -
      unlike everything else here - explicitly redistributable with attribution.
 
-- ⚑ **OUR POI GRID PLACES 59 POINTS PER FRAME THAT CAN NEVER BE SOLVED**, and
+- ⚑ **OUR POI GRID PLACES A ROW AND A COLUMN THAT CAN NEVER BE MEASURED**, and
   it took external data to notice. Found 2026-09-14 while checking the solve
   counts of the cross-validation above, which is the only reason anybody counted
   ATTEMPTED against SOLVED on a clean image rather than reading the solved
@@ -1194,31 +1194,66 @@ as a backlog with everything in it.
 
   On Sample 3 the run attempts 900 points and solves 841, every frame. The 59
   are not scattered and are nothing to do with the specimen: they are exactly
-  the grid's **first row and first column**, they are the same 59 on every
-  frame, and they fail on the frame shifted by 0.00 px as surely as on the rest.
-  What they have in common is that their subset starts exactly at pixel 0, which
-  leaves the target interpolator no pixel outside the subset to work with. The
-  grid lays its first point at exactly one subset radius from the edge, so that
-  row and column have zero margin by construction.
+  the grid's first row and first column, the same 59 on every frame, and they
+  fail on the frame shifted by 0.00 px as surely as on the rest.
 
-  Why it matters more than 6 per cent of a field. The engine reports them as
+  **The mechanism, verified rather than inferred** - the first two explanations
+  tried were both wrong, and each looked right until it was checked:
+
+  - It is NOT the engine's own subset bounds test. `ICGN2D1::compute()` refuses
+    `poi->x - subset_rx < 0`, and at x = 16 with radius 16 that is 0, which is
+    not less than 0. It passes.
+  - It is NOT the two-pixel band at the image edge where `oc_gradient.cpp`
+    computes no gradient (`for c = 2; c < width - 2`). A point at x = 17 has
+    column 1 inside its subset and solves perfectly.
+  - It IS `BicubicBspline::compute()`, which returns OUT_OF_BOUNDS for any
+    sample at `x < 1 || y < 1 || x >= width - 2 || y >= height - 2`. Our grid
+    lays its first point at exactly one subset radius from the edge, so that
+    subset's outermost sample sits at 0, and the interpolator refuses it as soon
+    as the specimen moves by anything less than a whole pixel.
+
+  ⚑ **AND THE ANOMALY THAT LOOKED LIKE NOISE CONFIRMS IT EXACTLY.** The frame
+  shifted by 1.00 px solves 858 rather than 841. At a displacement of exactly
+  one pixel the outermost sample lands at 1.0, which is not less than 1, so it
+  is in bounds - and only the points whose measured u came out at or above 1.0
+  recover, which is why it is 17 of the 59 and not all of them. That knife edge
+  is the mechanism above, seen from the other side. Settled empirically too: an
+  ROI forcing the first column to x = 16 solves 0 of 8, and to x = 17 solves 8
+  of 8.
+
+  Why it matters more than 6 per cent of a field. The engine reports these as
   "subset out of image bounds, or invalid (NaN/out-of-range) initial guess",
   which reads to anybody looking at a hole as a problem with their PHOTOGRAPH -
   poor speckle, bad lighting, something at the edge of the specimen. It is
-  neither: those points were never placeable, and the application knew the
-  subset radius and the image size before it laid a single one down. A point
-  that cannot be measured for a reason we could state in advance should not be
-  attempted and then reported as a failure, which is the same rule as every
-  other "an absence is not a measurement" in this project, one step earlier in
-  the pipeline.
+  neither: we knew the subset radius and the image size before laying a single
+  point down.
 
-  Wants deciding rather than patching: whether `poiGridExtent()` insets by the
-  interpolator's margin as well as the subset radius (and whether that margin is
-  the engine's to state rather than ours to guess), or whether the grid keeps
-  placing them and the run reports them apart from real failures. The first is
-  tidier and silently shrinks every field by a row and a column; the second
-  keeps the field and needs a word on screen for a kind of hole that is ours,
-  not the specimen's.
+  ⚑ **The same fault is on the far edge and we have not seen it only by luck.**
+  `safeLastX` is `width - 1 - subsetRadius`, whose subset reaches sample
+  `width - 1`, and the interpolator wants below `width - 2`. On a 512 px image
+  with a 16 px step the last column lands at 480 rather than 495, so it never
+  bites. A grid step that divides differently would lose the far row and column
+  in exactly the same way.
+
+  **What it wants, and it is two things rather than one.** The inset itself is a
+  plain fix: the first placeable point is at `subsetRadius + 1`, not
+  `subsetRadius`, and the last at `width - 3 - subsetRadius`. But an inset
+  cannot be the whole answer, because the constraint is on the sample AFTER
+  displacement and no grid can know the displacement in advance: a point one
+  pixel in whose specimen moves half a pixel toward the edge is refused for a
+  reason that IS about the measurement. So the two cases want telling apart -
+  a point that was never placeable, which is ours and should not be attempted,
+  and a point whose subset left the interpolatable area once the specimen moved,
+  which is a real result and should say so in those words rather than in the
+  engine's.
+
+  ⚑ **And the margin is the ENGINE'S to state, not ours to hard-code.** A `1`
+  and a `2` copied into `poiGridExtent()` are two magic numbers that go quietly
+  wrong the day the interpolator changes - and upstream is mid-rewrite. The
+  honest form is the fork stating its own interpolation margin and
+  `core/Correlation.cpp` carrying it across, which is also the kind of small,
+  generically-useful addition the upstreaming policy says goes upstream rather
+  than staying in the fork.
 
 - ⚑ **SAMPLE 14 IS REFUSED BY SURVIEW TODAY, and the refusal is correct in its
   own terms.** Found 2026-09-14 on first contact with external data. The DIC
