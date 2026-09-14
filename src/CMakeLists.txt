@@ -9,6 +9,8 @@ add_library(surview_core STATIC
     core/CoordinateFrame.h
     core/Correlation.cpp
     core/Correlation.h
+    core/DicChallenge.cpp
+    core/DicChallenge.h
     core/Examples.cpp
     core/Examples.h
     core/FieldExport.cpp

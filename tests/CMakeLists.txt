@@ -41,6 +41,7 @@ set(SURVIEW_UNIT_TESTS
     test_speckle_quality
     test_stopped_run
     test_run_refusals
+    test_cross_validation
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

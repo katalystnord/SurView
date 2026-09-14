@@ -1109,24 +1109,161 @@ as a backlog with everything in it.
   source back and taking its children down with it, and runs ctest in its own
   process group so one kill reaches the test binaries too. SIGKILL still cannot
   be caught, which is why this says which signal to use.
-- ⚑ **NOTHING HAS EVER CHECKED SURVIEW AGAINST ANYTHING BUT ITSELF, and that is
-  now the largest single gap in this project's evidence.** The synthetic
-  examples are ours, the answers they state are ours, and the accuracy bounds
-  they are measured against are ours. That is sound verification of the
-  IMPLEMENTATION - it says the code computes what we intended - and it says
-  nothing at all about whether what we intended agrees with the field.
+- ⚑ **SURVIEW HAS NOW BEEN CHECKED AGAINST SOMETHING OTHER THAN ITSELF**, for
+  the first time, on 2026-09-14. Until then the synthetic examples were ours,
+  the answers they state were ours, and the accuracy bounds they were measured
+  against were ours - sound verification of the IMPLEMENTATION, saying the code
+  computes what we intended, and saying nothing at all about whether what we
+  intended agrees with the field. This entry used to say that had never been
+  done, and called it the largest single gap in this project's evidence.
 
-  Two steps, cheapest first. Run the examples that ship through Ncorr or DICe
-  and compare the fields point for point: both are open, both read the same
-  images, and a disagreement between two independent implementations on one
-  photograph is worth more than any number of internal bounds. Then the
-  Society for Experimental Mechanics publishes DIC Challenge datasets with
-  known displacement fields, made precisely so codes can be set beside each
-  other - worth checking the current terms, and worth doing before any
-  outward-facing claim about accuracy.
+  **What was run.** The iDICs/SEM DIC Challenge 1.0 **Sample 3** set: one
+  speckle reference and eleven targets rigidly shifted by 0.00 to 1.00 px in
+  steps of 0.10. Their images, their generator, their prescribed answer, stated
+  in each file's own name. `tools/cross-validate.sh` runs it end to end,
+  `tests/test_cross_validation.cpp` holds it, and `core/DicChallenge.h` reads
+  the stated answer.
 
-  Everything else in this file is a check we wrote marking work we did. This is
-  the one that is not.
+  **What it measured.** The worst disagreement across all eleven frames, in
+  either axis, is **0.0032 px**, over 841 of 900 attempted points per frame.
+  Their +Y is our +v, measured rather than assumed - a convention difference
+  would have shown as a v of the right size and the wrong sign on every frame.
+
+  ⚑ **AND THE ERROR IS NOT SCATTER, WHICH IS WORTH MORE THAN ITS SIZE.** It
+  traces the S-shaped sub-pixel interpolation bias every subset-based method
+  carries: zero at 0.0, 0.5 and 1.0 px, negative below half a pixel, positive
+  above, period exactly one pixel, amplitude about 0.003 px. Reproducing a known
+  systematic property of the method on somebody else's images is stronger
+  evidence that the pipeline is right than any single error figure, because
+  nothing in this project was built to produce that shape.
+
+  | stated | measured u | measured v |
+  |---|---|---|
+  | 0.00 | -0.00041 | +0.00002 |
+  | 0.10 | +0.09777 | +0.09779 |
+  | 0.20 | +0.19757 | +0.19706 |
+  | 0.30 | +0.29869 | +0.29790 |
+  | 0.50 | +0.50016 | +0.50046 |
+  | 0.70 | +0.70175 | +0.70262 |
+  | 0.80 | +0.80264 | +0.80317 |
+  | 1.00 | +0.99988 | +1.00003 |
+
+  ⚑ **THEIR ANSWER IS PRESCRIBED, NOT EXACT BY CONSTRUCTION**, and the two must
+  not be described in the same words. Our synthetic sets render each frame
+  afresh from an analytic pattern, so no pixel is ever resampled and the stated
+  deformation IS the truth. These frames were made by shifting one photograph in
+  the Fourier domain with about two grey levels of noise added, so the image
+  carries whatever that resampling does. A disagreement here is evidence about
+  the two of us together. That is what an independent check is for, and it is
+  why the tolerance in the case is argued from the bias rather than inherited
+  from the synthetic cases.
+
+  ⚑ **AND THE SET CANNOT BE COMMITTED.** The challenge sets state no licence or
+  terms of use: they may be used, and redistribution is unestablished (see the
+  MANIFEST beside the download in `~/code/dic-datasets`). The case reads the
+  images from wherever they were unpacked and SKIPS when they are absent, so a
+  fresh clone and CI say "skipped" rather than quietly checking nothing. The
+  engine at the time of measurement was two commits ahead of the pin
+  (`dd9bc29`), both in `.cine` I/O and a `saveMap3D` leak, neither on the
+  correlation path.
+
+  **Still open, in the order they are worth doing:**
+
+  1. ⚑ **The measurement half cannot tell u from v, and Sample 3 cannot close
+     it.** Every frame in that set shifts EQUALLY in x and y, so a build that
+     reported u for both components passes it - confirmed by negative check,
+     not argued. That is the fixture-agrees-with-itself trap, earned a fifth
+     time. The reading half is closed by a lopsided name; the measurement half
+     wants a set whose displacement is in one axis alone, which is Sample 14
+     below.
+  2. **Run our own examples through Ncorr or DICe** - the other step this entry
+     always named, and still not done. Neither is installed here and DICe is
+     Trilinos-coupled, so it is a real build rather than an afternoon. It
+     answers a different question from the above: not "does our measurement
+     match an external answer" but "do two independent implementations agree on
+     one photograph".
+  3. **A pyALDIC comparison** may be the cheapest form of step 2: it is Python,
+     it ships a synthetic accuracy benchmark, and its BSD-3-Clause licence is -
+     unlike everything else here - explicitly redistributable with attribution.
+
+- ⚑ **OUR POI GRID PLACES 59 POINTS PER FRAME THAT CAN NEVER BE SOLVED**, and
+  it took external data to notice. Found 2026-09-14 while checking the solve
+  counts of the cross-validation above, which is the only reason anybody counted
+  ATTEMPTED against SOLVED on a clean image rather than reading the solved
+  figure on its own.
+
+  On Sample 3 the run attempts 900 points and solves 841, every frame. The 59
+  are not scattered and are nothing to do with the specimen: they are exactly
+  the grid's **first row and first column**, they are the same 59 on every
+  frame, and they fail on the frame shifted by 0.00 px as surely as on the rest.
+  What they have in common is that their subset starts exactly at pixel 0, which
+  leaves the target interpolator no pixel outside the subset to work with. The
+  grid lays its first point at exactly one subset radius from the edge, so that
+  row and column have zero margin by construction.
+
+  Why it matters more than 6 per cent of a field. The engine reports them as
+  "subset out of image bounds, or invalid (NaN/out-of-range) initial guess",
+  which reads to anybody looking at a hole as a problem with their PHOTOGRAPH -
+  poor speckle, bad lighting, something at the edge of the specimen. It is
+  neither: those points were never placeable, and the application knew the
+  subset radius and the image size before it laid a single one down. A point
+  that cannot be measured for a reason we could state in advance should not be
+  attempted and then reported as a failure, which is the same rule as every
+  other "an absence is not a measurement" in this project, one step earlier in
+  the pipeline.
+
+  Wants deciding rather than patching: whether `poiGridExtent()` insets by the
+  interpolator's margin as well as the subset radius (and whether that margin is
+  the engine's to state rather than ours to guess), or whether the grid keeps
+  placing them and the run reports them apart from real failures. The first is
+  tidier and silently shrinks every field by a row and a column; the second
+  keeps the field and needs a word on screen for a kind of hole that is ours,
+  not the specimen's.
+
+- ⚑ **SAMPLE 14 IS REFUSED BY SURVIEW TODAY, and the refusal is correct in its
+  own terms.** Found 2026-09-14 on first contact with external data. The DIC
+  Challenge spatial-resolution set ships a reference 2048 px wide and targets
+  2049 px wide, and the run refuses them: "Reference and target differ in size
+  (2048x589 and 2049x589). They must describe the same pixel grid." That rule
+  exists for a fixed rig, where a size change means somebody altered the setup
+  mid-test, and it is the same rule *A reference and target photographed in
+  SEPARATE sessions* under Next already wants to revisit. This is a second and
+  quite different reason to revisit it: a benchmark set whose images
+  legitimately differ by one column, with nothing wrong with either image.
+
+  Measured anyway, by cropping the target's right-hand column outside the
+  application. ⚑ **Which column to crop was settled by measurement, not by
+  inference**: the prescribed displacement is exactly zero for x < 105 in all
+  three wavelengths, so that strip is an answer the crop cannot influence.
+  Cropping the right column reads +0.0018 px there; cropping the left reads
+  -0.9982 px, one whole pixel out. The two differ by exactly 1.000 px, which is
+  its own consistency check.
+
+  **What it measured**, with a 33 px subset (radius 16) and a 4 px step, against
+  the prescribed Lagrangian profile the set's own spreadsheet carries - the
+  sheet is explicit that the Lagrangian column is the one to compare DIC
+  against, and it ships an Eulerian column beside it that differs:
+
+  | set | RMS error | worst | shortest wavelength present |
+  |---|---|---|---|
+  | L1 | 0.0031 px | 0.011 px | 619 px |
+  | L3 | 0.0044 px | 0.013 px | 173 px |
+  | L5 | 0.0074 px | 0.023 px | 101 px |
+
+  ⚑ **AND IT YIELDS THE SPATIAL RESOLUTION NUMBER WE DO NOT REPORT.** The set is
+  a chirp - constant 0.1 px amplitude, wavelength shortening along x - so the
+  ratio of measured to prescribed amplitude per half-cycle IS the amplitude
+  transfer function. Measured here: about 1.00 above 350 px, 0.93 to 0.98
+  between 200 and 300 px, 0.87 to 0.95 between 120 and 160 px, and 0.78 to 0.89
+  between 100 and 115 px. The 90 per cent point sits near a 130 px wavelength,
+  about four times the subset. That is exactly the quantity *Report SPATIAL
+  resolution, not only displacement resolution* under Next says we owe a reader,
+  and it is a measured value for it rather than a derivation - worth holding
+  whatever formula that entry ends up stating against.
+
+  Not committed as a case, because it needs the crop and it needs the prescribed
+  profile out of their spreadsheet, which is their data. Recorded here as
+  measured evidence, reproducible from the notes above.
 
 - **Coverage reporting** is present but not tracked over time.
 - The **walkthrough suite races with the X server's own pointer motion**;
