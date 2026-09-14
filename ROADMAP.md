@@ -337,6 +337,61 @@ findings above are the proof that this kind of pass yields concrete work
 rather than impressions.
 
 
+## Waiting on a decision
+
+Open questions that are David's rather than the author's, each one already
+researched to the point where the choice is the only thing left. The detail
+lives where the finding does; this is the list, so none of them has to be
+rediscovered. Raised 2026-09-14, out of the first cross-validation run.
+
+**1. The grid row and column that can never be measured.** Verified mechanism
+and the two wrong explanations are under *Test and tooling debt*. Four ways to
+take it, and the last is a real option rather than a placeholder:
+
+- **Inset, pinned by a test.** `safeFirstX` becomes `subsetRadius + 1` and
+  `safeLastX` becomes `imageWidth - 3 - subsetRadius`, with a case asserting a
+  point at the inset solves and one a pixel outside it does not. The margin is
+  then a hard-coded number that cannot drift silently, which is this project's
+  usual answer to a magic number. No fork change, no pin bump. On Sample 3 it
+  takes 841 of 900 to 900 of 900.
+- **Inset, with the margin stated by the engine.** The same inset, but the fork
+  states its own interpolation margin and `core/Correlation.cpp` carries it
+  across, so nothing is copied. Tidier, and the kind of small generic addition
+  the upstreaming policy sends upstream - but it costs a fork commit and a pin
+  bump against an upstream that is mid-rewrite.
+- **Do not inset; report instead.** Keep placing them so the field keeps its
+  full extent, and say "never placeable" in our own words rather than leaving
+  the engine's "invalid initial guess" to read as a fault in somebody's
+  photograph. Needs a word on screen for a kind of hole that is ours.
+- **Leave it recorded and move on.** Nothing is lost by waiting: the mechanism
+  is written down, and the cross-validation case is deliberately set below the
+  threshold so it does not depend on the answer and will not need changing when
+  one is made.
+
+⚑ Whichever is chosen, an inset cannot be the whole answer. The constraint is
+on the sample AFTER displacement, and no grid can know the displacement in
+advance, so a point that was never placeable and a point whose subset left the
+interpolatable area once the specimen moved are different things and still want
+telling apart.
+
+**2. The engine pin is two commits behind the checkout.** `cmake/opencorr.pin`
+names `dd9bc29`; `~/code/OpenCorr` is at `843999c`, ahead by the `.cine` header
+fuzzing and the `saveMap3D` leak fix with its sanitizer run. Neither touches the
+correlation path, which is why the cross-validation numbers stand as measured -
+checked by file, not assumed. The question is only whether to bump the pin now,
+and the pin's own comment asks that a bump say what moved and what was
+re-verified against it.
+
+**3. The other half of the cross-validation is still not done.** Measuring our
+examples against an external answer is done; running them through an
+INDEPENDENT IMPLEMENTATION is not, and it answers a different question. Neither
+Ncorr nor DICe is installed here and DICe is Trilinos-coupled, so it is a real
+build rather than an afternoon - which is why it has not been started rather
+than worked around. pyALDIC looks like the cheaper route: Python, and its
+BSD-3-Clause benchmark is the one piece of third-party data here that is
+explicitly redistributable.
+
+
 ## Now
 
 Small, well understood, and each one changes what a person sees the next
