@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=dd9bc296ad544bca93dfa0ef3a59d7af47a7a855
+SURVIEW_OPENCORR_PIN=90c4ea2bc26db4bb1cca20718968b75bd7039a34
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=region-fit-exported-through-opencorr-h
+SURVIEW_OPENCORR_PIN_NOTE=upstream-regionfit-example-fix-merged
