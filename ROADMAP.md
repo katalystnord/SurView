@@ -374,13 +374,10 @@ advance, so a point that was never placeable and a point whose subset left the
 interpolatable area once the specimen moved are different things and still want
 telling apart.
 
-**2. The engine pin is two commits behind the checkout.** `cmake/opencorr.pin`
-names `dd9bc29`; `~/code/OpenCorr` is at `843999c`, ahead by the `.cine` header
-fuzzing and the `saveMap3D` leak fix with its sanitizer run. Neither touches the
-correlation path, which is why the cross-validation numbers stand as measured -
-checked by file, not assumed. The question is only whether to bump the pin now,
-and the pin's own comment asks that a bump say what moved and what was
-re-verified against it.
+**2. ~~The engine pin is two commits behind the checkout.~~** Decided and done
+2026-09-28 (`989e00c`): the pin moved to `90c4ea2`, which also brings in
+upstream's RegionFit example fix, and `tools/run-tests.sh` passed in full
+against it. Kept here so the numbering of the other two does not change.
 
 **3. The other half of the cross-validation is still not done.** Measuring our
 examples against an external answer is done; running them through an
