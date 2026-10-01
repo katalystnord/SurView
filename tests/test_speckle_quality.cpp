@@ -68,7 +68,9 @@
 #include <QElapsedTimer>
 #include <QTest>
 
+#include <algorithm>
 #include <cmath>
+#include <limits>
 
 namespace
 {
@@ -406,30 +408,48 @@ void TestSpeckleQuality::preparing_once_is_what_makes_asking_repeatedly_affordab
     // factor of five from five asks, which is the theoretical ceiling, and
     // failed against a working implementation. What matters is that asking
     // AGAIN is nearly free.
+    //
+    // ⚑ AND IT IS TIMED AS THE BEST OF SEVERAL TRIES, in nanoseconds. The
+    // version before this took one one-shot call in whole milliseconds against a
+    // demanded factor of ten, and failed on CI on 2026-09-28 at 13 ms against
+    // 1.45 ms per ask with nothing broken. The ratio is not a constant of the
+    // code: the preparation is the engine's gradient pass and the ask is a walk
+    // over the region, and the two scale differently with cores, cache and
+    // sanitizer instrumentation. Measured 2026-10-01 on the development
+    // machine: about 25x in the debug build and 20x under address sanitizer;
+    // CI's runner gave 9x. Negative-checked by making every ask prepare the
+    // image again: 1.9x in the debug build, 1.8x under address sanitizer, red
+    // in both. Not 1x, because the one-shot call also decodes the image, but
+    // a factor of three still sits between the two with room on either side,
+    // and the best of several tries is what a busy machine cannot inflate.
     const QString image = fixture(QStringLiteral("shift_reference.tif"));
     const RegionOfInterest roi = boxAt(40, 40, 120, 80);
+    constexpr int kTries = 5;
     constexpr int kAsks = 20;
 
     QElapsedTimer timer;
-    timer.start();
-    speckleQualityIn(image, roi, 16);
-    const qint64 oneShot = timer.elapsed();
+    qint64 oneShot = std::numeric_limits<qint64>::max();
+    for (int t = 0; t < kTries; t++) {
+        timer.start();
+        speckleQualityIn(image, roi, 16);
+        oneShot = std::min(oneShot, timer.nsecsElapsed());
+    }
 
     const SpeckleField field = prepareSpeckleField(image, 16);
     QVERIFY(field.isValid());
-    timer.restart();
-    for (int i = 0; i < kAsks; i++)
-        speckleQualityIn(field, roi);
-    const double perAsk = double(timer.elapsed()) / kAsks;
+    double perAsk = std::numeric_limits<double>::max();
+    for (int t = 0; t < kTries; t++) {
+        timer.start();
+        for (int i = 0; i < kAsks; i++)
+            speckleQualityIn(field, roi);
+        perAsk = std::min(perAsk, double(timer.nsecsElapsed()) / kAsks);
+    }
 
-    // A tenth of a one-shot call, against a difference that is really two
-    // orders of magnitude: loose enough that a busy machine does not fail it,
-    // tight enough that folding the preparation back into every ask does.
-    QVERIFY2(perAsk * 10.0 < double(oneShot),
+    QVERIFY2(perAsk * 3.0 < double(oneShot),
              qPrintable(QStringLiteral("asking a prepared field costs %1 ms "
                                        "against %2 ms from scratch: the "
                                        "preparation is no longer being reused")
-                            .arg(perAsk).arg(oneShot)));
+                            .arg(perAsk / 1e6).arg(double(oneShot) / 1e6)));
 }
 
 QTEST_MAIN(TestSpeckleQuality)
