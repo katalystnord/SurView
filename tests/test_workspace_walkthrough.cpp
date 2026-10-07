@@ -357,6 +357,8 @@ private slots:
     void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
     void the_panel_states_how_far_displacement_and_strain_are_averaged();
     void a_measured_field_can_be_switched_to_strain_from_the_screen();
+    void the_field_explanation_does_not_cover_the_field_it_explains();
+    void the_whole_image_can_be_brought_back_into_view_from_the_menu();
     void the_strain_channels_say_why_they_are_unavailable();
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
     void a_measured_field_leaves_the_application_and_says_where_it_went();
@@ -866,6 +868,149 @@ void TestWorkspaceWalkthrough::a_measured_field_can_be_switched_to_strain_from_t
     // And the run really did fit strain, so this is a channel with something
     // in it rather than an empty overlay the selector was happy to switch to.
     QVERIFY(window.lastResult().hasStrain());
+}
+
+namespace {
+
+// Where the image's four corners land on screen, through the renderer's own
+// projection rather than a second copy of the camera arithmetic.
+bool imageCornersOnScreen(ImageViewport *viewport, int width, int height,
+                          QVector<QPointF> &corners)
+{
+    corners.clear();
+    const QPointF pixels[] = {QPointF(-0.5, -0.5), QPointF(width - 0.5, -0.5),
+                              QPointF(-0.5, height - 0.5),
+                              QPointF(width - 0.5, height - 0.5)};
+    for (const QPointF &pixel : pixels) {
+        QPointF position;
+        if (!viewport->widgetPositionForImagePixel(pixel, position))
+            return false;
+        corners << position;
+    }
+    return true;
+}
+
+// The bar a measured field explains itself in: the frame holding the channel
+// selector, which is what a reader sees across the top of the picture.
+QWidget *fieldExplanationBar(ImageViewport *viewport)
+{
+    auto *choice = viewport->findChild<QComboBox *>();
+    return choice ? choice->parentWidget() : nullptr;
+}
+
+}  // namespace
+
+void TestWorkspaceWalkthrough::the_field_explanation_does_not_cover_the_field_it_explains()
+{
+    // Found by screenshot on DIC Challenge Sample 3: the bar explaining the
+    // field was drawn over the top 20 image pixels of it, which is where the
+    // first grid row sits. A tall specimen loses more. The picture is fitted
+    // into the part of the viewport the bar leaves free.
+    //
+    // Wide and short on purpose, so the image is fitted by its HEIGHT: a
+    // square image in a tall viewport is fitted by its width and would leave
+    // room above it by accident.
+    //
+    // NEGATIVE CHECK (2026-10-07): with the refit left out of the moment the
+    // bar appears, this failed on "the image's top edge is at 80 px, under the
+    // explanation bar"; it also catches both arithmetic faults in
+    // tests/test_view_fit.cpp. With the legend left out of the fit, it failed
+    // at 1000 x 1000 on "under the coordinate legend" -- and passed while the
+    // case ran at one wide window only, because a square image centred in a
+    // wide viewport never reaches the corner the legend sits in.
+    MainWindow window;
+    window.resize(1600, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+    QTest::qWait(50);
+
+    QWidget *bar = fieldExplanationBar(viewport);
+    QVERIFY2(bar && bar->isVisible(), "the field is shown without its explanation");
+    QWidget *legend = nullptr;
+    for (QLabel *label : viewport->findChildren<QLabel *>()) {
+        if (label->text().contains(QStringLiteral("x right, y down")))
+            legend = label->parentWidget() == viewport ? label : label->parentWidget();
+    }
+    QVERIFY2(legend && legend->isVisible(), "no coordinate-frame legend on screen");
+
+    // Twice: wide and short, where the image is fitted by its height and meets
+    // the bar; then narrow and tall, where it is fitted by its width and its
+    // bottom corners reach the legend in the corner. The resize also asks the
+    // view to refit itself, as it should when nobody has zoomed.
+    const ImageRecord &record = viewport->record();
+    for (const QSize &size : {QSize(1600, 700), QSize(1000, 1000)}) {
+        window.resize(size);
+        QTest::qWait(100);
+        QVector<QPointF> corners;
+        QVERIFY(imageCornersOnScreen(viewport, record.width, record.height, corners));
+        const QRectF image(QPointF(std::min(corners[0].x(), corners[2].x()),
+                                   std::min(corners[0].y(), corners[1].y())),
+                           QPointF(std::max(corners[1].x(), corners[3].x()),
+                                   std::max(corners[2].y(), corners[3].y())));
+        const QString where = QStringLiteral("at %1 x %2: image (%3, %4) to (%5, %6)")
+                                  .arg(size.width()).arg(size.height())
+                                  .arg(image.left()).arg(image.top())
+                                  .arg(image.right()).arg(image.bottom());
+        QVERIFY2(image.top() >= bar->geometry().bottom(),
+                 qPrintable(where + QStringLiteral(", under the explanation bar, "
+                                                   "which reaches %1 px")
+                                        .arg(bar->geometry().bottom())));
+        QVERIFY2(QRectF(viewport->rect()).adjusted(-1, -1, 1, 1).contains(image),
+                 qPrintable(where + QStringLiteral(", not all inside the viewport")));
+        QVERIFY2(!image.intersects(QRectF(legend->geometry())),
+                 qPrintable(where + QStringLiteral(", under the coordinate legend at "
+                                                   "(%1, %2)")
+                                        .arg(legend->geometry().left())
+                                        .arg(legend->geometry().top())));
+    }
+}
+
+void TestWorkspaceWalkthrough::the_whole_image_can_be_brought_back_into_view_from_the_menu()
+{
+    // Zooming is one wheel turn; coming back out had no command at all, so a
+    // reader who zoomed in to look at a few points had no way to see the
+    // whole field again short of reloading the image.
+    MainWindow window;
+    window.resize(1600, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    auto *viewport = window.findChild<ImageViewport *>();
+    const ImageRecord &record = viewport->record();
+
+    QAction *fit = actionLabelled(&window, QStringLiteral("Fit Image to Window"));
+    QVERIFY2(fit, "no command brings the whole image back into view");
+
+    // Zoom in the way a reader does, with the wheel over the picture.
+    const QPoint middle = viewport->rect().center();
+    for (int i = 0; i < 6; i++) {
+        QWheelEvent wheel(QPointF(middle), viewport->mapToGlobal(QPointF(middle)),
+                          QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QApplication::sendEvent(viewport, &wheel);
+    }
+    QVector<QPointF> corners;
+    QVERIFY(imageCornersOnScreen(viewport, record.width, record.height, corners));
+    QVERIFY2(corners[0].y() < 0 || corners[0].x() < 0,
+             "zooming in did not take the image's corner off screen, so this "
+             "case would pass without the command doing anything");
+
+    fit->trigger();
+    QVERIFY(imageCornersOnScreen(viewport, record.width, record.height, corners));
+    for (const QPointF &corner : corners) {
+        QVERIFY2(viewport->rect().adjusted(-1, -1, 1, 1).contains(corner.toPoint()),
+                 qPrintable(QStringLiteral("after fitting, an image corner is at "
+                                           "(%1, %2), outside the viewport")
+                                .arg(corner.x()).arg(corner.y())));
+    }
 }
 
 void TestWorkspaceWalkthrough::the_strain_channels_say_why_they_are_unavailable()

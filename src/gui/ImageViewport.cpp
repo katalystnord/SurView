@@ -4,6 +4,7 @@
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
+#include "core/ViewFit.h"
 #include "gui/FieldColours.h"
 
 #include <QComboBox>
@@ -1403,6 +1404,7 @@ void ImageViewport::resizeEvent(QResizeEvent *event)
     positionGaugeBar();
     positionFieldBar();
     positionFrameLegend();
+    refitIfStillFitted();
     // A resize refits the view, so it too changes the spacing on screen.
     if (m_previewSubregion)
         refreshSettingsPreview();
@@ -1446,8 +1448,8 @@ bool ImageViewport::loadImage(const QString &path)
         m_renderer->AddActor(m_imageActor);
         m_hasImage = true;
     }
-    m_renderer->ResetCamera();
-    m_renderWindow->Render();
+    // Fitted into the band the bars leave free, not to the whole widget.
+    fitImageToWindow();
 
     m_record = record;
     // A new picture is a new grid, and the pointer has not been over this one.
@@ -1764,6 +1766,9 @@ void ImageViewport::updateFieldBar()
     m_fieldBar->show();
     m_fieldBar->raise();
     positionFieldBar();
+    // ⚑ The bar arrives over a picture fitted without it, and would cover the
+    // top of the very field it explains.
+    refitIfStillFitted();
 }
 
 void ImageViewport::positionFieldBar()
@@ -1784,8 +1789,10 @@ void ImageViewport::positionFieldBar()
 
 void ImageViewport::clearField()
 {
-    if (m_fieldBar)
+    if (m_fieldBar && !m_fieldBar->isHidden()) {
         m_fieldBar->hide();
+        refitIfStillFitted();
+    }
     if (!m_hasField)
         return;
     m_renderer->RemoveActor(m_fieldActor);
@@ -1860,4 +1867,96 @@ void ImageViewport::applyDisplayMapping(ImageRecord &record)
     record.displayed  = true;
     record.displayMin = lo;
     record.displayMax = hi;
+}
+
+void ImageViewport::fitImageToWindow()
+{
+    if (!m_hasImage)
+        return;
+
+    // What the bars cover, measured off their own geometry rather than
+    // assumed, with a small gap so the picture does not butt against them.
+    constexpr int kGap = 6;
+    int top = 0;
+    if (m_fieldBar && !m_fieldBar->isHidden())
+        top = m_fieldBar->geometry().bottom() + 1 + kGap;
+    int bottom = 0;
+    for (QFrame *bar : {m_roiBar, m_gaugeBar}) {
+        if (bar && !bar->isHidden())
+            bottom = std::max(bottom, height() - bar->geometry().top() + kGap);
+    }
+
+    // The actor's bounds run between pixel CENTRES; the picture reaches half a
+    // pixel further on every side.
+    double bounds[6];
+    m_imageActor->GetBounds(bounds);
+    const double x0 = bounds[0] - 0.5, x1 = bounds[1] + 0.5;
+    const double y0 = bounds[2] - 0.5, y1 = bounds[3] + 0.5;
+    constexpr double kPadding = 0.04;
+    ViewFit fit = fitImageInView(x0, x1, y0, y1, width(), height(), top, bottom,
+                                 kPadding);
+
+    // ⚑ The coordinate-frame legend sits in a bottom corner, and over a tall
+    // specimen that corner is the specimen. It covers only a corner, so
+    // counting it as a full-width band would shrink the picture for nothing:
+    // keep the fit if the image misses it, and otherwise take whichever of
+    // "above it" and "beside it" leaves the picture larger.
+    if (m_frameLegend && !m_frameLegend->isHidden()) {
+        const QRect legend = m_frameLegend->geometry().adjusted(-kGap, -kGap, 0, 0);
+        const ScreenRect placed = imageOnScreen(fit, x0, x1, y0, y1, width(), height());
+        if (!fit.valid
+            || placed.intersects(legend.left(), legend.top(), legend.right() + 1,
+                                 legend.bottom() + 1)) {
+            const ViewFit above = fitImageInView(
+                x0, x1, y0, y1, width(), height(), top,
+                std::max(bottom, height() - legend.top()), kPadding);
+            const ViewFit beside = fitImageInView(
+                x0, x1, y0, y1, width(), height(), top, bottom, kPadding,
+                width() - legend.left());
+            if (above.valid && (!beside.valid || above.parallelScale <= beside.parallelScale))
+                fit = above;
+            else if (beside.valid)
+                fit = beside;
+        }
+    }
+
+    // ResetCamera first for a sensible distance and clipping range; the fit
+    // then decides only what it is about: where the camera looks and how much
+    // it takes in.
+    m_renderer->ResetCamera();
+    vtkCamera *camera = m_renderer->GetActiveCamera();
+    if (fit.valid) {
+        const double distance = camera->GetDistance();
+        camera->SetFocalPoint(fit.centreX, fit.centreY, 0.0);
+        camera->SetPosition(fit.centreX, fit.centreY, -distance);
+        camera->SetParallelScale(fit.parallelScale);
+        m_renderer->ResetCameraClippingRange();
+    }
+    double focal[3];
+    camera->GetFocalPoint(focal);
+    m_fittedScale = camera->GetParallelScale();
+    m_fittedFocal[0] = focal[0];
+    m_fittedFocal[1] = focal[1];
+    m_haveFit = true;
+    m_renderWindow->Render();
+
+    // The fit changes the spacing on screen, which decides what the preview draws.
+    if (m_previewSubregion)
+        refreshSettingsPreview();
+}
+
+void ImageViewport::refitIfStillFitted()
+{
+    if (!m_haveFit || !m_hasImage)
+        return;
+    vtkCamera *camera = m_renderer->GetActiveCamera();
+    double focal[3];
+    camera->GetFocalPoint(focal);
+    const double tolerance = 1e-9 * std::max(1.0, m_fittedScale);
+    if (std::abs(camera->GetParallelScale() - m_fittedScale) > tolerance
+        || std::abs(focal[0] - m_fittedFocal[0]) > tolerance
+        || std::abs(focal[1] - m_fittedFocal[1]) > tolerance) {
+        return;
+    }
+    fitImageToWindow();
 }

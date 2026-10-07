@@ -1391,6 +1391,21 @@ as a backlog with everything in it.
 
 ## Fixed, kept here because the reason is worth remembering
 
+- **The field's explanation drawn over the field it explains.** Found by
+  screenshot on DIC Challenge Sample 3, while making the pictures for decision
+  1: the bar naming the channel covered the top 20 image pixels, which is
+  exactly where that decision's failed row sits, and over the tall tension
+  specimen the coordinate legend covered its bottom as well. The camera was
+  fitted to the whole widget and the bars are drawn over it. It is now fitted
+  into the area the bars leave free (`core/ViewFit.h`), and beside or above the
+  legend, whichever leaves the picture larger. It refits when a bar appears or
+  the window resizes, but only while the view is where the last fit left it,
+  so a zoom the reader chose is never thrown away.
+
+- **No way back out of a zoom.** Zooming was a turn of the wheel, and nothing
+  brought the whole image back short of reloading it. View > Fit Image to
+  Window (Ctrl+0) does now.
+
 - **Choosing a subset radius and a region blind.** Both largely decide how
   reliable a run will be, and neither said anything until a correlation had
   been sat through. The Analysis panel now estimates what the speckle inside

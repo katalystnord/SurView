@@ -144,6 +144,10 @@ public:
     // Provenance and pixel facts for the currently displayed image.
     const ImageRecord &record() const { return m_record; }
 
+    // Bring the whole image back into view, inside the part of the viewport
+    // its bars leave free. See core/ViewFit.h for why the bars matter.
+    void fitImageToWindow();
+
 signals:
     // The empty workspace's own first step was pressed. The viewport does not
     // import anything itself; it only offers the step where the step is
@@ -215,6 +219,10 @@ private:
     // --- field display -----------------------------------------------------
     void buildFieldBar();
     void positionFieldBar();
+    // Refit only while the camera is where the last fit left it: a bar
+    // appearing or the window resizing should keep the image clear of the
+    // bars, but must never throw away a zoom the reader chose.
+    void refitIfStillFitted();
     void updateFieldBar();
     void drawField();
 
@@ -269,6 +277,9 @@ private:
     vtkNew<vtkGenericOpenGLRenderWindow> m_renderWindow;
     vtkNew<vtkRenderer> m_renderer;
     vtkNew<vtkImageActor> m_imageActor;
+    bool m_haveFit = false;
+    double m_fittedScale = 0.0;
+    double m_fittedFocal[2] = {0.0, 0.0};
     vtkNew<vtkImageActor> m_fieldActor;
     vtkNew<vtkLookupTable> m_fieldColours;
     vtkNew<vtkScalarBarActor> m_scalarBar;

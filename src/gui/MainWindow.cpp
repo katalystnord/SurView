@@ -376,7 +376,14 @@ void MainWindow::createMenus()
     connect(quit, &QAction::triggered, this, &QWidget::close);
 
     // View menu (dock toggles are appended in createDockPanels()).
-    menuBar()->addMenu(tr("&View"));
+    QMenu *viewMenu = menuBar()->addMenu(tr("&View"));
+    // Zooming is one turn of the wheel; without this, coming back out to the
+    // whole image had no command at all.
+    QAction *fitImage = viewMenu->addAction(tr("Fit Image to Window"));
+    fitImage->setShortcut(QKeySequence(Qt::CTRL | Qt::Key_0));
+    fitImage->setStatusTip(tr("Show the whole image, clear of the bars over it"));
+    connect(fitImage, &QAction::triggered, m_viewport, &ImageViewport::fitImageToWindow);
+    viewMenu->addSeparator();
 
     // Analysis -- the DIC core pipeline.
     QMenu *analysisMenu = menuBar()->addMenu(tr("&Analysis"));
