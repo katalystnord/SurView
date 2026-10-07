@@ -43,6 +43,11 @@
 #include <QMenuBar>
 #include <QMessageBox>
 #include <QPlainTextEdit>
+#include <QHBoxLayout>
+#include <QTextCursor>
+#include <QPushButton>
+#include <QClipboard>
+#include <QLineEdit>
 #include <QProgressBar>
 #include <QScrollArea>
 #include <QStandardItemModel>
@@ -56,6 +61,17 @@
 #include <QVBoxLayout>
 
 namespace {
+
+// A count says what it counts, inside the box where the number is read, and in
+// the right number: a fixed " iterations" suffix reads "1 iterations".
+void countIn(QSpinBox *box, const QString &one, const QString &many)
+{
+    const auto apply = [box, one, many](int value) {
+        box->setSuffix(QLatin1Char(' ') + (value == 1 ? one : many));
+    };
+    apply(box->value());
+    QObject::connect(box, &QSpinBox::valueChanged, box, apply);
+}
 
 // Which record a project-tree item stands for, and which one of them, so a
 // ⚑ Keeps the mouse wheel from editing a setting while a panel is being
@@ -863,6 +879,7 @@ QWidget *MainWindow::createAnalysisPanel()
     m_maxIterations = new QSpinBox;
     m_maxIterations->setRange(1, 100);
     m_maxIterations->setValue(10);
+    countIn(m_maxIterations, tr("iteration"), tr("iterations"));
     form->addRow(tr("Max iterations"), m_maxIterations);
 
     m_convergence = new QDoubleSpinBox;
@@ -909,6 +926,7 @@ QWidget *MainWindow::createAnalysisPanel()
     m_strainMinPoints = new QSpinBox;
     m_strainMinPoints->setRange(3, 500);   // three points define a plane
     m_strainMinPoints->setValue(5);
+    countIn(m_strainMinPoints, tr("point"), tr("points"));
     strainForm->addRow(tr("Fewest points in the fit"), m_strainMinPoints);
 
     // Built from offeredStrainMeasures(), the list the tests walk.
@@ -999,6 +1017,7 @@ QWidget *MainWindow::createAnalysisPanel()
     m_reanchorThreshold->setRange(0.10, 0.99);
     m_reanchorThreshold->setSingleStep(0.05);
     m_reanchorThreshold->setValue(0.90);
+    m_reanchorThreshold->setPrefix(tr("zncc ≥ "));
     reanchorForm->addRow(tr("Correlation a point must keep"), m_reanchorThreshold);
 
     m_reanchorShare = new QSpinBox;
@@ -1062,6 +1081,7 @@ QWidget *MainWindow::createAnalysisPanel()
     m_recoveryRetryBelow->setRange(0.05, 0.99);
     m_recoveryRetryBelow->setSingleStep(0.05);
     m_recoveryRetryBelow->setValue(RecoveryPolicy{}.retryBelowZncc);
+    m_recoveryRetryBelow->setPrefix(tr("zncc < "));
     recoveryForm->addRow(tr("Try again below this correlation"),
                          m_recoveryRetryBelow);
 
@@ -1070,11 +1090,13 @@ QWidget *MainWindow::createAnalysisPanel()
     m_recoveryReliable->setRange(0.05, 0.99);
     m_recoveryReliable->setSingleStep(0.05);
     m_recoveryReliable->setValue(RecoveryPolicy{}.reliableZncc);
+    m_recoveryReliable->setPrefix(tr("zncc ≥ "));
     recoveryForm->addRow(tr("Fit from points at or above"), m_recoveryReliable);
 
     m_recoveryRounds = new QSpinBox;
     m_recoveryRounds->setRange(1, 100);
     m_recoveryRounds->setValue(RecoveryPolicy{}.maxRounds);
+    countIn(m_recoveryRounds, tr("round"), tr("rounds"));
     recoveryForm->addRow(tr("Most rounds to try"), m_recoveryRounds);
 
     recoveryColumn->addLayout(recoveryForm);
@@ -1490,10 +1512,57 @@ CorrelationSettings MainWindow::currentSettings() const
 
 QWidget *MainWindow::createLogPanel()
 {
+    auto *panel = new QWidget;
+    auto *column = new QVBoxLayout(panel);
+    column->setContentsMargins(4, 4, 4, 4);
+    column->setSpacing(4);
+
+    // A sequence run writes a log worth searching and worth pasting into a
+    // note, and the panel offered only scrolling.
+    auto *row = new QHBoxLayout;
+    m_logFilter = new QLineEdit;
+    m_logFilter->setPlaceholderText(tr("Filter the log - type a word"));
+    m_logFilter->setClearButtonEnabled(true);
+    row->addWidget(m_logFilter, 1);
+    // ⚑ A narrowed log says so. Without the count, a filtered log reads as the
+    // whole of it, and the lines that did not match look as though they never
+    // happened.
+    m_logCount = new QLabel;
+    m_logCount->setStyleSheet(QStringLiteral("color: #55616d;"));
+    m_logCount->hide();
+    row->addWidget(m_logCount);
+    auto *copy = new QPushButton(tr("Copy"));
+    copy->setToolTip(tr("Copy the lines shown, to paste into a note"));
+    row->addWidget(copy);
+    column->addLayout(row);
+
+    // ⚑ No line limit. It used to keep the last 1000 lines and drop the rest
+    // without a word, and the lines a long sequence loses first are its
+    // opening ones: the settings it was measured under.
     m_log = new QPlainTextEdit;
     m_log->setReadOnly(true);
-    m_log->setMaximumBlockCount(1000);
-    return m_log;
+    column->addWidget(m_log, 1);
+
+    connect(m_logFilter, &QLineEdit::textChanged, this, &MainWindow::refilterLog);
+    connect(copy, &QPushButton::clicked, this, [this] {
+        QGuiApplication::clipboard()->setText(m_log->toPlainText());
+        statusBar()->showMessage(tr("Copied %1 log line(s)").arg(m_log->blockCount()), 3000);
+    });
+    return panel;
+}
+
+void MainWindow::refilterLog()
+{
+    const QString word = m_logFilter->text().trimmed();
+    QStringList shown;
+    for (const QString &line : std::as_const(m_logLines)) {
+        if (word.isEmpty() || line.contains(word, Qt::CaseInsensitive))
+            shown << line;
+    }
+    m_log->setPlainText(shown.join(QLatin1Char('\n')));
+    m_log->moveCursor(QTextCursor::End);
+    m_logCount->setText(tr("%1 of %2 lines").arg(shown.size()).arg(m_logLines.size()));
+    m_logCount->setVisible(!word.isEmpty());
 }
 
 void MainWindow::createStatusBar()
@@ -2720,9 +2789,15 @@ void MainWindow::showAbout()
 
 void MainWindow::log(const QString &message)
 {
-    m_log->appendPlainText(
-        QStringLiteral("[%1] %2")
-            .arg(QTime::currentTime().toString(QStringLiteral("HH:mm:ss")), message));
+    const QString line = QStringLiteral("[%1] %2").arg(
+        QTime::currentTime().toString(QStringLiteral("HH:mm:ss")), message);
+    m_logLines << line;
+    const QString word = m_logFilter ? m_logFilter->text().trimmed() : QString();
+    if (word.isEmpty() || line.contains(word, Qt::CaseInsensitive))
+        m_log->appendPlainText(line);
+    if (m_logCount && !word.isEmpty()) {
+        m_logCount->setText(tr("%1 of %2 lines").arg(m_log->blockCount()).arg(m_logLines.size()));
+    }
 }
 
 void MainWindow::notImplemented(const QString &feature)

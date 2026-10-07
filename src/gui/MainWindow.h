@@ -23,6 +23,7 @@ class QDoubleSpinBox;
 class QGroupBox;
 class QLabel;
 class QPlainTextEdit;
+class QLineEdit;
 class QProgressBar;
 class QSpinBox;
 class QThread;
@@ -140,6 +141,7 @@ private slots:
     // of them that waited for the run would arrive after the decision it is
     // about.
     void updateSettingsPreview();
+    void refilterLog();
 
     // Restate what each folded section of the Analysis panel is holding. One
     // place, called from every control that changes any of it.
@@ -273,6 +275,9 @@ private:
     QPoint m_pinnedPixel;
     bool m_pinned = false;
     QPlainTextEdit *m_log = nullptr;
+    QLineEdit *m_logFilter = nullptr;
+    QLabel *m_logCount = nullptr;
+    QStringList m_logLines;   // every line, whatever the filter shows
     QLabel *m_stageLabel = nullptr;
 
     // The Open Example submenu, kept so the empty workspace's own "or open an

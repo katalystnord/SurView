@@ -28,6 +28,9 @@
 
 #include <QAction>
 #include <QApplication>
+#include <QGuiApplication>
+#include <QClipboard>
+#include <QLineEdit>
 #include <QRegularExpression>
 #include <QCheckBox>
 #include <QWheelEvent>
@@ -356,6 +359,9 @@ private slots:
 
     void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
     void the_panel_states_how_far_displacement_and_strain_are_averaged();
+    void every_number_on_the_analysis_panel_says_what_it_counts_or_measures();
+    void the_log_can_be_narrowed_to_the_lines_that_mention_a_word();
+    void the_log_can_be_copied_as_it_is_shown();
     void a_measured_field_can_be_switched_to_strain_from_the_screen();
     void the_field_explanation_does_not_cover_the_field_it_explains();
     void the_whole_image_can_be_brought_back_into_view_from_the_menu();
@@ -785,6 +791,145 @@ void TestWorkspaceWalkthrough::the_panel_warns_when_the_strain_subregion_cannot_
     strainMinimum->setValue(4);
     QVERIFY2(!somethingOnScreenSays(&window, QStringLiteral("nearest")),
              "the warning stayed up after the settings were made satisfiable");
+}
+
+namespace {
+
+// The log dock's own widgets, found the way a reader finds them: the text
+// box by what it invites, the button by what it says.
+QLineEdit *logFilterField(QWidget *root)
+{
+    for (QLineEdit *field : root->findChildren<QLineEdit *>()) {
+        if (field->placeholderText().contains(QStringLiteral("Filter the log")))
+            return field;
+    }
+    return nullptr;
+}
+
+QPlainTextEdit *logView(QWidget *root)
+{
+    for (QPlainTextEdit *view : root->findChildren<QPlainTextEdit *>()) {
+        if (view->isReadOnly())
+            return view;
+    }
+    return nullptr;
+}
+
+}  // namespace
+
+void TestWorkspaceWalkthrough::the_log_can_be_narrowed_to_the_lines_that_mention_a_word()
+{
+    // A sequence run writes a log worth searching, and the panel offered only
+    // scrolling. Narrowing is stated as "N of M lines", so a narrowed log is
+    // never mistaken for the whole of it.
+    //
+    // Written red first (2026-10-07). NEGATIVE CHECKS: the count never shown
+    // failed on "does not say it is narrowed"; a case-sensitive filter failed
+    // on "showed nothing"; a Copy that ignored the filter failed the copy case
+    // below, once that case narrowed the log before copying. NOT COVERED: the
+    // 1000-line limit this replaced, since nothing on screen can write 1000
+    // lines to the log and log() is not reachable from a test.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    QLineEdit *filter = logFilterField(&window);
+    QPlainTextEdit *view = logView(&window);
+    QVERIFY2(filter && filter->isVisible(), "the log offers no way to narrow it");
+    QVERIFY(view);
+    const QStringList everything = view->toPlainText().split(QLatin1Char('\n'));
+    QVERIFY2(everything.size() >= 3, "too little in the log for this to mean anything");
+
+    QTest::keyClicks(filter, QStringLiteral("TARGET"));   // case is not the reader's problem
+    const QStringList shown = view->toPlainText().split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QVERIFY2(!shown.isEmpty(), "narrowing to a word the log contains showed nothing");
+    QVERIFY2(shown.size() < everything.size(), "narrowing hid nothing");
+    for (const QString &line : shown)
+        QVERIFY2(line.contains(QStringLiteral("target"), Qt::CaseInsensitive), qPrintable(line));
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("%1 of %2 lines")
+                                                .arg(shown.size()).arg(everything.size())),
+             "a narrowed log does not say it is narrowed");
+
+    filter->clear();
+    QCOMPARE(view->toPlainText().split(QLatin1Char('\n')), everything);
+}
+
+void TestWorkspaceWalkthrough::the_log_can_be_copied_as_it_is_shown()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+
+    QPushButton *copy = nullptr;
+    for (QPushButton *button : window.findChildren<QPushButton *>()) {
+        if (button->text().contains(QStringLiteral("Copy"), Qt::CaseInsensitive))
+            copy = button;
+    }
+    QVERIFY2(copy && copy->isVisible(), "the log offers no Copy");
+
+    // Narrowed first: unnarrowed, "what is shown" and "everything" are the
+    // same text and a Copy that ignored the filter would pass.
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    QTest::keyClicks(logFilterField(&window), QStringLiteral("target"));
+    const QString shown = logView(&window)->toPlainText();
+    QVERIFY(!shown.isEmpty());
+
+    QGuiApplication::clipboard()->clear();
+    QTest::mouseClick(copy, Qt::LeftButton);
+    QCOMPARE(QGuiApplication::clipboard()->text(), shown);
+}
+
+void TestWorkspaceWalkthrough::every_number_on_the_analysis_panel_says_what_it_counts_or_measures()
+{
+    // "10" beside "Max iterations" is guessable; "0.70" beside "Try again
+    // below this correlation" is a number on a scale the reader has to know.
+    // The panel stated units in some places and not others, which is worse
+    // than either, so the rule is enforced over every numeric control rather
+    // than remembered one control at a time: a unit, a symbol or a counted
+    // noun, inside the box, where the number is read.
+    //
+    // Written red first (2026-10-07): it named six bare boxes, "10", "5",
+    // "0.90", "0.70", "0.80" and "20". NEGATIVE CHECK: with the counted noun
+    // fixed at its plural, the singular comparison failed.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QStringList bare;
+    int checked = 0;
+    for (QAbstractSpinBox *box : window.findChildren<QAbstractSpinBox *>()) {
+        QString prefix, suffix;
+        if (auto *whole = qobject_cast<QSpinBox *>(box)) {
+            prefix = whole->prefix();
+            suffix = whole->suffix();
+        } else if (auto *real = qobject_cast<QDoubleSpinBox *>(box)) {
+            prefix = real->prefix();
+            suffix = real->suffix();
+        } else {
+            continue;
+        }
+        checked++;
+        if (prefix.trimmed().isEmpty() && suffix.trimmed().isEmpty())
+            bare << QStringLiteral("%1 (%2)").arg(box->objectName(), box->text());
+    }
+    QVERIFY2(checked >= 8, "found too few numeric controls for this to mean anything");
+    QVERIFY2(bare.isEmpty(),
+             qPrintable(QStringLiteral("numbers with no unit or noun: %1")
+                            .arg(bare.join(QStringLiteral(", ")))));
+
+    // And a counted noun in the right number, which a fixed suffix gets wrong.
+    auto *iterations = controlLabelled<QSpinBox>(&window, QStringLiteral("Max iterations"));
+    QVERIFY(iterations);
+    iterations->setValue(1);
+    QCOMPARE(iterations->text(), QStringLiteral("1 iteration"));
+    iterations->setValue(12);
+    QCOMPARE(iterations->text(), QStringLiteral("12 iterations"));
 }
 
 void TestWorkspaceWalkthrough::the_panel_states_how_far_displacement_and_strain_are_averaged()

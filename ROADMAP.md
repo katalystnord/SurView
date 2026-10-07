@@ -418,7 +418,7 @@ a design pass first.
   list on 2026-09-03. The competitive section above says why each one is
   better than what we do; this is the commitment to do them. Five of the six
   are small. The first three are DONE (2026-09-03 and 2026-09-08); units on
-  every numeric field is the one to do next.
+  every numeric field and Copy and Filter on the log are DONE too (2026-10-07).
 
   1. ~~**A permanent coordinate-frame legend in the viewport.**~~ DONE
      2026-09-03. A small panel
@@ -441,10 +441,17 @@ a design pass first.
      correlation; this reports what the camera recorded, which is what a
      person wants while judging exposure, contrast and clipping. Pairs with
      the clipping figures the Record panel already computes.
-  4. **Units on every numeric field**, consistently. We do this in places and
-     not others, which is worse than either doing it everywhere or nowhere.
-  5. **Copy and Filter on the log**, not only auto-scroll. A long sequence
-     run produces a log worth searching and worth pasting into a note.
+  4. ~~**Units on every numeric field**, consistently.~~ DONE 2026-10-07.
+     Every numeric control on the Analysis panel carries a unit, a symbol or
+     a counted noun inside the box ("zncc < 0.70", "20 rounds", "1
+     iteration"), and `every_number_on_the_analysis_panel_says_what_it_
+     counts_or_measures` walks them all, so a new control cannot arrive bare.
+  5. ~~**Copy and Filter on the log**~~ DONE 2026-10-07. A filter field
+     above the log (case-insensitive, stated as "N of M lines" while it
+     narrows) and a Copy button that copies what is shown. ⚑ Found on the
+     way: the log silently kept only its last 1000 lines, and the lines a long
+     sequence loses first are the settings it was measured under. It keeps
+     every line now.
 
 
   What is deliberately NOT on this list, from the same review: their flat
