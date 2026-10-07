@@ -12,6 +12,7 @@
 // click to a pixel goes through the renderer's own projection. tools/run-tests.sh
 // provides one.
 
+#include "core/DisplacementArrows.h"
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/PointReadout.h"
@@ -363,6 +364,7 @@ private slots:
     void the_log_can_be_narrowed_to_the_lines_that_mention_a_word();
     void the_log_can_be_copied_as_it_is_shown();
     void a_measured_field_can_be_switched_to_strain_from_the_screen();
+    void a_measured_field_can_be_shown_as_arrows_pointing_the_way_it_moved();
     void the_field_explanation_does_not_cover_the_field_it_explains();
     void the_whole_image_can_be_brought_back_into_view_from_the_menu();
     void the_strain_channels_say_why_they_are_unavailable();
@@ -1156,6 +1158,82 @@ void TestWorkspaceWalkthrough::the_whole_image_can_be_brought_back_into_view_fro
                                            "(%1, %2), outside the viewport")
                                 .arg(corner.x()).arg(corner.y())));
     }
+}
+
+void TestWorkspaceWalkthrough::a_measured_field_can_be_shown_as_arrows_pointing_the_way_it_moved()
+{
+    // Direction is legible from none of the scalar maps. The fixture's target
+    // is its reference shifted +3 px in x and not at all in y, so every arrow
+    // must point right and not up or down -- a swapped or negated component
+    // would show here as arrows pointing anywhere else.
+    //
+    // NEGATIVE CHECK (2026-10-08), three mutations, each caught: the switch
+    // drawing nothing; no redraw on zoom ("left the arrows at every 5 point");
+    // the scale note never written. Direction faults are caught one level
+    // down, in tests/test_displacement_arrows.cpp.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(4);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QCheckBox *arrows = nullptr;
+    for (QCheckBox *box : viewport->findChildren<QCheckBox *>()) {
+        if (box->text().contains(QStringLiteral("Arrows")))
+            arrows = box;
+    }
+    QVERIFY2(arrows && arrows->isVisible(), "the field offers no arrows");
+    QVERIFY(viewport->arrowsShown().arrows.isEmpty());
+    QTest::mouseClick(arrows, Qt::LeftButton);
+
+    const ArrowLayout shown = viewport->arrowsShown();
+    QVERIFY2(!shown.arrows.isEmpty(), "switching arrows on drew none");
+    for (const DisplacementArrow &a : shown.arrows) {
+        QVERIFY2(a.dx > 0.0 && std::abs(a.dy) < 0.1 * a.dx,
+                 qPrintable(QStringLiteral("an arrow at (%1, %2) points (%3, %4) for "
+                                           "a shift of +3 px in x")
+                                .arg(a.x).arg(a.y).arg(a.dx).arg(a.dy)));
+    }
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("times their true length")),
+             "the arrows are drawn without saying at what scale");
+
+    // ⚑ The note grows the bar, and the field must still clear it. Found by
+    // screenshot: switching arrows on pushed the bar down over the top of the
+    // field, the defect the view fit had just removed, one switch along.
+    {
+        QWidget *bar = fieldExplanationBar(viewport);
+        QVector<QPointF> corners;
+        QVERIFY(imageCornersOnScreen(viewport, viewport->record().width,
+                                     viewport->record().height, corners));
+        QVERIFY2(std::min(corners[0].y(), corners[1].y()) >= bar->geometry().bottom(),
+                 qPrintable(QStringLiteral("with arrows on, the image's top edge is at "
+                                           "%1 px, under the bar reaching %2 px")
+                                .arg(std::min(corners[0].y(), corners[1].y()))
+                                .arg(bar->geometry().bottom())));
+    }
+
+    // Zooming in opens the grid on screen, so more of it can carry arrows.
+    QVERIFY2(shown.stride > 1, "the arrows were not thinned at a fitted view, so "
+                               "this case cannot see thinning follow the zoom");
+    const QPoint middle = viewport->rect().center();
+    for (int i = 0; i < 8; i++) {
+        QWheelEvent wheel(QPointF(middle), viewport->mapToGlobal(QPointF(middle)),
+                          QPoint(), QPoint(0, 120), Qt::NoButton, Qt::NoModifier,
+                          Qt::NoScrollPhase, false);
+        QApplication::sendEvent(viewport, &wheel);
+    }
+    QVERIFY2(viewport->arrowsShown().stride < shown.stride,
+             qPrintable(QStringLiteral("zooming in left the arrows at every %1 point")
+                            .arg(viewport->arrowsShown().stride)));
+
+    QTest::mouseClick(arrows, Qt::LeftButton);
+    QVERIFY(viewport->arrowsShown().arrows.isEmpty());
 }
 
 void TestWorkspaceWalkthrough::the_strain_channels_say_why_they_are_unavailable()

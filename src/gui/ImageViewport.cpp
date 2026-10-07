@@ -7,6 +7,7 @@
 #include "core/ViewFit.h"
 #include "gui/FieldColours.h"
 
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFrame>
 #include <QHBoxLayout>
@@ -1395,6 +1396,8 @@ void ImageViewport::wheelEvent(QWheelEvent *event)
     // slow to catch up rather than as a rule.
     if (m_previewSubregion)
         refreshSettingsPreview();
+    // And how many arrows fit, for the same reason.
+    refreshArrows();
 }
 
 void ImageViewport::resizeEvent(QResizeEvent *event)
@@ -1629,6 +1632,19 @@ void ImageViewport::buildFieldBar()
     });
     row->addWidget(m_fieldChoice);
 
+    // Direction is legible from none of the scalar maps, so the movement can
+    // be drawn over whichever of them is showing.
+    m_arrowToggle = new QCheckBox(tr("Arrows"), m_fieldBar);
+    m_arrowToggle->setToolTip(tr("Draw which way each measured point moved"));
+    m_arrowToggle->setStyleSheet(QStringLiteral("QCheckBox { color: #e8eaed; }"));
+    connect(m_arrowToggle, &QCheckBox::toggled, this, [this] {
+        refreshArrows();
+        positionFieldBar();
+        // The note grows the bar, and the field must still clear it.
+        refitIfStillFitted();
+    });
+    row->addWidget(m_arrowToggle);
+
     // Says why the strain entries are unselectable, when they are. A disabled
     // control with no stated reason is a dead end -- the reader cannot tell
     // whether it is broken, not yet reached, or not applicable.
@@ -1637,6 +1653,13 @@ void ImageViewport::buildFieldBar()
     m_fieldNote = new QLabel(m_fieldBar);
     m_fieldNote->setWordWrap(true);
     stack->addWidget(m_fieldNote);
+
+    // What the arrows are, on its own line while they are drawn: their scale
+    // and their thinning change with the zoom, and both are part of reading them.
+    m_arrowNote = new QLabel(m_fieldBar);
+    m_arrowNote->setWordWrap(true);
+    m_arrowNote->hide();
+    stack->addWidget(m_arrowNote);
 
     m_fieldBar->hide();
 }
@@ -1762,6 +1785,7 @@ void ImageViewport::updateFieldBar()
     }
 
     m_fieldNote->setText(note);
+    refreshArrows();
 
     m_fieldBar->show();
     m_fieldBar->raise();
@@ -1798,7 +1822,8 @@ void ImageViewport::clearField()
     m_renderer->RemoveActor(m_fieldActor);
     m_renderer->RemoveActor2D(m_scalarBar);
     m_hasField = false;
-    m_renderWindow->Render();
+    // Arrows describe the field; with no field they go too.
+    refreshArrows();
 }
 
 void ImageViewport::showMessage(const QString &text)
@@ -1943,6 +1968,7 @@ void ImageViewport::fitImageToWindow()
     // The fit changes the spacing on screen, which decides what the preview draws.
     if (m_previewSubregion)
         refreshSettingsPreview();
+    refreshArrows();
 }
 
 void ImageViewport::refitIfStillFitted()
@@ -1959,4 +1985,87 @@ void ImageViewport::refitIfStillFitted()
         return;
     }
     fitImageToWindow();
+}
+
+void ImageViewport::refreshArrows()
+{
+    m_arrowsShown = ArrowLayout();
+    const bool wanted = m_hasField && m_arrowToggle && m_arrowToggle->isChecked();
+
+    // How far apart one grid step of the FIELD is on screen, asked of the real
+    // projection rather than worked out from the camera.
+    double spacing = 0.0;
+    QPointF origin, stepAway;
+    if (wanted && m_fieldResult.step > 0
+        && widgetPositionForImagePixel(QPointF(0.0, 0.0), origin)
+        && widgetPositionForImagePixel(QPointF(m_fieldResult.step, 0.0), stepAway)) {
+        spacing = std::abs(stepAway.x() - origin.x());
+    }
+    constexpr double kArrowSpacing = 18.0;   // screen px between neighbouring arrows
+    if (wanted && spacing > 0.0)
+        m_arrowsShown = layoutDisplacementArrows(m_fieldResult, spacing, kArrowSpacing);
+
+    if (m_arrowNote) {
+        m_arrowNote->setVisible(wanted);
+        if (wanted)
+            m_arrowNote->setText(arrowNote(m_arrowsShown));
+    }
+
+    if (m_arrowsShown.arrows.isEmpty()) {
+        if (m_arrowActorAdded) {
+            m_renderer->RemoveActor(m_arrowHalo);
+            m_renderer->RemoveActor(m_arrowActor);
+            m_arrowActorAdded = false;
+        }
+        m_renderWindow->Render();
+        return;
+    }
+
+    // Between the field (-0.1) and the settings preview (-0.3).
+    constexpr double kDepth = -0.2;
+    vtkNew<vtkPoints> points;
+    vtkNew<vtkCellArray> lines;
+    auto segment = [&](double x0, double y0, double x1, double y1) {
+        const vtkIdType ends[2] = {points->InsertNextPoint(x0, y0, kDepth),
+                                   points->InsertNextPoint(x1, y1, kDepth)};
+        lines->InsertNextCell(2, ends);
+    };
+    for (const DisplacementArrow &a : m_arrowsShown.arrows) {
+        const double tipX = a.x + a.dx;
+        const double tipY = a.y + a.dy;
+        segment(a.x, a.y, tipX, tipY);
+        // The head scales with the arrow, so a short arrow is not all head.
+        const double length = std::hypot(a.dx, a.dy);
+        const double head = 0.3 * length;
+        const double ux = a.dx / length, uy = a.dy / length;
+        constexpr double kSpread = 0.45;   // radians either side of the shaft
+        for (const double side : {kSpread, -kSpread}) {
+            const double c = std::cos(side), s = std::sin(side);
+            const double bx = -(ux * c - uy * s), by = -(ux * s + uy * c);
+            segment(tipX, tipY, tipX + head * bx, tipY + head * by);
+        }
+    }
+    m_arrowGeometry->SetPoints(points);
+    m_arrowGeometry->SetLines(lines);
+    m_arrowGeometry->Modified();
+    m_arrowMapper->SetInputData(m_arrowGeometry);
+    m_arrowMapper->ScalarVisibilityOff();
+
+    // ⚑ Dark on a light halo, so the arrows read over every colour of the ramp:
+    // a single colour vanishes into whichever part of the field matches it.
+    m_arrowHalo->SetMapper(m_arrowMapper);
+    m_arrowHalo->GetProperty()->SetColor(1.0, 1.0, 1.0);
+    m_arrowHalo->GetProperty()->SetLineWidth(3.4);
+    m_arrowHalo->GetProperty()->SetLighting(false);
+    m_arrowHalo->SetPosition(0.0, 0.0, 0.01);   // just behind the dark stroke
+    m_arrowActor->SetMapper(m_arrowMapper);
+    m_arrowActor->GetProperty()->SetColor(0.08, 0.09, 0.11);
+    m_arrowActor->GetProperty()->SetLineWidth(1.5);
+    m_arrowActor->GetProperty()->SetLighting(false);
+    if (!m_arrowActorAdded) {
+        m_renderer->AddActor(m_arrowHalo);
+        m_renderer->AddActor(m_arrowActor);
+        m_arrowActorAdded = true;
+    }
+    m_renderWindow->Render();
 }

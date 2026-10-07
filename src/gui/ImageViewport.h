@@ -2,6 +2,7 @@
 
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
+#include "core/DisplacementArrows.h"
 #include "core/ImageRecord.h"
 #include "core/Roi.h"
 #include "core/Series.h"
@@ -25,6 +26,7 @@
 #include <vtkRenderer.h>
 #include <vtkScalarBarActor.h>
 
+class QCheckBox;
 class QComboBox;
 class QFrame;
 class QLabel;
@@ -148,6 +150,10 @@ public:
     // its bars leave free. See core/ViewFit.h for why the bars matter.
     void fitImageToWindow();
 
+    // The arrows currently drawn over the field, empty when they are off.
+    // Exposed so a walkthrough can check what is on screen, not what was meant.
+    const ArrowLayout &arrowsShown() const { return m_arrowsShown; }
+
 signals:
     // The empty workspace's own first step was pressed. The viewport does not
     // import anything itself; it only offers the step where the step is
@@ -223,6 +229,8 @@ private:
     // appearing or the window resizing should keep the image clear of the
     // bars, but must never throw away a zoom the reader chose.
     void refitIfStillFitted();
+    // Redraws the displacement arrows for the current field and zoom.
+    void refreshArrows();
     void updateFieldBar();
     void drawField();
 
@@ -294,6 +302,13 @@ private:
     vtkNew<vtkActor> m_previewActor;
     bool m_previewActorAdded = false;
 
+    vtkNew<vtkPolyData> m_arrowGeometry;
+    vtkNew<vtkPolyDataMapper> m_arrowMapper;
+    vtkNew<vtkActor> m_arrowActor;
+    vtkNew<vtkActor> m_arrowHalo;
+    bool m_arrowActorAdded = false;
+    ArrowLayout m_arrowsShown;
+
     // What the preview is asked to draw, and where it last drew it.
     bool m_previewSubset = false;
     bool m_previewSubregion = false;
@@ -325,6 +340,8 @@ private:
     QFrame *m_fieldBar = nullptr;
     QComboBox *m_fieldChoice = nullptr;
     QLabel *m_fieldNote = nullptr;
+    QCheckBox *m_arrowToggle = nullptr;
+    QLabel *m_arrowNote = nullptr;
 
     // The result on display, kept so the channel can be changed without
     // re-running anything. The viewport owns a copy rather than a pointer: the

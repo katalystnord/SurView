@@ -523,7 +523,12 @@ Understood well enough to start, large enough to need their own care.
      qualitatively without naming spatial resolution as a number a reader
      could be told, should name it.
 
-  3. **Displacement as vector arrows over the field.** We offer magnitude, u
+  3. ~~**Displacement as vector arrows over the field.**~~ DONE 2026-10-08,
+     `core/DisplacementArrows.h`: an Arrows switch beside the channel
+     selector, arrows only at measured points, thinned by whole grid steps
+     as the grid closes on screen, drawn to a scale the bar states. Found by
+     screenshot on the way: the arrow note grew the bar back over the field,
+     and "0.83 times their true length" did not read; both are cases now. We offer magnitude, u
      and v as three separate scalar maps, and direction is legible from none
      of them. A quiver overlay makes a rotation or a shear obvious at a
      glance. Needs the usual care: arrows only where a point was measured,
