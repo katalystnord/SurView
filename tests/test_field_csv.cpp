@@ -420,6 +420,8 @@ void TestFieldCsv::the_file_carries_the_provenance_the_vtu_carries()
                                     QStringLiteral("c2d989e")}) {
         QVERIFY2(text.contains(expected), qPrintable(expected));
     }
+    // And how far its values are averaged, as the .vtu says.
+    QVERIFY2(text.contains(QStringLiteral("33 px subset")), "the averaging length is missing");
 }
 
 void TestFieldCsv::a_result_with_no_points_is_refused_rather_than_written_empty()

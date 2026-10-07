@@ -1,6 +1,7 @@
 #include "core/FieldExport.h"
 
 #include "core/FieldMesh.h"
+#include "core/SpatialResolution.h"
 #include "core/StrainFit.h"
 
 #include <QFile>
@@ -26,6 +27,21 @@
 #include <limits>
 
 namespace {
+
+// The averaging lengths, as the Analysis panel states them, for a file that
+// will be read without the panel beside it.
+QString averagingStatement(const CorrelationResult &result,
+                           const CorrelationSettings &settings)
+{
+    QString statement = displacementResolutionNote(settings.subsetRadius);
+    if (result.strainRequested) {
+        statement += QLatin1Char(' ')
+                     + strainResolutionNote(result.strainRadius, settings.gridStep,
+                                            settings.subsetRadius,
+                                            settings.strainMinPoints);
+    }
+    return statement;
+}
 
 // One line of stated fact, as its own named field-data array. Named arrays
 // rather than one blob of text, so a reader can ask for the piece it wants.
@@ -255,6 +271,11 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
                     .arg(result.total())
               : QObject::tr("Not fitted."));
 
+    // How far the values are averaged across the specimen: the other half of
+    // the trade the noise floor below reports, and the half a file read
+    // outside the application would otherwise never mention.
+    state(grid, "spatial_resolution", averagingStatement(result, settings));
+
     // Named in the terms the literature uses, so a stranger can look these up
     // rather than infer them from an array name, and qualified in the same
     // breath: an exported reliability figure read as a total error bar is worse
@@ -391,6 +412,8 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                            .arg(result.strainFitted)
                            .arg(result.total())
                      : QObject::tr("strain: not fitted."));
+    csvNote(out, QObject::tr("spatial resolution: %1")
+                     .arg(averagingStatement(result, settings)));
     csvNote(out, QObject::tr("noise_floor_px is DIC's sigma: the finest "
                              "displacement each subset's speckle can resolve "
                              "against an estimated image noise of %1 grey "

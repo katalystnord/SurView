@@ -507,8 +507,9 @@ Understood well enough to start, large enough to need their own care.
      Chapter 14 of the manual names both. ⚑ Stated as lengths AVERAGED OVER,
      never as a resolved feature size: the Star 1 measurement under *Test and
      tooling debt* puts the 90 per cent amplitude point near four subsets, so
-     "33 px resolution" would claim what the instrument does not deliver. Not
-     yet in the `.vtu` provenance or the field readout.
+     "33 px resolution" would claim what the instrument does not deliver.
+     Written into the `.vtu` and `.csv` provenance as well (2026-10-08), so a
+     file read outside the application states both halves of the trade.
      MatchID reports both. They are different quantities that trade directly
      against each other - a larger subset resolves displacement more finely
      and spatial detail more coarsely - and we report only the noise floor,

@@ -159,6 +159,7 @@ private slots:
     void the_file_says_which_images_and_which_settings_produced_it();
     void the_file_states_the_frame_its_coordinates_are_in();
     void the_file_carries_how_far_each_point_can_be_trusted();
+    void the_file_says_how_far_its_values_are_averaged();
     void a_result_with_nothing_in_it_is_refused_with_a_reason();
     void a_path_that_cannot_be_written_is_reported_rather_than_swallowed();
 };
@@ -324,6 +325,24 @@ void TestFieldExport::the_file_states_the_frame_its_coordinates_are_in()
              "the file does not say which way y runs");
 }
 
+
+void TestFieldExport::the_file_says_how_far_its_values_are_averaged()
+{
+    // The screen states the averaging lengths beside the noise floor; a file
+    // opened in ParaView would otherwise state only the noise floor, the half
+    // of the trade that flatters. Subset radius 16 is a 33 px subset; a 25 px
+    // subregion at a 6 px step reaches four steps out, 48 px, plus one subset.
+    //
+    // Written red first (2026-10-08). NEGATIVE CHECK: with the strain half left
+    // out of the statement, this failed on "average over 81 px".
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.vtu"));
+    QCOMPARE(writeFieldVtu(path, twoByTwo(), provenanceFor()), QString());
+    const QString stated = allFieldText(readBack(path));
+    QVERIFY2(stated.contains(QStringLiteral("33 px subset")), qPrintable(stated));
+    QVERIFY2(stated.contains(QStringLiteral("average over 81 px")), qPrintable(stated));
+    QVERIFY2(stated.contains(QStringLiteral("not the smallest feature")), qPrintable(stated));
+}
 
 void TestFieldExport::the_file_carries_how_far_each_point_can_be_trusted()
 {
