@@ -492,7 +492,16 @@ Understood well enough to start, large enough to need their own care.
      repair. A point measured on half a subset is not as good as a point
      measured on a whole one, and it should not claim to be.
 
-  2. ⚑ **Report SPATIAL resolution, not only displacement resolution.**
+  2. ~~⚑ **Report SPATIAL resolution, not only displacement resolution.**~~
+     DONE 2026-10-07, `core/SpatialResolution.h`. The Analysis panel and the
+     run report state the length a displacement is averaged over (the subset,
+     2r + 1) and the virtual strain gauge (the lattice span the strain fit
+     uses, plus one subset), each beside the controls that decide it, and
+     Chapter 14 of the manual names both. ⚑ Stated as lengths AVERAGED OVER,
+     never as a resolved feature size: the Star 1 measurement under *Test and
+     tooling debt* puts the 90 per cent amplitude point near four subsets, so
+     "33 px resolution" would claim what the instrument does not deliver. Not
+     yet in the `.vtu` provenance or the field readout.
      MatchID reports both. They are different quantities that trade directly
      against each other - a larger subset resolves displacement more finely
      and spatial detail more coarsely - and we report only the noise floor,

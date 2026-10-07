@@ -321,6 +321,8 @@ private:
     QCheckBox *m_showSubset = nullptr;
     QCheckBox *m_showSubregion = nullptr;
     QLabel *m_subregionCount = nullptr;
+    QLabel *m_strainResolution = nullptr;
+    QLabel *m_displacementResolution = nullptr;
     QLabel *m_speckleAdvice = nullptr;
     QGroupBox *m_strainGroup = nullptr;
 

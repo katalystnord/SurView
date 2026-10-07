@@ -355,6 +355,7 @@ private slots:
     void a_correlation_inside_a_region_recovers_a_known_shift();
 
     void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
+    void the_panel_states_how_far_displacement_and_strain_are_averaged();
     void a_measured_field_can_be_switched_to_strain_from_the_screen();
     void the_strain_channels_say_why_they_are_unavailable();
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
@@ -782,6 +783,47 @@ void TestWorkspaceWalkthrough::the_panel_warns_when_the_strain_subregion_cannot_
     strainMinimum->setValue(4);
     QVERIFY2(!somethingOnScreenSays(&window, QStringLiteral("nearest")),
              "the warning stayed up after the settings were made satisfiable");
+}
+
+void TestWorkspaceWalkthrough::the_panel_states_how_far_displacement_and_strain_are_averaged()
+{
+    // The other half of the trade the noise floor reports, said while the
+    // numbers that decide it are being chosen, and following them.
+    //
+    // NEGATIVE CHECK (2026-10-07): with the displacement line written for a
+    // fixed 16 px radius instead of the control's, this failed on "the panel
+    // does not say how far a displacement is averaged".
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *subsetRadius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    auto *gridStep = controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"));
+    auto *strainRadius =
+        controlLabelled<QDoubleSpinBox>(&window, QStringLiteral("Subregion radius"));
+    QVERIFY2(subsetRadius && gridStep && strainRadius,
+             "the Analysis panel has no subset, step or subregion control to set");
+
+    // Lopsided, so a subset taken as 2r or a gauge taken as 2R would not
+    // produce these numbers: 21 px subset, two 10 px steps either side.
+    subsetRadius->setValue(10);
+    gridStep->setValue(10);
+    strainRadius->setValue(24.0);
+
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("average over its 21 px subset")),
+             "the panel does not say how far a displacement is averaged");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("average over 61 px")),
+             "the panel does not state the virtual strain gauge");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("not the smallest feature")),
+             "the lengths are stated without saying they are not a resolved feature size");
+
+    // It follows the control, rather than being written once.
+    subsetRadius->setValue(16);
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("average over its 33 px subset")),
+             "the displacement length did not follow the subset radius");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("average over 73 px")),
+             "the strain gauge did not follow the subset radius");
 }
 
 void TestWorkspaceWalkthrough::a_measured_field_can_be_switched_to_strain_from_the_screen()

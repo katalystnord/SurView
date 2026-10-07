@@ -52,6 +52,8 @@ add_library(surview_core STATIC
     core/SpeckleQuality.h
     core/SubsetOverlay.cpp
     core/SubsetOverlay.h
+    core/SpatialResolution.cpp
+    core/SpatialResolution.h
     core/StrainFit.cpp
     core/StrainFit.h
 )

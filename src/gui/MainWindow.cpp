@@ -16,6 +16,7 @@
 #include "core/PointReadout.h"
 #include "core/RoiDetect.h"
 #include "core/Sequence.h"
+#include "core/SpatialResolution.h"
 #include "core/StrainFit.h"
 
 #include <QApplication>
@@ -830,6 +831,14 @@ QWidget *MainWindow::createAnalysisPanel()
         QStringLiteral("color: #55616d; font-size: 11px;"));
     form->addRow(QString(), m_speckleAdvice);
 
+    // ⚑ The other half of the trade the noise floor reports. A larger subset
+    // measures movement more finely and detail on the specimen more coarsely,
+    // and the panel said only the first. See core/SpatialResolution.h.
+    m_displacementResolution = new NoteLabel;
+    m_displacementResolution->setStyleSheet(
+        QStringLiteral("color: #55616d; font-size: 11px;"));
+    form->addRow(QString(), m_displacementResolution);
+
     // ⚑ The settings drawn at the size they will be measured at. The panel
     // already says what a subset can resolve and how many points a subregion
     // holds; those are the rigorous answers. "Is the pattern inside this box
@@ -940,6 +949,12 @@ QWidget *MainWindow::createAnalysisPanel()
     m_subregionCount->setStyleSheet(
         QStringLiteral("color: #55616d; font-size: 11px;"));
     strainColumn->addWidget(m_subregionCount);
+
+    // The virtual strain gauge, beside the count of the points it spans.
+    m_strainResolution = new NoteLabel;
+    m_strainResolution->setStyleSheet(
+        QStringLiteral("color: #55616d; font-size: 11px;"));
+    strainColumn->addWidget(m_strainResolution);
 
     // The live warning. See updateStrainAdvice().
     m_strainAdvice = new NoteLabel;
@@ -1226,6 +1241,12 @@ void MainWindow::updateSettingsPreview()
             .arg(held)
             .arg(settings.gridStep));
     m_subregionCount->setVisible(settings.strainEnabled);
+
+    m_displacementResolution->setText(displacementResolutionNote(settings.subsetRadius));
+    m_strainResolution->setText(strainResolutionNote(
+        settings.strainRadius, settings.gridStep, settings.subsetRadius,
+        settings.strainMinPoints));
+    m_strainResolution->setVisible(settings.strainEnabled);
 }
 
 void MainWindow::updateSectionSummaries()
@@ -2151,6 +2172,8 @@ void MainWindow::runCorrelation()
                                              .arg(m_roi.originText())
                                        : tr("whole image")));
 
+    log(tr("  %1").arg(displacementResolutionNote(settings.subsetRadius)));
+
     if (targetPaths.size() > 1) {
         // ⚑ Said out loud, because a sequence that stops correlating halfway
         // through looks exactly like a specimen that stopped deforming.
@@ -2179,6 +2202,10 @@ void MainWindow::runCorrelation()
         const QString advice = settings.strainWarning();
         if (!advice.isEmpty())
             log(tr("  %1").arg(advice));
+        log(tr("  %1").arg(strainResolutionNote(settings.strainRadius,
+                                                settings.gridStep,
+                                                settings.subsetRadius,
+                                                settings.strainMinPoints)));
     } else {
         log(tr("  Strain: not fitted."));
     }

@@ -1768,6 +1768,21 @@ part5_body = """
     averages the interesting detail away before it is ever reported.
   </p>
   <p>
+    The panel puts a number on that cost, beside the subset radius: each
+    displacement is an average over its subset, 2r + 1 pixels across, so
+    33 px at the default radius of 16. Strain is averaged further. It is
+    fitted from the points inside the strain subregion, each of which is
+    itself a subset's average, so it covers the span between the outermost
+    points the fit uses plus one subset: the <em>virtual strain gauge</em>,
+    83 px at the defaults. Both lengths are the scale of the averaging, not
+    the smallest feature that is measured at full size. A feature at that
+    scale is measured, but smaller than it is: on a displacement wave of
+    known size, a 33 px subset keeps 90 per cent of its amplitude only once
+    the wavelength reaches about 130 px. Read the two lengths as the
+    other half of the noise floor's trade: one says how finely movement is
+    measured, the other how widely it is averaged to get there.
+  </p>
+  <p>
     A smaller subset can follow sharper local detail, but has less
     texture to work with, is more sensitive to noise, and needs a
     correspondingly finer speckle pattern to still contain enough unique
@@ -1783,6 +1798,13 @@ part5_body = """
     measurement - that is entirely the subset's job - so
     a very fine grid step over an unreliable subset produces a dense
     field of unreliable answers, not a genuinely more precise one.
+  </p>
+  <p>
+    Strain is the exception. Its fit uses the points that fall inside the
+    strain subregion, so the step decides how far out the outermost of
+    them sit, and with it the length of the virtual strain gauge. The
+    panel states that length under the strain settings and updates it as
+    the step, the subregion or the subset changes.
   </p>
 
   <h2>Working from the reliability figures, rather than guessing</h2>
