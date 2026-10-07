@@ -120,3 +120,8 @@ vtk_module_autoinit(
     MODULES ${VTK_LIBRARIES}
 )
 
+
+# Not a test: tools/measure/, which measures a sequence headlessly and writes
+# every point as a table, so a field can be checked outside the window.
+add_executable(surview_measure ${CMAKE_SOURCE_DIR}/tools/measure/surview_measure.cpp)
+target_link_libraries(surview_measure PRIVATE surview_core)

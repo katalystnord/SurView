@@ -379,14 +379,33 @@ telling apart.
 upstream's RegionFit example fix, and `tools/run-tests.sh` passed in full
 against it. Kept here so the numbering of the other two does not change.
 
-**3. The other half of the cross-validation is still not done.** Measuring our
-examples against an external answer is done; running them through an
-INDEPENDENT IMPLEMENTATION is not, and it answers a different question. Neither
-Ncorr nor DICe is installed here and DICe is Trilinos-coupled, so it is a real
-build rather than an afternoon - which is why it has not been started rather
-than worked around. pyALDIC looks like the cheaper route: Python, and its
-BSD-3-Clause benchmark is the one piece of third-party data here that is
-explicitly redistributable.
+**3. ~~The other half of the cross-validation is still not done.~~** Done
+2026-10-01, as an internal check. What is reported here is SurView against the
+published reference answers: on the 24 synthetic frames and the 11 DIC
+Challenge Sample 3 frames, 0.0016 to 0.0050 px RMS per component on every frame
+and under 0.01 px at the 95th percentile, recovered points included.
+`tools/measure/` writes the field as a table for checks of this kind. The one
+finding that is ours to act on is the next item.
+
+**4. A subset in clipped background is reported as solved.** Found by the
+same check. On the real tension specimen without holes, five points
+whose subsets are 99.6 per cent at 255 converge with a correlation of 0.96 to
+1.00 and a displacement of zero. Nothing was measured there: a clipped region has
+no gradient, and its zero is the most reassuring reading available. The noise
+floor already says so (1.0 to 1.5 px against a median of 0.009 px on the
+specimen), but the solved count claims them, and so does every view that colours
+by displacement. Options, none chosen:
+
+- **Reject a subset that is mostly clipped**, with a reason of its own in the
+  point readout. Needs a share to be set, and says nothing about a subset that
+  is merely featureless without being clipped.
+- **Reject on the noise floor against the displacement measured**, which
+  catches the featureless case too, but is a threshold on a ratio and the first
+  rule in this codebase that would let reliability decide what is solved.
+- **Keep them solved and mark them**, as the second pass's points are marked:
+  strict about what is claimed rather than about what is kept.
+- **Leave it**: a region drawn on the specimen excludes them anyway, and the
+  noise floor already carries the warning.
 
 
 ## Now
@@ -1234,9 +1253,10 @@ as a backlog with everything in it.
      answers a different question from the above: not "does our measurement
      match an external answer" but "do two independent implementations agree on
      one photograph".
-  3. **A pyALDIC comparison** may be the cheapest form of step 2: it is Python,
-     it ships a synthetic accuracy benchmark, and its BSD-3-Clause licence is -
-     unlike everything else here - explicitly redistributable with attribution.
+  3. **A comparison with an independent implementation** - DONE 2026-10-01,
+     as an internal check that took the place of step 2. Only SurView's own
+     accuracy against the published answers is reported; see "Waiting on a
+     decision", item 3.
 
 - ⚑ **OUR POI GRID PLACES A ROW AND A COLUMN THAT CAN NEVER BE MEASURED**, and
   it took external data to notice. Found 2026-09-14 while checking the solve
