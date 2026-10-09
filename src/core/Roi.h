@@ -72,6 +72,17 @@ struct RegionOfInterest
     QString originText() const;
 };
 
+// What a field measured with no region drawn has to say about itself, in the
+// one wording the field bar, the run report and the tests share.
+//
+// ⚑ Without a region the run measures every place on the picture, and the
+// background, grips and glare are not the specimen. Some of them correlate and
+// are reported as solved -- glare off the bench on the tension example does,
+// with a plausible reading of no movement. No rule about the answers can catch
+// that reliably, because the answers look like measurements; leaving those
+// places out does. So the remedy is named, by the control that applies it.
+QString wholeImageMeasuredNote();
+
 // Which corner of `roi` is within `reach` pixels of `at`, nearest first, or -1
 // when none is. Used to decide whether a press on the picture grabs a corner or
 // belongs to whatever else the pointer does there, so returning the nearest

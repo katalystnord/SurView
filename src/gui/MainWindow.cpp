@@ -2248,6 +2248,8 @@ void MainWindow::runCorrelation()
                                              .arg(m_roi.originText())
                                        : tr("whole image")));
 
+    if (!m_roi.isValid())
+        log(tr("  %1").arg(wholeImageMeasuredNote()));
     log(tr("  %1").arg(displacementResolutionNote(settings.subsetRadius)));
 
     if (targetPaths.size() > 1) {
@@ -2855,7 +2857,10 @@ void MainWindow::updateActionStates()
         m_actRun->setToolTip(
             tr("Import a target image that matches the reference"));
     else
-        m_actRun->setToolTip(tr("Run DIC correlation"));
+        m_actRun->setToolTip(m_roi.isValid()
+                                 ? tr("Run DIC correlation inside the region")
+                                 : tr("Run DIC correlation over the whole image - "
+                                      "no region is drawn"));
 
     m_actStop->setEnabled(running);
 

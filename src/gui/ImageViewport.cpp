@@ -16,6 +16,7 @@
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QResizeEvent>
+#include <QScrollArea>
 #include <QShowEvent>
 #include <QSignalBlocker>
 #include <QStandardItemModel>
@@ -302,6 +303,7 @@ void ImageViewport::buildRoiBar()
     stack->addWidget(m_roiBarText);
 
     auto *row = new QHBoxLayout;
+    m_fieldBarRow = row;
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(10);
     stack->addLayout(row);
@@ -1650,16 +1652,46 @@ void ImageViewport::buildFieldBar()
     // whether it is broken, not yet reached, or not applicable.
     row->addStretch(1);
 
-    m_fieldNote = new QLabel(m_fieldBar);
+    // ⚑ The notes SCROLL once they outgrow a share of the viewport. The bar
+    // had no limit, and in a narrow viewport its sentences wrapped until it
+    // covered the field it explains and left the fit nowhere to put the
+    // picture: one more sentence, saying that the whole image was measured,
+    // took it from nine lines to past the bottom. Shortening the sentence would
+    // only move the edge; capping the bar removes it.
+    m_fieldNotesScroll = new QScrollArea(m_fieldBar);
+    m_fieldNotesScroll->setWidgetResizable(true);
+    m_fieldNotesScroll->setHorizontalScrollBarPolicy(Qt::ScrollBarAlwaysOff);
+    m_fieldNotesScroll->setFrameShape(QFrame::NoFrame);
+    m_fieldNotesScroll->setStyleSheet(QStringLiteral(
+        "QScrollArea { background: transparent; border: none; }"
+        "QScrollArea > QWidget > QWidget { background: transparent; }"
+        // Visible against the dark bar: the scroll bar is the only thing
+        // saying there is more to read.
+        "QScrollBar:vertical { background: #2f333c; width: 10px; margin: 0;"
+        " border-radius: 5px; }"
+        "QScrollBar::handle:vertical { background: #9aa0ab; min-height: 24px;"
+        " border-radius: 5px; }"
+        "QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical"
+        " { height: 0; }"
+        "QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical"
+        " { background: none; }"));
+    m_fieldNotes = new QWidget;
+    auto *notes = new QVBoxLayout(m_fieldNotes);
+    notes->setContentsMargins(0, 0, 0, 0);
+    notes->setSpacing(6);
+    m_fieldNotesScroll->setWidget(m_fieldNotes);
+    stack->addWidget(m_fieldNotesScroll);
+
+    m_fieldNote = new QLabel(m_fieldNotes);
     m_fieldNote->setWordWrap(true);
-    stack->addWidget(m_fieldNote);
+    notes->addWidget(m_fieldNote);
 
     // What the arrows are, on its own line while they are drawn: their scale
     // and their thinning change with the zoom, and both are part of reading them.
-    m_arrowNote = new QLabel(m_fieldBar);
+    m_arrowNote = new QLabel(m_fieldNotes);
     m_arrowNote->setWordWrap(true);
     m_arrowNote->hide();
-    stack->addWidget(m_arrowNote);
+    notes->addWidget(m_arrowNote);
 
     m_fieldBar->hide();
 }
@@ -1746,6 +1778,14 @@ void ImageViewport::updateFieldBar()
     // read as more than it is, and it belongs where the number is.
     QString note = fieldChannelNote(m_fieldChannel) + QLatin1Char(' ') + range;
 
+    // Said with the field rather than only in the run report: a reader looking
+    // at colours over the background has to learn here that nothing confined
+    // the measurement to the specimen. FIRST, ahead of even the channel's own
+    // note, because it qualifies every channel at once, and because the notes
+    // scroll once they outgrow the bar and what scrolls away is the end.
+    if (!m_fieldResult.restrictedToRoi)
+        note = wholeImageMeasuredNote() + QLatin1Char(' ') + note;
+
     if (fieldChannelIsReliability(m_fieldChannel)) {
         if (m_fieldChannel == FieldChannel::NoiseFloor) {
             // A noise floor read on its own is unreadable. This puts it against
@@ -1804,11 +1844,31 @@ void ImageViewport::positionFieldBar()
     // Top of the viewport: the region-drawing bar owns the bottom, and the two
     // are on screen together whenever a region is redrawn over a field.
     const int barWidth = std::max(120, width() - 2 * kMargin);
-    int barHeight = m_fieldBar->heightForWidth(barWidth);
-    if (barHeight <= 0)
-        barHeight = m_fieldBar->sizeHint().height();
 
-    m_fieldBar->setGeometry(kMargin, kMargin, barWidth, barHeight);
+    // Sized by hand, because a scroll area reports no height for its width:
+    // the selector row, then the notes at the width they will wrap to.
+    const QMargins margins = m_fieldBar->layout()->contentsMargins();
+    const int spacing = m_fieldBar->layout()->spacing();
+    const int rowHeight = m_fieldBarRow->sizeHint().height();
+    const int notesWidth = barWidth - margins.left() - margins.right();
+    int notesHeight = m_fieldNotes->layout()->hasHeightForWidth()
+                          ? m_fieldNotes->layout()->heightForWidth(notesWidth)
+                          : m_fieldNotes->sizeHint().height();
+    const int chrome = margins.top() + rowHeight + spacing + margins.bottom();
+
+    // At most this share of the viewport; past it the notes scroll, and the
+    // scroll bar is what says there is more.
+    constexpr double kLargestShare = 0.4;
+    const int allowed = std::max(chrome + 2 * fontMetrics().lineSpacing(),
+                                 int(height() * kLargestShare));
+    if (notesHeight > allowed - chrome) {
+        // Cut at a whole line, so the last line shown is never half a line.
+        const int line = m_fieldNote->fontMetrics().lineSpacing();
+        notesHeight = std::max(line, (allowed - chrome) / line * line);
+    }
+    m_fieldNotesScroll->setFixedHeight(std::max(0, notesHeight));
+
+    m_fieldBar->setGeometry(kMargin, kMargin, barWidth, chrome + notesHeight);
 }
 
 void ImageViewport::clearField()

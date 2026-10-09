@@ -34,6 +34,15 @@ QString RegionOfInterest::originText() const
                                              "detected from the speckle pattern");
 }
 
+QString wholeImageMeasuredNote()
+{
+    return QCoreApplication::translate(
+        "RegionOfInterest",
+        "No region was drawn, so the whole image was measured, including "
+        "anything in it that is not the specimen. Use Define ROI to measure "
+        "only the specimen.");
+}
+
 int cornerNear(const RegionOfInterest &roi, const QPoint &at, double reach)
 {
     int nearest = -1;

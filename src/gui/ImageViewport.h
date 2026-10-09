@@ -30,7 +30,9 @@ class QCheckBox;
 class QComboBox;
 class QFrame;
 class QLabel;
+class QHBoxLayout;
 class QPushButton;
+class QScrollArea;
 
 // Central viewport of the workspace: renders a speckle image, the region of
 // interest drawn on it, and displacement/strain field overlays, inside the Qt
@@ -340,6 +342,11 @@ private:
     QFrame *m_fieldBar = nullptr;
     QComboBox *m_fieldChoice = nullptr;
     QLabel *m_fieldNote = nullptr;
+    // The notes, scrolled inside the bar once they outgrow its share of the
+    // viewport.
+    QScrollArea *m_fieldNotesScroll = nullptr;
+    QWidget *m_fieldNotes = nullptr;
+    QHBoxLayout *m_fieldBarRow = nullptr;
     QCheckBox *m_arrowToggle = nullptr;
     QLabel *m_arrowNote = nullptr;
 

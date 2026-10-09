@@ -212,6 +212,20 @@ footer a:hover { color: var(--accent-strong); }
     honestly claim.
   </p>
 
+  <h2>Without a region, everything in the picture is measured</h2>
+  <p>
+    With no region drawn, SurView places points over the whole image,
+    and some of what is not the specimen will correlate and be counted as
+    solved. On the shipped tension example a patch of glare off the
+    background converges with a correlation close to 1 and a displacement
+    of zero: a plausible reading, and nothing was measured there. No rule
+    about the answers can reliably tell such a point from a real one,
+    because its answer looks like a measurement. Leaving those places out
+    can. So a field measured without a region says so beside the field, in
+    the run report and on the Run button, and names
+    <strong>Define ROI</strong> as the remedy.
+  </p>
+
   <h2>Drawn or detected, the region is honest about which</h2>
   <p>
     A region of interest can be drawn by hand, corner by corner, or

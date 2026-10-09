@@ -385,26 +385,28 @@ and under 0.01 px at the 95th percentile, recovered points included.
 `tools/measure/` writes the field as a table for checks of this kind. The one
 finding that is ours to act on is the next item.
 
-**4. A subset in clipped background is reported as solved.** Found by the
-same check. On the real tension specimen without holes, five points
-whose subsets are 99.6 per cent at 255 converge with a correlation of 0.96 to
-1.00 and a displacement of zero. Nothing was measured there: a clipped region has
-no gradient, and its zero is the most reassuring reading available. The noise
-floor already says so (1.0 to 1.5 px against a median of 0.009 px on the
-specimen), but the solved count claims them, and so does every view that colours
-by displacement. Options, none chosen:
+**4. ~~A subset in clipped background is reported as solved.~~** Decided
+2026-10-09: the remedy is the region of interest, not a rule about the
+answers. Found by the same check: on the real tension specimen without holes,
+five points in glare off the background, their subsets 99.6 per cent at 255,
+converge with a correlation of 0.96 to 1.00 and a displacement of zero.
 
-- **Reject a subset that is mostly clipped**, with a reason of its own in the
-  point readout. Needs a share to be set, and says nothing about a subset that
-  is merely featureless without being clipped.
-- **Reject on the noise floor against the displacement measured**, which
-  catches the featureless case too, but is a threshold on a ratio and the first
-  rule in this codebase that would let reliability decide what is solved.
-- **Keep them solved and mark them**, as the second pass's points are marked:
-  strict about what is claimed rather than about what is kept.
-- **Leave it**: a region drawn on the specimen excludes them anyway, and the
-  noise floor already carries the warning.
-
+- ⚑ **No rule about the answers catches this reliably, because the answers
+  look like measurements.** An outlier test against the neighbours has none to
+  compare with; one against the whole field sees a reading of zero, which a
+  tension specimen also produces at its fixed grip; a sparseness rule removes
+  isolated points whatever isolates them, and the same image holds two genuine
+  stationary measurements on the dark background (sigma 0.16 px) that any such
+  rule would take with the glare. Background, grips and glare each fool the
+  correlation in their own way, and leaving them out covers all of them at
+  once.
+- **So a field measured with no region says so** (done 2026-10-09), beside the
+  field, in the run report and on the Run button: "No region was drawn, so the
+  whole image was measured, including anything in it that is not the
+  specimen. Use Define ROI to measure only the specimen."
+  (`wholeImageMeasuredNote()`, pinned by
+  `a_field_measured_without_a_region_says_it_covers_the_whole_image`).
+- What a region cannot settle, glare ON the specimen, is under *Next*.
 
 ## Now
 
@@ -452,6 +454,15 @@ a design pass first.
      every line now.
 
 
+- **The axes legend covers the lowest labels of the colour scale** when the
+  viewport is small. Seen 2026-10-09 at a 1200 x 800 window on the shift
+  fixture: the "Image pixels: x right, y down" box sits over the bottom two
+  scale labels. The view fit already keeps the legend off the picture; the
+  scale bar needs the same consideration. In a very narrow viewport (a
+  1000 px window leaves it about 330 px) the field bar's selector row and the
+  legend's text are clipped too; the field bar's notes already scroll past
+  40 per cent of the viewport, but its first row does not wrap.
+
   What is deliberately NOT on this list, from the same review: their flat
   single-weight control layout, which answers nothing about where to start,
   and the absence of any reliability account. Those stay ours.
@@ -460,6 +471,17 @@ a design pass first.
 
 Things that change a measurement, or that everything after them depends on.
 Understood well enough to start, large enough to need their own care.
+
+- **Glare on the specimen itself.** Left over from decision 4. A region keeps
+  the background out, but a shiny or wet specimen can clip inside the region,
+  and a subset there carries no pattern and can still be reported as solved,
+  presenting a number as more trustworthy than it is. Count each subset's
+  share of pixels at the image's own extremes and state it in the point
+  readout, the run report and the exports, as a property of the subset like
+  the noise floor. Whether a mostly clipped subset is then also refused, with
+  a reason of its own, is a second step: on the tension example the glare
+  subsets sit at 87 per cent clipped or more and the specimen's at 10 per cent
+  or less, so a share of one half separates them with room either side.
 
 - **Learned from the rest of the field, 2026-09-03.** The reasoning and
   sources are in the screenshot pass above; this is the commitment to act on

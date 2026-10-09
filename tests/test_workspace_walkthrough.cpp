@@ -357,6 +357,7 @@ private slots:
     void cancelling_keeps_the_region_that_was_already_in_force();
     void the_region_says_it_can_be_adjusted_where_the_panel_can_show_it();
     void a_correlation_inside_a_region_recovers_a_known_shift();
+    void a_field_measured_without_a_region_says_it_covers_the_whole_image();
 
     void the_panel_warns_when_the_strain_subregion_cannot_hold_the_fit();
     void the_panel_states_how_far_displacement_and_strain_are_averaged();
@@ -886,6 +887,68 @@ void TestWorkspaceWalkthrough::the_log_can_be_copied_as_it_is_shown()
     QCOMPARE(QGuiApplication::clipboard()->text(), shown);
 }
 
+void TestWorkspaceWalkthrough::a_field_measured_without_a_region_says_it_covers_the_whole_image()
+{
+    // With no region drawn the run measures every place on the picture --
+    // background, grips, glare -- and some of those correlate and are reported
+    // as solved. Drawing a region is the remedy, so a field measured without
+    // one says so beside the field and in the run report, and points at the
+    // control that draws one. A field measured inside a region does not.
+    //
+    // Written red first (2026-10-09), failing on the Run tooltip. NEGATIVE
+    // CHECKS: the field bar note removed failed on "nothing beside the field";
+    // the note shown whatever the region failed on "still says the whole image
+    // was measured"; the report line removed failed on "the run report does not
+    // say". NOT COVERED: the exported files' own statement of it ("None: the
+    // whole image was measured"), which predates this and has no case.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    QVERIFY2(run->toolTip().contains(QStringLiteral("whole image")),
+             qPrintable(QStringLiteral("before a run without a region, Run says: ")
+                        + run->toolTip()));
+    run->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+    QVERIFY(!window.lastResult().restrictedToRoi);
+
+    const QString said = wholeImageMeasuredNote();
+    QVERIFY2(said.contains(QStringLiteral("Define ROI")),
+             "the note does not name the control that draws a region");
+    QVERIFY2(somethingOnScreenSays(viewport, said),
+             "nothing beside the field says the whole image was measured");
+    QVERIFY2(logView(&window)->toPlainText().contains(said),
+             "the run report does not say the whole image was measured");
+
+    // And not once there is a region.
+    QVERIFY(waitForEnabled(actionLabelled(&window, QStringLiteral("Define ROI"))));
+    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
+                                QPoint(170, 110), QPoint(60, 110)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    QVERIFY2(!run->toolTip().contains(QStringLiteral("whole image")),
+             qPrintable(QStringLiteral("with a region, Run says: ") + run->toolTip()));
+    QVERIFY(waitForEnabled(run));
+    run->trigger();
+    QVERIFY2(QTest::qWaitFor([&window, viewport] {
+                 return window.lastResult().restrictedToRoi && viewport->hasField();
+             }, 120000),
+             "the run inside the region did not finish");
+    QVERIFY2(!somethingOnScreenSays(viewport, said),
+             "a field measured inside a region still says the whole image was measured");
+}
+
+
 void TestWorkspaceWalkthrough::every_number_on_the_analysis_panel_says_what_it_counts_or_measures()
 {
     // "10" beside "Max iterations" is guessable; "0.70" beside "Try again
@@ -1065,6 +1128,14 @@ void TestWorkspaceWalkthrough::the_field_explanation_does_not_cover_the_field_it
     // at 1000 x 1000 on "under the coordinate legend" -- and passed while the
     // case ran at one wide window only, because a square image centred in a
     // wide viewport never reaches the corner the legend sits in.
+    //
+    // (2026-10-09) It also caught the bar having no height limit: one more
+    // sentence in the note grew it to 673 px of a narrow viewport and left the
+    // fit nowhere to put the picture. The notes scroll past 40 per cent of the
+    // viewport now; with that share set to 1.0 this fails again on "under the
+    // explanation bar, which reaches 671 px". Run it through ctest: xvfb-run's
+    // own default screen is too small for the 1000 x 1000 window, and there
+    // the mutation passes.
     MainWindow window;
     window.resize(1600, 700);
     window.show();
