@@ -337,9 +337,13 @@ void TestChunking::every_stage_of_a_full_run_counts_within_its_own_total()
     settings.strainMinPoints = 6;
     settings.recovery.enabled = true;
 
+    // ⚑ The occluded target, so the repair pass has points to repair and its
+    // loop actually runs. On the clean pair its only work used to be the grid's
+    // own unmeasurable edge row and column, and once the grid was fixed
+    // (2026-10-09) the stage never appeared at all.
     CorrelationRunner runner(settings, RegionOfInterest(),
                              fixture(QStringLiteral("shift_reference.tif")),
-                             fixture(QStringLiteral("shift_target.tif")));
+                             fixture(QStringLiteral("shift_target_occluded.tif")));
     runner.setChunkPoints(kRaggedChunk);
 
     QStringList stages;

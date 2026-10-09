@@ -74,11 +74,11 @@ CorrelationSettings baseSettings()
     return settings;
 }
 
-CorrelationResult runOnce(const CorrelationSettings &settings)
+CorrelationResult runOn(const CorrelationSettings &settings, const QString &target)
 {
     CorrelationRunner runner(settings, RegionOfInterest(),
                              fixture(QStringLiteral("shift_reference.tif")),
-                             fixture(QStringLiteral("shift_target.tif")));
+                             fixture(target));
 
     CorrelationResult result;
     QString failure;
@@ -91,6 +91,18 @@ CorrelationResult runOnce(const CorrelationSettings &settings)
     if (!failure.isEmpty())
         qWarning("%s", qPrintable(failure));
     return result;
+}
+
+CorrelationResult runOnce(const CorrelationSettings &settings)
+{
+    return runOn(settings, QStringLiteral("shift_target.tif"));
+}
+
+// The same pair with part of the target occluded, for cases that need some
+// points to fail. See the fixture's own note where it is used.
+CorrelationResult runOccluded(const CorrelationSettings &settings)
+{
+    return runOn(settings, QStringLiteral("shift_target_occluded.tif"));
 }
 
 }  // namespace
@@ -175,11 +187,14 @@ void TestUncertaintyMeasure::a_point_with_no_displacement_gets_no_reliability_ei
     // what matters, but it does not exercise SurView's gate. That gate stays as
     // defence in depth against the engine's precondition changing under us, not
     // because anything here proves it is load-bearing today.
-    CorrelationSettings settings = baseSettings();
-    settings.maxIterations = 1;
-    settings.convergence = 1e-9;
-
-    const CorrelationResult result = runOnce(settings);
+    // ⚑ The failures come from tests/fixtures/shift_target_occluded.tif: the
+    // shift target with a 48 x 48 block (x 96-143, y 56-103) painted flat at
+    // 128, so a subset inside it has nothing to correlate and one straddling
+    // its edge correlates poorly. Until 2026-10-09 this case leaned on the
+    // grid's own unmeasurable edge row and column for its failures, while a
+    // comment here credited a one-iteration setting that, once the grid was
+    // fixed, failed nothing at all.
+    const CorrelationResult result = runOccluded(baseSettings());
 
     int rejected = 0;
     for (const CorrelationPoint &point : result.points) {
@@ -239,11 +254,14 @@ void TestUncertaintyMeasure::neither_metric_is_reported_as_a_measurement_of_zero
     // both of these -- a zero noise floor claims a perfect measurement, and a
     // zero conditioning claims a perfectly sharp cost -- so an unmeasured one
     // must be not-a-number, exactly as an unsolved displacement is.
-    CorrelationSettings settings = baseSettings();
-    settings.maxIterations = 1;
-    settings.convergence = 1e-9;
-
-    const CorrelationResult result = runOnce(settings);
+    // ⚑ The failures come from tests/fixtures/shift_target_occluded.tif: the
+    // shift target with a 48 x 48 block (x 96-143, y 56-103) painted flat at
+    // 128, so a subset inside it has nothing to correlate and one straddling
+    // its edge correlates poorly. Until 2026-10-09 this case leaned on the
+    // grid's own unmeasurable edge row and column for its failures, while a
+    // comment here credited a one-iteration setting that, once the grid was
+    // fixed, failed nothing at all.
+    const CorrelationResult result = runOccluded(baseSettings());
 
     const QVector<float> floors = layoutField(result, FieldChannel::NoiseFloor);
     const QVector<float> conditioning =

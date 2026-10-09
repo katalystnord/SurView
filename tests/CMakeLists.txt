@@ -32,6 +32,7 @@ set(SURVIEW_UNIT_TESTS
     test_spatial_resolution
     test_view_fit
     test_displacement_arrows
+    test_grid_margin
     test_strain_measure
     test_uncertainty_measure
     test_point_readout

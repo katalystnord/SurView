@@ -4,6 +4,7 @@
 #include <QRect>
 
 #include <algorithm>
+#include <cmath>
 
 namespace {
 
@@ -33,12 +34,18 @@ PoiGridExtent poiGridExtent(int imageWidth, int imageHeight, int subsetRadius,
         return extent;
     }
 
-    // A subset must lie wholly inside the image, so no point may sit closer
-    // than one subset radius to any edge.
-    const int safeFirstX = subsetRadius;
-    const int safeFirstY = subsetRadius;
-    const int safeLastX  = imageWidth - 1 - subsetRadius;
-    const int safeLastY  = imageHeight - 1 - subsetRadius;
+    // ⚑ Not merely inside the image: inside the part of it the engine can
+    // MEASURE, with room to move. Laid one subset radius from the edge, the
+    // first row and column failed on every frame of DIC Challenge Sample 3
+    // (ROADMAP decision 1), because the engine's bicubic interpolator refuses
+    // any sample at x < 1 or x >= width - 2 and a subset touching the edge has
+    // its outermost samples there as soon as the specimen moves at all.
+    // tests/test_grid_margin.cpp asks the engine, so these numbers cannot
+    // drift from it unseen.
+    const int safeFirstX = subsetRadius + kGridMarginBefore;
+    const int safeFirstY = subsetRadius + kGridMarginBefore;
+    const int safeLastX  = imageWidth - 1 - kGridMarginAfter - subsetRadius;
+    const int safeLastY  = imageHeight - 1 - kGridMarginAfter - subsetRadius;
 
     if (safeLastX < safeFirstX || safeLastY < safeFirstY) {
         extent.refusal = tr("A subset radius of %1 px leaves no room for a single "
@@ -119,4 +126,30 @@ PoiGrid buildPoiGrid(int imageWidth, int imageHeight, int subsetRadius,
     }
 
     return grid;
+}
+
+const QString kCarriedPastTheEdge = QStringLiteral(
+    "the specimen carried this subset past the edge of the image");
+
+bool subsetCarriedPastTheEdge(double x, double y, int subsetRadius, double u,
+                              double v, int imageWidth, int imageHeight)
+{
+    if (!std::isfinite(u) || !std::isfinite(v) || subsetRadius <= 0)
+        return false;
+
+    // Room between the outermost sample and the limit the interpolator
+    // refuses: x < 1 before, x >= width - 2 after.
+    const double r = subsetRadius;
+    const double roomLeft = (x - r) - 1.0;
+    const double roomRight = (imageWidth - 2.0) - (x + r);
+    const double roomTop = (y - r) - 1.0;
+    const double roomBottom = (imageHeight - 2.0) - (y + r);
+
+    // Movement toward each side, plus the pixel of slack a sub-pixel solve
+    // moves through on its way from an integer estimate.
+    constexpr double kSlack = 1.0;
+    return roomLeft < std::max(0.0, -u) + kSlack
+           || roomRight < std::max(0.0, u) + kSlack
+           || roomTop < std::max(0.0, -v) + kSlack
+           || roomBottom < std::max(0.0, v) + kSlack;
 }

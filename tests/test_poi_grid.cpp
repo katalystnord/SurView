@@ -38,7 +38,7 @@ class TestPoiGrid : public QObject
     Q_OBJECT
 
 private slots:
-    void the_whole_image_grid_starts_one_subset_radius_in();
+    void the_whole_image_grid_stays_where_the_interpolator_can_reach();
     void no_point_lets_its_subset_leave_the_image();
     void a_grid_step_larger_than_one_still_lands_inside();
     void a_region_keeps_only_the_points_inside_it();
@@ -58,18 +58,27 @@ private slots:
     void each_refusal_says_which_thing_was_wrong();
 };
 
-void TestPoiGrid::the_whole_image_grid_starts_one_subset_radius_in()
+void TestPoiGrid::the_whole_image_grid_stays_where_the_interpolator_can_reach()
 {
+    // ROADMAP decision 1, chosen 2026-10-09. A subset that merely fits inside
+    // the image is not enough: the engine's bicubic interpolator refuses any
+    // sample at x < 1 or x >= width - 2, so a point one subset radius from the
+    // edge failed the moment the specimen moved by less than a whole pixel.
+    // The grid is inset so every edge keeps room for sub-pixel movement either
+    // way: first point at radius + 2, last at width - 3 - radius.
+    // tests/test_grid_margin.cpp holds the engine to it, and says why not + 1.
     const PoiGrid grid = buildPoiGrid(100, 80, 16, 1, RegionOfInterest(), {});
 
     QVERIFY(grid.isValid());
     QVERIFY(!grid.restricted);
-    QCOMPARE(grid.originX, 16);
-    QCOMPARE(grid.originY, 16);
-    // Last usable pixel is width-1-radius = 83, so 83-16+1 = 68 columns.
-    QCOMPARE(grid.columns, 68);
-    QCOMPARE(grid.rows, 48);
-    QCOMPARE(grid.cells.size(), 68 * 48);
+    QCOMPARE(grid.originX, 18);
+    QCOMPARE(grid.originY, 18);
+    // Last at 100 - 3 - 16 = 81 and 80 - 3 - 16 = 61.
+    QCOMPARE(grid.columns, 81 - 18 + 1);
+    QCOMPARE(grid.rows, 61 - 18 + 1);
+    QCOMPARE(grid.cells.size(), 64 * 44);
+    QCOMPARE(grid.cells.last().x, 81);
+    QCOMPARE(grid.cells.last().y, 61);
 }
 
 void TestPoiGrid::no_point_lets_its_subset_leave_the_image()
@@ -84,10 +93,12 @@ void TestPoiGrid::no_point_lets_its_subset_leave_the_image()
     QVERIFY(grid.isValid());
     QVERIFY(!grid.cells.isEmpty());
     for (const PoiGridCell &cell : grid.cells) {
-        QVERIFY(cell.x - radius >= 0);
-        QVERIFY(cell.y - radius >= 0);
-        QVERIFY(cell.x + radius <= width - 1);
-        QVERIFY(cell.y + radius <= height - 1);
+        // Inside the part of the image the interpolator will sample (x >= 1,
+        // x < width - 2), with room left for movement toward either edge.
+        QVERIFY(cell.x - radius >= 2);
+        QVERIFY(cell.y - radius >= 2);
+        QVERIFY(cell.x + radius <= width - 3);
+        QVERIFY(cell.y + radius <= height - 3);
     }
 }
 
@@ -98,12 +109,13 @@ void TestPoiGrid::a_grid_step_larger_than_one_still_lands_inside()
     const PoiGrid grid = buildPoiGrid(100, 100, 10, 7, RegionOfInterest(), {});
 
     QVERIFY(grid.isValid());
-    QCOMPARE(grid.originX, 10);
-    // Span 10..89 is 80 px; (89-10)/7 + 1 = 12 columns, last at 10+11*7 = 87.
-    QCOMPARE(grid.columns, 12);
+    QCOMPARE(grid.originX, 12);
+    // Span 12..87 (radius + 2 to width - 3 - radius); (87-12)/7 + 1 = 11
+    // columns, last at 12 + 10*7 = 82, short of 87 rather than past it.
+    QCOMPARE(grid.columns, 11);
     const PoiGridCell &last = grid.cells.last();
-    QCOMPARE(last.x, 87);
-    QVERIFY(last.x + 10 <= 99);
+    QCOMPARE(last.x, 82);
+    QVERIFY(last.x + 10 <= 97);
 }
 
 void TestPoiGrid::a_region_keeps_only_the_points_inside_it()
@@ -131,11 +143,11 @@ void TestPoiGrid::a_region_reaching_past_the_edge_is_held_to_the_safe_margin()
 
     QVERIFY(grid.isValid());
     QVERIFY(grid.restricted);
-    QCOMPARE(grid.originX, 16);
-    QCOMPARE(grid.originY, 16);
+    QCOMPARE(grid.originX, 18);
+    QCOMPARE(grid.originY, 18);
     for (const PoiGridCell &cell : grid.cells) {
-        QVERIFY(cell.x - 16 >= 0);
-        QVERIFY(cell.x + 16 <= 99);
+        QVERIFY(cell.x - 16 >= 2);
+        QVERIFY(cell.x + 16 <= 97);
     }
 }
 
@@ -288,9 +300,10 @@ void TestPoiGrid::an_image_exactly_large_enough_yields_exactly_one_point()
 {
     // Found by mutation testing: `safeLastX < safeFirstX` could become `<=`
     // undetected, because nothing sat exactly on the boundary. An image of
-    // 2*radius+1 has room for precisely one subset, centred.
+    // 2*radius + 5 has room for precisely one point, centred: the subset plus
+    // the grid's two-pixel margin on each side (kGridMarginBefore/After).
     const int radius = 16;
-    const int exact = 2 * radius + 1;   // 33
+    const int exact = 2 * radius + 5;   // 37
 
     const PoiGrid fits = buildPoiGrid(exact, exact, radius, 1,
                                       RegionOfInterest(), {});
@@ -298,8 +311,8 @@ void TestPoiGrid::an_image_exactly_large_enough_yields_exactly_one_point()
     QCOMPARE(fits.columns, 1);
     QCOMPARE(fits.rows, 1);
     QCOMPARE(fits.cells.size(), 1);
-    QCOMPARE(fits.cells.first().x, radius);
-    QCOMPARE(fits.cells.first().y, radius);
+    QCOMPARE(fits.cells.first().x, 18);
+    QCOMPARE(fits.cells.first().y, 18);
 
     // One pixel smaller and there is no room at all.
     const PoiGrid tooSmall = buildPoiGrid(exact - 1, exact, radius, 1,
@@ -339,12 +352,13 @@ void TestPoiGrid::a_region_leaving_exactly_one_column_or_row_is_measured_not_ref
     // ⚑ Getting one column takes an image exactly one subset wide, not a
     // narrow REGION: the extent is clipped to the region's bounding box in
     // pixels, so a region one grid step across still spans ten of them. At
-    // 2r + 1 wide the safe margin leaves exactly the one position, which is
-    // what makes first and last equal. Learned by printing the extent after
-    // this case failed against correct code.
+    // 2r + 5 wide (a subset and the grid's margins) the safe margin leaves
+    // exactly the one position, which is what makes first and last equal.
+    // Learned by printing the extent after this case failed against correct
+    // code.
     const int radius = 16;
     const int step = 10;
-    const int oneSubset = 2 * radius + 1;
+    const int oneSubset = 2 * radius + 5;
 
     RegionOfInterest whole;
     whole.vertices = {QPoint(0, 0), QPoint(oneSubset - 1, 0),

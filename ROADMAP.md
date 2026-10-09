@@ -344,35 +344,33 @@ researched to the point where the choice is the only thing left. The detail
 lives where the finding does; this is the list, so none of them has to be
 rediscovered. Raised 2026-09-14, out of the first cross-validation run.
 
-**1. The grid row and column that can never be measured.** Verified mechanism
-and the two wrong explanations are under *Test and tooling debt*. Four ways to
-take it, and the last is a real option rather than a placeholder:
+**1. ~~The grid row and column that can never be measured.~~** Decided
+2026-10-09 (option 1, inset pinned by a test, with our own wording for the
+second kind) and done the same day. The verified mechanism is under *Test and
+tooling debt*.
 
-- **Inset, pinned by a test.** `safeFirstX` becomes `subsetRadius + 1` and
-  `safeLastX` becomes `imageWidth - 3 - subsetRadius`, with a case asserting a
-  point at the inset solves and one a pixel outside it does not. The margin is
-  then a hard-coded number that cannot drift silently, which is this project's
-  usual answer to a magic number. No fork change, no pin bump. On Sample 3 it
-  takes 841 of 900 to 900 of 900.
-- **Inset, with the margin stated by the engine.** The same inset, but the fork
-  states its own interpolation margin and `core/Correlation.cpp` carries it
-  across, so nothing is copied. Tidier, and the kind of small generic addition
-  the upstreaming policy sends upstream - but it costs a fork commit and a pin
-  bump against an upstream that is mid-rewrite.
-- **Do not inset; report instead.** Keep placing them so the field keeps its
-  full extent, and say "never placeable" in our own words rather than leaving
-  the engine's "invalid initial guess" to read as a fault in somebody's
-  photograph. Needs a word on screen for a kind of hole that is ours.
-- **Leave it recorded and move on.** Nothing is lost by waiting: the mechanism
-  is written down, and the cross-validation case is deliberately set below the
-  threshold so it does not depend on the answer and will not need changing when
-  one is made.
-
-⚑ Whichever is chosen, an inset cannot be the whole answer. The constraint is
-on the sample AFTER displacement, and no grid can know the displacement in
-advance, so a point that was never placeable and a point whose subset left the
-interpolatable area once the specimen moved are different things and still want
-telling apart.
+- The grid now starts at subset radius + 2 and ends at width - 3 - radius
+  (`kGridMarginBefore`, `kGridMarginAfter` in `core/PoiGrid.h`).
+  ⚑ **Plus 2, not the plus 1 written down here as option 1**, found by the
+  case written for it: at radius + 1 a point's outermost sample sits exactly
+  on the interpolator's limit with no room at all, and the top point failed on
+  a frame that does not move in y, because the solver's own iterate wandered a
+  few thousandths of a pixel outward. `tests/test_grid_margin.cpp` asks the
+  engine on an exact +0.5 and -0.5 px translation that every inset point
+  solves both ways, so the copied margin cannot drift from it unseen.
+- Where the specimen's movement carries a subset past the edge anyway, the
+  readout and the run report say "the specimen carried this subset past the
+  edge of the image" instead of the engine's "subset out of image bounds, or
+  invalid initial guess" (`subsetCarriedPastTheEdge()`), judged by the room on
+  each side against the estimated movement, so a refusal in the middle of the
+  image still keeps the engine's words.
+- ⚑ **Four engine-backed cases had been leaning on the defect.** Each needs
+  some points to fail and checks that it got them, and every failure they ever
+  saw was in the unmeasurable edge row and column; two of their comments
+  credited "one iteration against a strict threshold", which once the grid was
+  fixed failed nothing at all. They run on
+  `tests/fixtures/shift_target_occluded.tif` now: the shift target with a
+  48 x 48 block painted flat, a failure that is real and stated.
 
 **2. ~~The engine pin is two commits behind the checkout.~~** Decided and done
 2026-09-28 (`989e00c`): the pin moved to `90c4ea2`, which also brings in

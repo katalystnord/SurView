@@ -82,6 +82,14 @@ CorrelationResult runOnce(const CorrelationSettings &settings)
                  fixture(QStringLiteral("shift_target.tif")), settings);
 }
 
+// The same pair with part of the target occluded, for cases that need some
+// points to fail and some to correlate poorly. See the fixture's own note.
+CorrelationResult runOccluded(const CorrelationSettings &settings)
+{
+    return runOn(fixture(QStringLiteral("shift_reference.tif")),
+                 fixture(QStringLiteral("shift_target_occluded.tif")), settings);
+}
+
 // Largest absolute value of a channel over every point that carries one.
 double worst(const CorrelationResult &result, FieldChannel channel)
 {
@@ -234,16 +242,17 @@ void TestStrainMeasure::the_points_left_out_of_every_fit_are_the_ones_that_corre
     // both sides -- the subsets away from the centre of rotation are matched
     // by a first-order shape function that cannot quite describe what happened
     // to them, and they converge poorly rather than failing.
+    // ⚑ The failures come from tests/fixtures/shift_target_occluded.tif: the
+    // shift target with a 48 x 48 block (x 96-143, y 56-103) painted flat at
+    // 128, so a subset inside it has nothing to correlate and one straddling
+    // its edge correlates poorly. Until 2026-10-09 this case found its poorly
+    // correlated points on the tension specimen, and every one of them turned
+    // out to sit in the grid's unmeasurable edge row and column: once the grid
+    // was fixed, that pair had none below the floor.
     CorrelationSettings settings = baseSettings();
     settings.subsetRadius = 16;
-    settings.gridStep = 24;
-    settings.maxIterations = 15;
-    settings.convergence = 0.001;
-
-    const CorrelationResult result =
-        runOn(QStringLiteral(SURVIEW_EXAMPLES "/real/01_tension_without_holes/image_0000.png"),
-              QStringLiteral(SURVIEW_EXAMPLES "/real/01_tension_without_holes/image_0004.png"),
-              settings);
+    settings.gridStep = 8;
+    const CorrelationResult result = runOccluded(settings);
 
     int below = 0;
     int above = 0;
@@ -299,13 +308,15 @@ void TestStrainMeasure::no_strain_is_reported_where_the_displacement_it_describe
     // that point, and nothing downstream can tell the two apart. Tenet 9: the
     // conservative reading is the substantiable one, so strain lives only where
     // the displacement it describes does.
+    // ⚑ The failures come from tests/fixtures/shift_target_occluded.tif: the
+    // shift target with a 48 x 48 block (x 96-143, y 56-103) painted flat at
+    // 128, so a subset inside it has nothing to correlate and one straddling
+    // its edge correlates poorly. Until 2026-10-09 this case leaned on the
+    // grid's own unmeasurable edge row and column for its failures, while a
+    // comment here credited a one-iteration setting that, once the grid was
+    // fixed, failed nothing at all.
     CorrelationSettings settings = baseSettings();
-    // One iteration against a strict threshold: the solve reaches many points
-    // and fails to converge at plenty of them, which is the mixture needed.
-    settings.maxIterations = 1;
-    settings.convergence = 1e-9;
-
-    const CorrelationResult result = runOnce(settings);
+    const CorrelationResult result = runOccluded(settings);
 
     int rejected = 0;
     for (const CorrelationPoint &point : result.points) {

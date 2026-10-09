@@ -73,6 +73,29 @@ struct PoiGridExtent
     int step   = 1;
 };
 
+// How far inside the subset-radius margin the grid starts and stops, in
+// pixels. The engine's interpolator samples x >= 1 and x < width - 2; the
+// grid keeps one pixel more than that at the start, so a point at the edge
+// still has room for sub-pixel movement toward it -- at exactly the limit it
+// failed whenever the solver's own iterate strayed a thousandth of a pixel
+// outward. Asked of the engine by tests/test_grid_margin.cpp.
+constexpr int kGridMarginBefore = 2;
+constexpr int kGridMarginAfter = 2;
+
+// What the point readout and the run report say where the specimen's own
+// movement took a subset past the part of the image the engine can sample.
+extern const QString kCarriedPastTheEdge;
+
+// Whether the engine's "subset out of image bounds, or invalid initial guess"
+// at this point was the specimen's doing. True when the estimate `u`, `v` is
+// a real number and, on some side, the room between the subset and the
+// interpolator's limit is less than the estimated movement toward that side
+// plus one pixel -- the slack a sub-pixel solve moves through from an integer
+// estimate. False in the middle of the image, where nothing could carry a
+// subset anywhere and the refusal came from the estimate itself.
+bool subsetCarriedPastTheEdge(double x, double y, int subsetRadius, double u,
+                              double v, int imageWidth, int imageHeight);
+
 PoiGridExtent poiGridExtent(int imageWidth, int imageHeight, int subsetRadius,
                             int gridStep, const RegionOfInterest &roi);
 

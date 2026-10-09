@@ -412,13 +412,16 @@ void TestSequenceRunner::a_re_anchor_announces_what_it_lost_rather_than_what_was
     //
     // The case above ignores that number entirely, and on a clean sequence it
     // could not have seen it anyway: nothing is ever lost, so "how many now"
-    // and "how many now plus how many before" are both zero. These settings
-    // give the solver one iteration against a strict threshold, so plenty of
-    // points fail on every frame and the second re-anchor has a non-zero
-    // history behind it.
+    // and "how many now plus how many before" are both zero. So the second
+    // and third frames are tests/fixtures/shift_target_occluded.tif, the shift
+    // target with a 48 x 48 block painted flat, where points really are lost
+    // and the second re-anchor has a non-zero history behind it.
+    //
+    // ⚑ Until 2026-10-09 this used the clean frames with one iteration against
+    // a strict threshold, credited here with failing "plenty of points". Every
+    // one of them was in the grid's own unmeasurable edge row and column; once
+    // the grid was fixed, that setting lost nothing at all.
     CorrelationSettings hard = coarseSettings();
-    hard.maxIterations = 1;
-    hard.convergence = 1e-9;
     hard.recovery.enabled = false;
 
     ReferenceUpdatePolicy always;
@@ -428,7 +431,10 @@ void TestSequenceRunner::a_re_anchor_announces_what_it_lost_rather_than_what_was
 
     SequenceRunner runner(hard, RegionOfInterest(),
                           fixture(QStringLiteral("shift_reference.tif")),
-                          threeFrames(), always);
+                          {fixture(QStringLiteral("shift_reference.tif")),
+                           fixture(QStringLiteral("shift_target_occluded.tif")),
+                           fixture(QStringLiteral("shift_target_occluded.tif"))},
+                          always);
 
     QVector<int> announced;
     QVector<int> lostAfterEachFrame;

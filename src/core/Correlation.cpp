@@ -278,6 +278,12 @@ void CorrelationRunner::run()
 
         result.points.reserve(total);
 
+        // The first estimate at every point, kept after the solver has
+        // overwritten it: a point refused near an edge is judged against the
+        // movement it was estimated to have (see subsetCarriedPastTheEdge()).
+        std::vector<std::pair<float, float>> estimate(size_t(total),
+                                                      {qQNaN(), qQNaN()});
+
         // How far the SOLVER got. Points beyond this still hold the integer-
         // pixel FFTCC estimate, which is a starting guess and not a
         // measurement -- on a stopped run they must not be reported as results.
@@ -297,6 +303,10 @@ void CorrelationRunner::run()
 
                 if (stage == 0) {
                     fftcc.compute(chunk);
+                    for (int k = 0; k < count; k++) {
+                        estimate[size_t(start + k)] = {chunk[size_t(k)].deformation.u,
+                                                       chunk[size_t(k)].deformation.v};
+                    }
                 } else {
                     solver->compute(chunk);
                     solvedUpTo = start + count;
@@ -635,6 +645,18 @@ void CorrelationRunner::run()
                 } else {
                     point.failureReason = QString::fromStdString(
                         statusDescription(poi.result.zncc));
+                    // ⚑ The engine reports a subset out of bounds and an
+                    // invalid estimate under one code, which reads to anyone
+                    // looking at the hole as a fault in their photograph. Near
+                    // an edge with the specimen moving toward it, it is the
+                    // specimen's movement, and the reader is told so.
+                    if (int(poi.result.zncc) == STATUS_INVALID_SUBSET_OR_GUESS
+                        && subsetCarriedPastTheEdge(
+                            poi.x, poi.y, radius, estimate[size_t(i)].first,
+                            estimate[size_t(i)].second, ref_img.width,
+                            ref_img.height)) {
+                        point.failureReason = kCarriedPastTheEdge;
+                    }
                     result.failuresByReason[point.failureReason]++;
                 }
             }
