@@ -51,6 +51,9 @@ public:
     // Puts the profile on the chart, as placing a probe should.
     void showProfile();
 
+    // The chart, for tests that check what it draws against its own plot area.
+    vtkChartXY *chart() const;
+
     // What is currently plotted, so the window can name it when exporting.
     Series currentSeries() const { return m_series; }
 
@@ -63,6 +66,12 @@ private:
     void rebuildChoices();
     void redraw();
     void updateNote();
+    // Shortens the y title to its unit when the full title, measured by VTK at
+    // the window's DPI, is longer than the axis. Run after every redraw and
+    // whenever the chart's own size changes.
+    void layoutAxes();
+
+    bool eventFilter(QObject *watched, QEvent *event) override;
 
     QVector<CorrelationResult> m_frames;
     QVector<Extensometer> m_gauges;
@@ -70,6 +79,10 @@ private:
     int m_profileFrame = 0;
     FieldChannel m_profileChannel = FieldChannel::DisplacementMagnitude;
     Series m_series;
+    // The y title as the axis would state it in full, and whether it had to be
+    // shortened to fit; the note then names the quantity in its place.
+    QString m_fullYTitle;
+    bool m_yTitleShortened = false;
 
     QComboBox *m_choice = nullptr;
     QLabel *m_choiceLabel = nullptr;

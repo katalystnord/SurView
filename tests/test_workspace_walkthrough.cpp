@@ -64,7 +64,13 @@
 #include <QTemporaryDir>
 #include <QTreeWidget>
 
+#include <QVTKOpenGLNativeWidget.h>
+#include <vtkAxis.h>
+#include <vtkChartXY.h>
 #include <vtkFieldData.h>
+#include <vtkRenderWindow.h>
+#include <vtkTextProperty.h>
+#include <vtkTextRenderer.h>
 #include <vtkNew.h>
 #include <vtkStringArray.h>
 #include <vtkUnstructuredGrid.h>
@@ -378,6 +384,7 @@ private slots:
     void the_field_bar_fits_a_narrow_viewport_and_names_the_channel_in_full();
     void glare_in_the_photographs_can_be_seen_and_is_counted_where_it_misleads();
     void the_cautions_can_be_marked_over_any_map_and_are_counted_in_view();
+    void the_plot_s_axis_titles_and_labels_fit_a_short_panel();
     void the_whole_image_can_be_brought_back_into_view_from_the_menu();
     void the_strain_channels_say_why_they_are_unavailable();
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
@@ -1517,6 +1524,135 @@ void TestWorkspaceWalkthrough::the_cautions_can_be_marked_over_any_map_and_are_c
     QVERIFY(viewport->cautionMarksShown().isEmpty());
     QVERIFY2(!somethingOnScreenSays(bar, QStringLiteral("carry no caution")),
              "the count stays on screen with the marks switched off");
+}
+
+namespace {
+
+// What a piece of axis text takes on screen, laid flat, in the render
+// window's own pixels: VTK's text renderer at the window's DPI, which is what
+// draws it.
+QSize textExtent(vtkTextProperty *properties, const QString &text, int dpi)
+{
+    vtkNew<vtkTextProperty> flat;
+    flat->ShallowCopy(properties);
+    flat->SetOrientation(0.0);
+    int box[4] = {0, 0, 0, 0};
+    if (text.isEmpty()
+        || !vtkTextRenderer::GetInstance()->GetBoundingBox(flat, text.toStdString(), box, dpi))
+        return QSize();
+    return QSize(box[1] - box[0] + 1, box[3] - box[2] + 1);
+}
+
+}  // namespace
+
+void TestWorkspaceWalkthrough::the_plot_s_axis_titles_and_labels_fit_a_short_panel()
+{
+    // Found by screenshot (2026-10-10): in a short Plot panel the y title read
+    // "placement magnitu" and the x title was cut through its middle. The
+    // chart's borders were fixed pixel counts while its text is sized from the
+    // font and the display's DPI. Checked here against the chart's own plot
+    // area, measured with VTK's text renderer at the window's DPI.
+    //
+    // Written red first (2026-10-10), failing on a 372 px y title along a 177 px
+    // axis. NEGATIVE CHECKS: fixed borders were checked and change nothing,
+    // because VTK widens the bands for labels and titles itself, which is why
+    // the fix is the title alone. The layout measured against the render
+    // window's own size, which lags a resize, fails the tall case on a title
+    // shortened with room to spare; the note's sentence removed fails on
+    // "nothing says so"; no shortening at all fails as this case first did.
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    auto *plot = window.findChild<PlotPanel *>();
+    auto *view = plot->findChild<QVTKOpenGLNativeWidget *>();
+    QVERIFY(plot && view);
+
+    // At two heights: a panel squeezed short, where the full y title cannot
+    // fit along the axis, and a taller one where it can and must be shown whole.
+    // Then again with the axis text made larger, as a display that scales its
+    // fonts does: the borders must follow the text, which fixed ones cannot.
+    for (int fontSize : {0, 22}) {
+    if (fontSize > 0) {
+        for (int axis : {vtkAxis::LEFT, vtkAxis::BOTTOM}) {
+            plot->chart()->GetAxis(axis)->GetLabelProperties()->SetFontSize(fontSize);
+            plot->chart()->GetAxis(axis)->GetTitleProperties()->SetFontSize(fontSize);
+        }
+    }
+    for (int height : {230, 520}) {
+        // The PANEL squeezed, as a short dock squeezes it: the chart gets what
+        // the selector and the note leave, and must stay inside the panel.
+        plot->setFixedHeight(height);
+        QTest::qWait(150);
+        view->renderWindow()->Render();
+
+        vtkChartXY *chart = plot->chart();
+        const int dpi = view->renderWindow()->GetDPI();
+        vtkAxis *left = chart->GetAxis(vtkAxis::LEFT);
+        vtkAxis *bottom = chart->GetAxis(vtkAxis::BOTTOM);
+        const int *low = chart->GetPoint1();    // plot area, scene pixels, y up
+        const int *high = chart->GetPoint2();
+        const int plotHeight = high[1] - low[1];
+        const QString where = QStringLiteral("at %1 px, font %5 (plot area %2 high, left band "
+                                             "%3, bottom band %4)")
+                                  .arg(height).arg(plotHeight).arg(low[0]).arg(low[1])
+                                  .arg(fontSize);
+
+        QVERIFY2(view->geometry().bottom() < plot->height(),
+                 qPrintable(where + QStringLiteral(": the chart runs %1 px past the bottom "
+                                                   "of the panel, so its lower edge is cut off")
+                                        .arg(view->geometry().bottom() - plot->height() + 1)));
+
+        const QString yTitle = QString::fromStdString(left->GetTitle());
+        const QSize yTitleSize = textExtent(left->GetTitleProperties(), yTitle, dpi);
+        QVERIFY2(!yTitle.isEmpty(), qPrintable(where + QStringLiteral(": no y title at all")));
+        QVERIFY2(yTitleSize.width() <= plotHeight,
+                 qPrintable(where + QStringLiteral(": the y title \"%1\" is %2 px long")
+                                        .arg(yTitle).arg(yTitleSize.width())));
+
+        const QString xTitle = QString::fromStdString(bottom->GetTitle());
+        const int xNeeded = textExtent(bottom->GetLabelProperties(), QStringLiteral("0"), dpi).height()
+                            + textExtent(bottom->GetTitleProperties(), xTitle, dpi).height();
+        QVERIFY2(xNeeded <= low[1],
+                 qPrintable(where + QStringLiteral(": the x labels and title need %1 px")
+                                        .arg(xNeeded)));
+        // The labels the axis actually drew, widest of them.
+        int widestLabel = 0;
+        if (vtkStringArray *labels = left->GetTickLabels()) {
+            for (vtkIdType i = 0; i < labels->GetNumberOfValues(); i++)
+                widestLabel = std::max(widestLabel,
+                                       textExtent(left->GetLabelProperties(),
+                                                  QString::fromStdString(labels->GetValue(i)),
+                                                  dpi).width());
+        }
+        QVERIFY2(widestLabel > 0, qPrintable(where + QStringLiteral(": the y axis drew no labels")));
+        QVERIFY2(yTitleSize.height() + widestLabel <= low[0],
+                 qPrintable(where + QStringLiteral(": the y labels and title do not fit left "
+                                                   "of the plot")));
+
+        // Shortened, the note says so and names what the axis shows.
+        if (yTitle.length() < 6) {
+            QVERIFY2(somethingOnScreenSays(plot, QStringLiteral("carries the unit alone")),
+                     qPrintable(where + QStringLiteral(": the y title was shortened to \"%1\" "
+                                                       "and nothing says so").arg(yTitle)));
+        }
+        if (height == 520) {
+            const Series series = plot->currentSeries();
+            if (fontSize == 0)
+                QVERIFY2(yTitle.contains(series.quantity),
+                         qPrintable(where + QStringLiteral(": with room for it, the y title is "
+                                                           "still shortened to \"%1\"").arg(yTitle)));
+        }
+    }
+    }
 }
 
 void TestWorkspaceWalkthrough::the_whole_image_can_be_brought_back_into_view_from_the_menu()

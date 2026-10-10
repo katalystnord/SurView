@@ -454,11 +454,17 @@ a design pass first.
      every line now.
 
 
-- **The plot's axis titles are clipped in a short Plot panel.** Seen
-  2026-10-10 at a 1300 x 900 window: the y title reads "placement magnitu"
-  and the x title is cut through its middle. The chart's borders are fixed
-  pixels (`SetBorders(66, 44, ...)`); they want sizing from the fonts, or the
-  titles shortening when the panel is short.
+- ~~**The plot's axis titles are clipped in a short Plot panel.**~~ DONE
+  2026-10-10. The y title runs along the axis, so its length has the plot's
+  height to fit in, and in a short panel it read "acement magnitude (me", cut
+  at both ends. Measured by VTK's own text renderer at the window's DPI, it
+  now falls back to its unit when it does not fit, and the note above the
+  chart names the quantity in full. ⚑ Two wrong turns worth not repeating:
+  sizing the chart's borders from the text changed nothing, because VTK
+  already widens them for labels and titles, so that was taken back out; and
+  the size has to be the widget's, since the render window still reports its
+  previous size at the moment of a resize.
+
 - ~~**The axes legend covers the lowest labels of the colour scale**~~ DONE
   2026-10-10. The scale stood at fixed fractions of the viewport, the corner
   the legend owns, and the image fit knew about neither. `placeScaleBar()` in
