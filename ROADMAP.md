@@ -177,7 +177,8 @@ does. In rough order of what we would gain:
    slices are how people actually navigate tomography data, and it is far
    less work than isosurfaces.
 
-3. **An ROI built from additive and subtractive primitives.** Six buttons:
+3. ~~**An ROI built from additive and subtractive primitives.**~~ Built
+   2026-10-10, as two drop-down buttons rather than six. Six buttons:
    +Rect, +Ellipse, +Polygon, -Rect, -Ellipse, -Polygon, with Clear and
    Export. That is strictly more expressive than what we shipped on
    2026-09-03 (one outer polygon plus polygon holes), and it makes a hole
@@ -586,7 +587,22 @@ Understood well enough to start, large enough to need their own care.
   serve and which is probably better done in ParaView than reimplemented
   here.
 
-- **An ROI of additive and subtractive primitives.** Rectangle, ellipse and
+- ~~**An ROI of additive and subtractive primitives.**~~ DONE 2026-10-10.
+  A region is an ordered list of rectangles, ellipses and polygons, each added
+  or cut, applied as paint is (David's choice): the last shape containing a
+  pixel decides, so an island can stand inside a hole (`core/Roi.h`). Add to
+  Region and Cut from Region on the toolbar, shapes numbered in the project,
+  Remove Shape for the selected one, every handle draggable (a box resizes
+  about its opposite corner). The engine judges membership shape by shape
+  (`regionInsideTest()`), including the fork's new `Ellipse2D`. Old projects
+  open as "+ polygon, then a cut per hole"; the file format is version 2.
+  ⚑ Found on the way: the engine-free mirror used for drawing, overlays and
+  the speckle estimate dropped the right and bottom edge of every polygon
+  while the run kept them, and the speckle estimate ignored holes entirely.
+  Both fixed, and a case now holds the mirror to the engine at every pixel.
+  Also found: QRect::normalized() shifts an inverted box by a pixel each side.
+
+  The original entry: Rectangle, ellipse and
   polygon, each in a plus and a minus form, as upstream's GUI offers them.
   Strictly more expressive than the outer polygon plus polygon holes shipped
   on 2026-09-03, and it makes a hole the natural special case of subtraction

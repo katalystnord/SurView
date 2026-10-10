@@ -45,6 +45,7 @@
 #include <vtkUnsignedCharArray.h>
 
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <limits>
 #include <vtkInteractorStyleImage.h>
@@ -381,7 +382,7 @@ void ImageViewport::buildRoiBar()
             &ImageViewport::undoLastRoiVertex);
     row->addWidget(m_roiUndo);
 
-    m_roiFinish = new QPushButton(tr("Close region"), m_roiBar);
+    m_roiFinish = new QPushButton(tr("Close shape"), m_roiBar);
     connect(m_roiFinish, &QPushButton::clicked, this,
             &ImageViewport::finishRoiDrawing);
     row->addWidget(m_roiFinish);
@@ -423,22 +424,17 @@ void ImageViewport::positionRoiBar()
                           barWidth, barHeight);
 }
 
-void ImageViewport::beginHoleDrawing()
-{
-    // Only meaningful inside a boundary that already exists: a hole with no
-    // region around it excludes nothing from nothing.
-    if (!m_hasImage || m_roiDrawing || !m_roiShown.isValid())
-        return;
-    m_drawingHole = true;
-    beginRoiDrawing();
-}
-
-void ImageViewport::beginRoiDrawing()
+void ImageViewport::beginShapeDrawing(RegionShape::Kind kind, bool cut)
 {
     if (!m_hasImage || m_roiDrawing)
         return;
+    // A cut with nothing to cut from removes nothing from nothing.
+    if (cut && !m_roiShown.isValid())
+        return;
 
     m_roiDrawing = true;
+    m_drawKind = kind;
+    m_drawCut = cut;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
@@ -458,53 +454,43 @@ void ImageViewport::cancelRoiDrawing()
         return;
 
     m_roiDrawing = false;
+    m_drawCut = false;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
     unsetCursor();
     m_roiBar->hide();
 
-    // Whatever boundary was already committed comes back on screen: abandoning
-    // a new one does not discard the one that was there.
+    // Whatever region was already in force comes back on screen: abandoning a
+    // shape does not discard the ones that were there.
     refreshRoiGeometry();
     emit roiDrawingChanged(false);
 }
 
 void ImageViewport::finishRoiDrawing()
 {
-    // Guarded here as well as on the button: Enter reaches this directly.
-    if (!m_roiDrawing || m_roiPlaced.size() < 3)
+    // Guarded here as well as on the button: Enter reaches this directly. A box
+    // finishes itself on its second corner; a polygon needs three.
+    RegionShape shape;
+    shape.kind = m_drawKind;
+    shape.subtract = m_drawCut;
+    shape.points = m_roiPlaced;
+    if (!m_roiDrawing || !shape.isValid())
         return;
 
-    const QVector<QPoint> ring = m_roiPlaced;
-    const bool asHole = m_drawingHole;
-
     m_roiDrawing = false;
-    m_drawingHole = false;
+    m_drawCut = false;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
     unsetCursor();
     m_roiBar->hide();
 
-    if (asHole) {
-        // The window owns the region, so the ring goes to it and comes back as
-        // part of a whole region through showRoi(). The viewport does not
-        // assemble one itself, or two places would know how a region is built.
-        emit roiDrawingChanged(false);
-        emit holeDrawn(ring);
-        return;
-    }
-
-    RegionOfInterest roi;
-    roi.vertices = ring;
-    roi.origin = RegionOfInterest::Drawn;
-
-    m_roiShown = roi;
-    refreshRoiGeometry();
-
+    // The window owns the region, so the shape goes to it and comes back as
+    // part of a whole region through showRoi(). The viewport does not assemble
+    // one itself, or two places would know how a region is built.
     emit roiDrawingChanged(false);
-    emit roiDrawn(roi);
+    emit shapeDrawn(shape);
 }
 
 void ImageViewport::undoLastRoiVertex()
@@ -522,7 +508,8 @@ void ImageViewport::updateRoiBar()
         return;
 
     const int placed = m_roiPlaced.size();
-    const bool enough = placed >= 3;
+    const bool box = m_drawKind != RegionShape::Polygon;
+    const bool enough = !box && placed >= 3;
 
     QString where;
     if (m_roiCursorValid) {
@@ -531,26 +518,43 @@ void ImageViewport::updateRoiBar()
                     .arg(m_roiCursor.y());
     }
 
+    const QString shapeName = m_drawKind == RegionShape::Rectangle ? tr("a rectangle")
+                              : m_drawKind == RegionShape::Ellipse ? tr("an ellipse")
+                                                                   : tr("a polygon");
+    const QString doing = m_drawCut ? tr("<b>Cutting %1 from the region</b>").arg(shapeName)
+                                    : tr("<b>Adding %1 to the region</b>").arg(shapeName);
+
     // Says what to do, how far along it is, and what is still missing -- the
-    // count alone would not explain why "Close region" is refusing.
-    m_roiBarText->setText(
-        tr("<b>Defining a region of interest</b> - click the image to place "
-           "corners.<br><span style='color:#a9b0bb;'>%1 placed%2 · %3 · "
-           "double-click, right-click or Enter closes it · Esc cancels</span>")
-            .arg(placed == 1 ? tr("1 corner") : tr("%1 corners").arg(placed),
-                 where,
-                 enough ? tr("ready to close")
-                        : tr("at least 3 needed")));
+    // count alone would not explain why "Close shape" is refusing.
+    if (box) {
+        m_roiBarText->setText(
+            tr("%1 - click one corner of its box, then the opposite corner."
+               "<br><span style='color:#a9b0bb;'>%2%3 · Esc cancels</span>")
+                .arg(doing,
+                     placed == 0 ? tr("first corner next") : tr("now the opposite corner"),
+                     where));
+    } else {
+        m_roiBarText->setText(
+            tr("%1 - click the image to place corners.<br><span style='color:#a9b0bb;'>"
+               "%2 placed%3 · %4 · double-click, right-click or Enter closes it · "
+               "Esc cancels</span>")
+                .arg(doing,
+                     placed == 1 ? tr("1 corner") : tr("%1 corners").arg(placed),
+                     where,
+                     enough ? tr("ready to close") : tr("at least 3 needed")));
+    }
 
     // The text changes width as the count and the pointer position change, so
     // the bar is re-placed with it rather than only when the widget resizes.
     positionRoiBar();
 
     m_roiUndo->setEnabled(placed > 0);
+    m_roiUndo->setText(box ? tr("Undo corner") : tr("Undo last corner"));
+    // A box closes itself on its second corner, so it has nothing to close.
+    m_roiFinish->setVisible(!box);
     m_roiFinish->setEnabled(enough);
-    m_roiFinish->setToolTip(enough
-                                ? tr("Close the boundary and keep this region")
-                                : tr("A region needs at least 3 corners"));
+    m_roiFinish->setToolTip(enough ? tr("Close the polygon and keep it")
+                                   : tr("A polygon needs at least 3 corners"));
 }
 
 void ImageViewport::showRoi(const RegionOfInterest &roi)
@@ -570,14 +574,21 @@ void ImageViewport::clearRoi()
 
 void ImageViewport::refreshRoiGeometry()
 {
+    // Every shape in force is drawn whether or not another is being drawn, so
+    // what is already added and cut stays visible while the next shape goes on.
     const bool drawing = m_roiDrawing;
-    const QVector<QPoint> &ring = drawing ? m_roiPlaced : m_roiShown.vertices;
-    const bool committed = !drawing && m_roiShown.isValid();
-    // A region's holes are drawn whether or not a new ring is being placed, so
-    // the places already excluded stay visible while another is added.
-    const QVector<QVector<QPoint>> holeRings = m_roiShown.holes;
 
-    if (ring.isEmpty() && holeRings.isEmpty()) {
+    // In progress, the shape that WOULD be committed: placed corners plus the
+    // pointer. Seeing the shape before committing to it is the whole point of a
+    // rubber band.
+    RegionShape pending;
+    pending.kind = m_drawKind;
+    pending.points = m_roiPlaced;
+    const bool box = m_drawKind != RegionShape::Polygon;
+    if (drawing && box && m_roiPlaced.size() == 1 && m_roiCursorValid)
+        pending.points.append(m_roiCursor);
+
+    if (m_roiShown.shapes.isEmpty() && pending.points.isEmpty()) {
         if (m_roiActorAdded) {
             m_renderer->RemoveActor(m_roiActor);
             m_roiActorAdded = false;
@@ -593,83 +604,132 @@ void ImageViewport::refreshRoiGeometry()
     vtkNew<vtkPoints> points;
     vtkNew<vtkCellArray> lines;
     vtkNew<vtkCellArray> markers;
+    // ⚑ Colour per cell. VTK numbers a polydata's cells vertices first, then
+    // lines, so the two lists are kept apart and joined in that order.
+    QVector<std::array<unsigned char, 3>> markerColours;
+    QVector<std::array<unsigned char, 3>> lineColours;
 
-    for (const QPoint &vertex : ring) {
-        const vtkIdType id =
-            points->InsertNextPoint(vertex.x(), vertex.y(), kRoiDepth);
+    // Added green, cut coral: a cut is part of the region but takes away, and a
+    // reader looking at two overlapping outlines has to be able to tell which.
+    // Amber is anything not yet committed, as it is for a gauge being placed.
+    const std::array<unsigned char, 3> added{72, 242, 158};
+    const std::array<unsigned char, 3> cut{255, 128, 102};
+    const std::array<unsigned char, 3> inProgress{255, 199, 64};
+
+    auto handle = [&](const QPoint &at, const std::array<unsigned char, 3> &colour) {
+        const vtkIdType id = points->InsertNextPoint(at.x(), at.y(), kRoiDepth);
         markers->InsertNextCell(1, &id);
-    }
-
-    const vtkIdType placed = vtkIdType(ring.size());
-    auto segment = [&lines](vtkIdType from, vtkIdType to) {
-        const vtkIdType ends[2] = {from, to};
-        lines->InsertNextCell(2, ends);
+        markerColours.append(colour);
+    };
+    auto outline = [&](const QVector<QPointF> &ring, bool closed,
+                       const std::array<unsigned char, 3> &colour) {
+        if (ring.size() < 2)
+            return;
+        const vtkIdType first = points->GetNumberOfPoints();
+        for (const QPointF &at : ring)
+            points->InsertNextPoint(at.x(), at.y(), kRoiDepth);
+        const vtkIdType last = points->GetNumberOfPoints() - 1;
+        for (vtkIdType i = first; i < last; i++) {
+            const vtkIdType ends[2] = {i, i + 1};
+            lines->InsertNextCell(2, ends);
+            lineColours.append(colour);
+        }
+        if (closed && ring.size() >= 3) {
+            const vtkIdType ends[2] = {last, first};
+            lines->InsertNextCell(2, ends);
+            lineColours.append(colour);
+        }
+    };
+    auto outlineOf = [&](const RegionShape &shape, const std::array<unsigned char, 3> &colour) {
+        QVector<QPointF> ring;
+        if (shape.kind == RegionShape::Polygon) {
+            for (const QPoint &corner : shape.points)
+                ring.append(QPointF(corner));
+            outline(ring, true, colour);
+            return;
+        }
+        if (shape.points.size() != 2)
+            return;
+        // Asked of the shape, not re-derived: QRect::normalized() shifts an
+        // inverted box by a pixel each side (see core/Roi.cpp).
+        const QRect boxed = shape.bounds();
+        if (shape.kind == RegionShape::Rectangle) {
+            for (const QPoint &corner : shape.handles())
+                ring.append(QPointF(corner));
+        } else {
+            // Traced, through the same centre and semi-axes the engine uses.
+            const double cx = 0.5 * (boxed.left() + boxed.right());
+            const double cy = 0.5 * (boxed.top() + boxed.bottom());
+            const double sx = 0.5 * (boxed.right() - boxed.left());
+            const double sy = 0.5 * (boxed.bottom() - boxed.top());
+            constexpr int kSegments = 72;
+            for (int k = 0; k < kSegments; k++) {
+                const double t = 2.0 * M_PI * k / kSegments;
+                ring.append(QPointF(cx + sx * std::cos(t), cy + sy * std::sin(t)));
+            }
+        }
+        outline(ring, true, colour);
     };
 
-    for (vtkIdType i = 0; i + 1 < placed; i++)
-        segment(i, i + 1);
-
-    if (committed && placed >= 3) {
-        segment(placed - 1, 0);
-    } else if (drawing && m_roiCursorValid && placed >= 1) {
-        // ⚑ `placed >= 1` is load-bearing, and its absence corrupted VTK's own
-        // memory. The rubber band runs from the LAST placed corner, so with
-        // none placed the segment below asks for point id `placed - 1`, which
-        // is -1: a line cell referencing a point that does not exist. VTK
-        // walks it in ComputeCellsBounds() during the next render and aborts
-        // with "double free or corruption".
-        //
-        // Unreachable until holes existed, because an empty ring used to mean
-        // there was nothing to draw at all and the method returned early.
-        // Adding a second ring to keep committed holes visible while a new one
-        // is placed removed that guard without replacing it -- so the crash
-        // needed a region that ALREADY had a hole, and then only once the
-        // pointer moved before the first corner was clicked.
-        // While placing, the shape that WOULD be committed is drawn: a segment
-        // from the last corner to the pointer, and the closing one back to the
-        // first. Seeing the polygon before committing to it is the whole point
-        // of a rubber band.
-        const vtkIdType cursor =
-            points->InsertNextPoint(m_roiCursor.x(), m_roiCursor.y(), kRoiDepth);
-        segment(placed - 1, cursor);
-        if (placed >= 2)
-            segment(cursor, 0);
-    }
-
-    // Each hole as its own closed ring, in the same geometry so it takes the
-    // region's colour: a hole is part of the boundary, not a separate object.
-    for (const QVector<QPoint> &hole : holeRings) {
-        if (hole.size() < 3)
+    for (const RegionShape &shape : m_roiShown.shapes) {
+        if (!shape.isValid())
             continue;
-        const vtkIdType first = points->GetNumberOfPoints();
-        for (const QPoint &vertex : hole) {
-            const vtkIdType id =
-                points->InsertNextPoint(vertex.x(), vertex.y(), kRoiDepth);
-            markers->InsertNextCell(1, &id);
-        }
-        const vtkIdType last = points->GetNumberOfPoints() - 1;
-        for (vtkIdType i = first; i < last; i++)
-            segment(i, i + 1);
-        segment(last, first);
+        const auto &colour = shape.subtract ? cut : added;
+        outlineOf(shape, colour);
+        // Larger than the line is wide, so the corners read as handles rather
+        // than as decoration. They can be dragged, and something that can be
+        // dragged has to look like it.
+        for (const QPoint &corner : shape.handles())
+            handle(corner, colour);
     }
 
+    if (drawing) {
+        for (const QPoint &corner : m_roiPlaced)
+            handle(corner, inProgress);
+        if (box) {
+            if (pending.isValid())
+                outlineOf(pending, inProgress);
+        } else if (!m_roiPlaced.isEmpty()) {
+            // ⚑ Only with a corner placed. The rubber band runs from the LAST
+            // placed corner; with none placed it would ask for a point that does
+            // not exist, and VTK walks such a cell into "double free or
+            // corruption" on the next render. Found once already, when holes
+            // first kept other rings on screen during drawing.
+            QVector<QPointF> band;
+            for (const QPoint &corner : m_roiPlaced)
+                band.append(QPointF(corner));
+            if (m_roiCursorValid) {
+                band.append(QPointF(m_roiCursor));
+                if (m_roiPlaced.size() >= 2)
+                    band.append(QPointF(m_roiPlaced.first()));
+            }
+            outline(band, false, inProgress);
+        }
+    }
+
+    vtkNew<vtkUnsignedCharArray> colours;
+    colours->SetNumberOfComponents(3);
+    colours->SetName("colours");
+    for (const auto &colour : markerColours)
+        colours->InsertNextTypedTuple(colour.data());
+    for (const auto &colour : lineColours)
+        colours->InsertNextTypedTuple(colour.data());
+
+    m_roiGeometry->Initialize();
     m_roiGeometry->SetPoints(points);
     m_roiGeometry->SetLines(lines);
     m_roiGeometry->SetVerts(markers);
+    m_roiGeometry->GetCellData()->SetScalars(colours);
     m_roiGeometry->Modified();
 
-    // Being placed and being committed look different on purpose: an unfinished
-    // boundary should not be mistaken for the region a run will use.
-    if (drawing) {
-        m_roiActor->GetProperty()->SetColor(1.0, 0.78, 0.25);   // amber: in progress
-        m_roiActor->GetProperty()->SetPointSize(7.0);
-    } else {
-        m_roiActor->GetProperty()->SetColor(0.28, 0.95, 0.62);  // green: in force
-        // Larger than the line is wide, so a committed region's corners read as
-        // handles rather than as decoration. They can be dragged, and something
-        // that can be dragged has to look like it.
-        m_roiActor->GetProperty()->SetPointSize(11.0);
-    }
+    m_roiMapper->SetInputData(m_roiGeometry);
+    m_roiMapper->SetScalarModeToUseCellData();
+    m_roiMapper->SetColorModeToDirectScalars();
+    m_roiMapper->ScalarVisibilityOn();
+    m_roiActor->SetMapper(m_roiMapper);
+    m_roiActor->GetProperty()->SetLineWidth(2.0);
+    m_roiActor->GetProperty()->SetPointSize(drawing ? 8.0 : 11.0);
+    m_roiActor->GetProperty()->SetLighting(false);
 
     if (!m_roiActorAdded) {
         m_renderer->AddActor(m_roiActor);
@@ -1196,13 +1256,37 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
             m_roiPlaced.append(pixel);
             m_roiCursor = pixel;
             m_roiCursorValid = true;
+            // A box is two corners, so the second click IS the finish.
+            if (m_drawKind != RegionShape::Polygon && m_roiPlaced.size() == 2) {
+                RegionShape box;
+                box.kind = m_drawKind;
+                box.points = m_roiPlaced;
+                if (box.isValid()) {
+                    finishRoiDrawing();
+                } else {
+                    // On the same row or column as the first: a box of no
+                    // width or no height encloses nothing. Refused here, where
+                    // the bar can say so.
+                    m_roiPlaced.removeLast();
+                    refreshRoiGeometry();
+                    updateRoiBar();
+                    emit editRefused(tr("The opposite corner has to be both across "
+                                        "and down from the first, or the box has "
+                                        "no width or no height."));
+                }
+                event->accept();
+                return;
+            }
             refreshRoiGeometry();
             updateRoiBar();
             event->accept();
             return;
         }
         if (event->button() == Qt::RightButton) {
-            finishRoiDrawing();
+            // Closes a polygon; a box has nothing to close until both corners
+            // are down, when it has closed itself.
+            if (m_drawKind == RegionShape::Polygon)
+                finishRoiDrawing();
             event->accept();
             return;
         }
@@ -1214,9 +1298,9 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
     if (event->button() == Qt::LeftButton && m_roiShown.isValid()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
-            const int corner =
+            const CornerRef corner =
                 cornerNear(m_roiShown, pixel, grabReachInPixels(event->position()));
-            if (corner >= 0) {
+            if (corner.isValid()) {
                 m_draggingCorner = corner;
                 setCursor(Qt::ClosedHandCursor);
                 event->accept();
@@ -1249,11 +1333,16 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
     if (event->button() == Qt::RightButton && m_roiShown.isValid()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
-            const int corner =
+            const CornerRef corner =
                 cornerNear(m_roiShown, pixel, grabReachInPixels(event->position()));
-            if (corner >= 0) {
-                if (m_roiShown.vertices.size() <= 3) {
-                    emit editRefused(tr("A region needs at least three corners, "
+            if (corner.isValid()) {
+                const RegionShape &shape = m_roiShown.shapes.at(corner.shape);
+                if (shape.kind != RegionShape::Polygon) {
+                    emit editRefused(tr("A rectangle or an ellipse keeps its four "
+                                        "corners: drag one to resize it, or remove "
+                                        "the whole shape from the project list."));
+                } else if (shape.points.size() <= 3) {
+                    emit editRefused(tr("A polygon needs at least three corners, "
                                         "so that one cannot be taken out."));
                 } else {
                     m_roiShown = withCornerRemoved(m_roiShown, corner);
@@ -1292,7 +1381,7 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
         // is being placed.
     }
 
-    if (m_draggingCorner >= 0) {
+    if (m_draggingCorner.isValid()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
             m_roiShown = withCornerMoved(m_roiShown, m_draggingCorner, pixel);
@@ -1331,9 +1420,9 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
             const double reach = grabReachInPixels(event->position());
-            if (cornerNear(m_roiShown, pixel, reach) >= 0) {
+            if (cornerNear(m_roiShown, pixel, reach).isValid()) {
                 setCursor(Qt::OpenHandCursor);
-            } else if (edgeNear(m_roiShown, pixel, reach) >= 0) {
+            } else if (edgeNear(m_roiShown, pixel, reach).isValid()) {
                 // A different cursor for a different gesture: the corners are
                 // picked up, the edges are added to, and a reader who has been
                 // told both needs to see which one is under the pointer.
@@ -1395,8 +1484,8 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
 
 void ImageViewport::mouseReleaseEvent(QMouseEvent *event)
 {
-    if (m_draggingCorner >= 0 && event->button() == Qt::LeftButton) {
-        m_draggingCorner = -1;
+    if (m_draggingCorner.isValid() && event->button() == Qt::LeftButton) {
+        m_draggingCorner = CornerRef();
         unsetCursor();
         // Announced like any other boundary change, so the project, the log and
         // any measured field that no longer matches all react the same way they
@@ -1449,9 +1538,9 @@ void ImageViewport::mouseDoubleClickEvent(QMouseEvent *event)
     if (!m_roiDrawing && event->button() == Qt::LeftButton && m_roiShown.isValid()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
-            const int edge =
+            const CornerRef edge =
                 edgeNear(m_roiShown, pixel, grabReachInPixels(event->position()));
-            if (edge >= 0) {
+            if (edge.isValid()) {
                 m_roiShown = withCornerInserted(m_roiShown, edge, pixel);
                 refreshRoiGeometry();
                 emit roiDrawn(m_roiShown);

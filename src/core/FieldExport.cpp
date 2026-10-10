@@ -258,9 +258,8 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
 
     state(grid, "region_of_interest",
           result.restrictedToRoi
-              ? QObject::tr("A region of %1 corners; points outside it were "
-                            "never measured.")
-                    .arg(result.roi.vertices.size())
+              ? QObject::tr("%1. Points outside it were never measured.")
+                    .arg(regionSummary(result.roi))
               : QObject::tr("None: the whole image was measured."));
 
     state(grid, "strain",
@@ -403,9 +402,9 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                      .arg(settings.maxIterations)
                      .arg(settings.convergence));
     csvNote(out, result.restrictedToRoi
-                     ? QObject::tr("region of interest: %1 corners; points "
-                                   "outside it were never measured.")
-                           .arg(result.roi.vertices.size())
+                     ? QObject::tr("region of interest: %1. Points outside it "
+                                   "were never measured.")
+                           .arg(regionSummary(result.roi))
                      : QObject::tr("region of interest: none, the whole image "
                                    "was measured."));
     csvNote(out, withStrain

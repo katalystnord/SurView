@@ -23,6 +23,8 @@
 #include "core/StrainFit.h"
 #include "core/SubsetOverlay.h"
 
+#include "roi_helpers.h"
+
 #include <QTest>
 
 #include <cmath>
@@ -153,8 +155,8 @@ void TestSubsetOverlay::a_region_keeps_the_overlay_inside_what_will_be_measured(
     // With a region in force the run measures inside it, so a box shown outside
     // it would preview a measurement that is not going to happen.
     RegionOfInterest roi;
-    roi.vertices = {QPoint(200, 150), QPoint(400, 150), QPoint(400, 310),
-                    QPoint(200, 310)};
+    setOutline(roi, {QPoint(200, 150), QPoint(400, 150), QPoint(400, 310),
+                    QPoint(200, 310)});
     QVERIFY(roi.isValid());
 
     const SubsetOverlay overlay = overlayAt(600.0, 440.0, 16, 10, true, 25.0, roi);
@@ -290,13 +292,13 @@ void TestSubsetOverlay::a_hole_takes_the_points_it_covers_out_of_the_neighbourho
     // NEGATIVE CHECK: not asking the region at all leaves both counts equal and
     // this red.
     RegionOfInterest whole;
-    whole.vertices = {QPoint(100, 100), QPoint(540, 100), QPoint(540, 380),
-                      QPoint(100, 380)};
+    setOutline(whole, {QPoint(100, 100), QPoint(540, 100), QPoint(540, 380),
+                      QPoint(100, 380)});
 
     RegionOfInterest holed = whole;
-    holed.holes = {{QPoint(300, 220), QPoint(360, 220), QPoint(360, 270),
-                    QPoint(300, 270)}};
-    QVERIFY(holed.hasHoles());
+    addCut(holed, {QPoint(300, 220), QPoint(360, 220), QPoint(360, 270),
+                   QPoint(300, 270)});
+    QVERIFY(holed.hasCuts());
 
     const SubsetOverlay without =
         overlayAt(320.0, 240.0, 16, 10, true, 40.0, whole);

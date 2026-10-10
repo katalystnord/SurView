@@ -29,6 +29,8 @@
 #include "gui/ComparisonWindow.h"
 #include "gui/MainWindow.h"
 
+#include "roi_helpers.h"
+
 #include <QAction>
 #include <QApplication>
 #include <QGuiApplication>
@@ -412,6 +414,10 @@ private slots:
     void the_plot_panel_says_what_it_is_for_before_a_sequence_exists();
     void an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence();
     void a_line_probe_plots_the_map_on_screen_along_the_line_it_was_drawn();
+
+    void a_region_is_built_from_shapes_added_and_cut_in_order();
+    void a_shape_selected_in_the_project_can_be_taken_away();
+    void dragging_a_rectangle_s_corner_resizes_it_about_the_opposite_one();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 
     void the_comparison_with_a_known_answer_says_why_it_is_unavailable_before_a_run();
@@ -447,7 +453,8 @@ void TestWorkspaceWalkthrough::the_pipeline_controls_say_what_they_do_before_any
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
     // Every capability has to be visible; nothing may exist only as a shortcut.
-    QVERIFY(actionLabelled(&window, QStringLiteral("Define ROI")));
+    QVERIFY(actionLabelled(&window, QStringLiteral("Add to Region")));
+    QVERIFY(actionLabelled(&window, QStringLiteral("Cut from Region")));
     QVERIFY(actionLabelled(&window, QStringLiteral("Auto-detect ROI")));
     QVERIFY(actionLabelled(&window, QStringLiteral("Clear ROI")));
     QVERIFY(actionLabelled(&window, QStringLiteral("Run Correlation")));
@@ -469,7 +476,7 @@ void TestWorkspaceWalkthrough::a_region_cannot_be_started_before_there_is_an_ima
     window.show();
     QVERIFY(QTest::qWaitForWindowExposed(&window));
 
-    QAction *define = actionLabelled(&window, QStringLiteral("Define ROI"));
+    QAction *define = actionLabelled(&window, QStringLiteral("Add to Region"));
     QVERIFY(!define->isEnabled());
     QVERIFY(define->toolTip().contains(QStringLiteral("image"), Qt::CaseInsensitive));
 
@@ -489,13 +496,13 @@ void TestWorkspaceWalkthrough::entering_the_mode_puts_its_own_instructions_on_sc
     QVERIFY(viewport);
     QVERIFY(!viewport->isDrawingRoi());
 
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     QVERIFY(viewport->isDrawingRoi());
 
     // The mode must announce itself. A mode you cannot see you are in is the
     // failure this bar exists to prevent.
     QLabel *instructions =
-        byVisibleText<QLabel>(viewport, QStringLiteral("Defining a region"));
+        byVisibleText<QLabel>(viewport, QStringLiteral("Adding a polygon"));
     QVERIFY2(instructions, "entering ROI mode showed no on-screen instruction");
     QVERIFY(instructions->isVisible());
     QVERIFY(instructions->text().contains(QStringLiteral("click"), Qt::CaseInsensitive));
@@ -510,11 +517,11 @@ void TestWorkspaceWalkthrough::the_mode_bar_names_every_way_to_finish_it()
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
 
     // Buttons, not shortcuts. If the keyboard were the only way out, a user who
     // was never told would be stuck in a mode with no visible exit.
-    QVERIFY2(byVisibleText<QPushButton>(viewport, QStringLiteral("Close region")),
+    QVERIFY2(byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape")),
              "no visible control to finish the boundary");
     QVERIFY2(byVisibleText<QPushButton>(viewport, QStringLiteral("Cancel")),
              "no visible control to abandon the boundary");
@@ -524,7 +531,7 @@ void TestWorkspaceWalkthrough::the_mode_bar_names_every_way_to_finish_it()
     // The keyboard routes are accelerators, and are named on screen so they can
     // be discovered rather than guessed.
     QLabel *instructions =
-        byVisibleText<QLabel>(viewport, QStringLiteral("Defining a region"));
+        byVisibleText<QLabel>(viewport, QStringLiteral("Adding a polygon"));
     QVERIFY(instructions->text().contains(QStringLiteral("Enter")));
     QVERIFY(instructions->text().contains(QStringLiteral("Esc")));
 }
@@ -538,10 +545,10 @@ void TestWorkspaceWalkthrough::closing_is_refused_until_the_bar_says_it_is_ready
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
 
-    QPushButton *close = byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"));
-    QLabel *instructions = byVisibleText<QLabel>(viewport, QStringLiteral("Defining a region"));
+    QPushButton *close = byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"));
+    QLabel *instructions = byVisibleText<QLabel>(viewport, QStringLiteral("Adding a polygon"));
 
     // Refusing is not enough on its own: the reason has to be readable.
     QVERIFY(!close->isEnabled());
@@ -574,25 +581,25 @@ void TestWorkspaceWalkthrough::moving_down_and_right_on_screen_moves_down_and_ri
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    QSignalSpy drawn(viewport, &ImageViewport::roiDrawn);
+    QSignalSpy drawn(viewport, &ImageViewport::shapeDrawn);
 
     // Three corners, placed by pure widget offsets from the widget's centre.
     const QPoint centre(viewport->width() / 2, viewport->height() / 2);
     const QPoint downRight = centre + QPoint(60, 40);
 
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre);
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, downRight);
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                       centre + QPoint(0, 40));
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
 
     QCOMPARE(drawn.count(), 1);
-    const auto roi = drawn.first().first().value<RegionOfInterest>();
-    QCOMPARE(roi.vertices.size(), 3);
+    const auto shape = drawn.first().first().value<RegionShape>();
+    QCOMPARE(shape.points.size(), 3);
 
-    const QPoint first = roi.vertices.at(0);
-    const QPoint second = roi.vertices.at(1);
+    const QPoint first = shape.points.at(0);
+    const QPoint second = shape.points.at(1);
 
     // Right on screen must be a LARGER x in the image.
     QVERIFY2(second.x() > first.x(),
@@ -606,7 +613,7 @@ void TestWorkspaceWalkthrough::moving_down_and_right_on_screen_moves_down_and_ri
 
     // And the horizontal move must not have leaked into the vertical axis, nor
     // the reverse: a transposed frame passes both tests above.
-    const QPoint third = roi.vertices.at(2);
+    const QPoint third = shape.points.at(2);
     QCOMPARE(third.x(), first.x());
     QVERIFY(third.y() > first.y());
 }
@@ -620,21 +627,24 @@ void TestWorkspaceWalkthrough::a_region_drawn_on_screen_is_reported_in_the_proje
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    QSignalSpy drawn(viewport, &ImageViewport::roiDrawn);
+    QSignalSpy drawn(viewport, &ImageViewport::shapeDrawn);
 
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(40, 40), QPoint(180, 40),
                                 QPoint(180, 120), QPoint(40, 120)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
 
     QCOMPARE(drawn.count(), 1);
     QVERIFY(!viewport->isDrawingRoi());
 
-    const auto roi = drawn.first().first().value<RegionOfInterest>();
-    QCOMPARE(roi.vertices.size(), 4);
+    const auto shape = drawn.first().first().value<RegionShape>();
+    QCOMPARE(shape.points.size(), 4);
+    QVERIFY(!shape.subtract);
+    const RegionOfInterest roi = window.roi();
+    QCOMPARE(roi.shapes.size(), 1);
     QCOMPARE(roi.origin, RegionOfInterest::Drawn);
 
     // The corners must land where they were aimed. A few pixels of slack for
@@ -649,8 +659,12 @@ void TestWorkspaceWalkthrough::a_region_drawn_on_screen_is_reported_in_the_proje
     // And the project has to say so, in words, without being asked.
     const QString line = projectLine(&window, QStringLiteral("Region of interest"));
     QVERIFY(!line.contains(QStringLiteral("none")));
-    QVERIFY(line.contains(QStringLiteral("4")));
+    QVERIFY2(line.contains(QStringLiteral("1 shape")), qPrintable(line));
     QVERIFY(line.contains(QStringLiteral("drawn by hand")));
+    // The shape itself is listed under it, numbered, with its corners.
+    QVERIFY2(line.contains(QStringLiteral("1. + polygon of 4 corners")),
+             qPrintable(QStringLiteral("the drawn polygon is not listed in the project "
+                                       "with its corners: ") + line));
 
     // Clearing it is offered only once there is something to clear.
     QAction *clear = actionLabelled(&window, QStringLiteral("Clear ROI"));
@@ -672,19 +686,19 @@ void TestWorkspaceWalkthrough::cancelling_keeps_the_region_that_was_already_in_f
     auto *viewport = window.findChild<ImageViewport *>();
 
     // Draw one and keep it.
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(40, 40), QPoint(180, 40), QPoint(180, 120)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
     const QString kept = projectLine(&window, QStringLiteral("Region of interest"));
     QVERIFY(!kept.contains(QStringLiteral("none")));
 
     // Start another, then abandon it. Abandoning a NEW boundary must not
     // discard the one already in force -- that would lose work the user never
     // asked to lose.
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                       widgetPointForPixel(viewport, 60, 60));
     byVisibleText<QPushButton>(viewport, QStringLiteral("Cancel"))->click();
@@ -708,13 +722,13 @@ void TestWorkspaceWalkthrough::a_correlation_inside_a_region_recovers_a_known_sh
     window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
                                 QPoint(170, 110), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
 
     QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
     QVERIFY2(run->isEnabled(), "a matching target and a region were not enough to run");
@@ -930,7 +944,7 @@ void TestWorkspaceWalkthrough::a_field_measured_without_a_region_says_it_covers_
     QVERIFY(!window.lastResult().restrictedToRoi);
 
     const QString said = wholeImageMeasuredNote();
-    QVERIFY2(said.contains(QStringLiteral("Define ROI")),
+    QVERIFY2(said.contains(QStringLiteral("Add to Region")),
              "the note does not name the control that draws a region");
     QVERIFY2(somethingOnScreenSays(viewport, said),
              "nothing beside the field says the whole image was measured");
@@ -938,14 +952,14 @@ void TestWorkspaceWalkthrough::a_field_measured_without_a_region_says_it_covers_
              "the run report does not say the whole image was measured");
 
     // And not once there is a region.
-    QVERIFY(waitForEnabled(actionLabelled(&window, QStringLiteral("Define ROI"))));
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    QVERIFY(waitForEnabled(actionLabelled(&window, QStringLiteral("Add Polygon"))));
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
                                 QPoint(170, 110), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
     QVERIFY2(!run->toolTip().contains(QStringLiteral("whole image")),
              qPrintable(QStringLiteral("with a region, Run says: ") + run->toolTip()));
     QVERIFY(waitForEnabled(run));
@@ -2416,6 +2430,167 @@ void TestWorkspaceWalkthrough::a_line_probe_plots_the_map_on_screen_along_the_li
     }
 }
 
+namespace {
+
+void clickPixels(ImageViewport *viewport, const QVector<QPoint> &pixels)
+{
+    for (const QPoint &pixel : pixels)
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+}
+
+}  // namespace
+
+void TestWorkspaceWalkthrough::a_region_is_built_from_shapes_added_and_cut_in_order()
+{
+    // Driven only by what the screen offers: the two drop-down buttons, the bar
+    // each shape raises, two clicks for a box. A rectangle added, an ellipse cut
+    // out of it, and the run measuring the rectangle around the ellipse and
+    // nothing inside it.
+    //
+    // Written alongside the shapes (2026-10-10), not before them; red first only
+    // on its last check, the run report naming the region it measured.
+    // NEGATIVE CHECKS (2026-10-10), here and in the two cases below, each red:
+    // a cut offered with no region; a box that waits for a third click; shapes
+    // numbered from zero in the project; Remove Shape taking the last shape
+    // instead of the selected one; a dragged box corner keeping the wrong
+    // corner fixed. The engine side is in tests/test_roi_engine_boundary.cpp.
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+
+    // Nothing to cut from yet, and the cut says so rather than failing.
+    QAction *cutFrom = actionLabelled(&window, QStringLiteral("Cut from Region"));
+    QVERIFY(cutFrom);
+    QVERIFY(!cutFrom->isEnabled());
+    QVERIFY2(cutFrom->toolTip().contains(QStringLiteral("first")), qPrintable(cutFrom->toolTip()));
+    QVERIFY(!actionLabelled(&window, QStringLiteral("Cut Ellipse"))->isEnabled());
+
+    actionLabelled(&window, QStringLiteral("Add Rectangle"))->trigger();
+    QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("opposite corner")),
+             "drawing a rectangle does not say what to click");
+    // Corners given bottom-right first: the box is the same either way.
+    clickPixels(viewport, {QPoint(200, 140), QPoint(30, 20)});
+    QVERIFY2(!viewport->isDrawingRoi(), "the second corner did not finish the rectangle");
+    QCOMPARE(window.roi().shapes.size(), 1);
+    QCOMPARE(window.roi().shapes.first().kind, RegionShape::Rectangle);
+
+    QVERIFY(waitForEnabled(cutFrom));
+    actionLabelled(&window, QStringLiteral("Cut Ellipse"))->trigger();
+    QVERIFY(viewport->isDrawingCut());
+    clickPixels(viewport, {QPoint(70, 45), QPoint(160, 115)});
+    QCOMPARE(window.roi().shapes.size(), 2);
+    QVERIFY(window.roi().shapes.at(1).subtract);
+
+    const QString line = projectLine(&window, QStringLiteral("Region of interest"));
+    QVERIFY2(line.contains(QStringLiteral("1. + rectangle")) && line.contains(QStringLiteral("2. - ellipse")),
+             qPrintable(line));
+
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(8);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+    int around = 0;
+    for (const CorrelationPoint &point : window.lastResult().points) {
+        const double dx = (point.x - 115.0) / 45.0;
+        const double dy = (point.y - 80.0) / 35.0;
+        QVERIFY2(dx * dx + dy * dy > 1.0,
+                 qPrintable(QStringLiteral("a point at (%1, %2) was measured inside the cut")
+                                .arg(point.x).arg(point.y)));
+        around++;
+    }
+    QVERIFY2(around > 30, qPrintable(QString::number(around)));
+    QVERIFY2(logView(&window)->toPlainText().contains(QStringLiteral("2 shapes, applied in order")),
+             "the run report does not describe the region it measured");
+}
+
+void TestWorkspaceWalkthrough::a_shape_selected_in_the_project_can_be_taken_away()
+{
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    auto *viewport = window.findChild<ImageViewport *>();
+
+    actionLabelled(&window, QStringLiteral("Add Rectangle"))->trigger();
+    clickPixels(viewport, {QPoint(30, 20), QPoint(200, 140)});
+    QVERIFY(waitForEnabled(actionLabelled(&window, QStringLiteral("Cut Polygon"))));
+    actionLabelled(&window, QStringLiteral("Cut Polygon"))->trigger();
+    clickPixels(viewport, {QPoint(80, 50), QPoint(150, 50), QPoint(115, 110)});
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    // A third shape after the cut, so the one removed is in the MIDDLE: removing
+    // whichever shape is last would otherwise pass for removing the selected one.
+    actionLabelled(&window, QStringLiteral("Add Ellipse"))->trigger();
+    clickPixels(viewport, {QPoint(150, 100), QPoint(220, 150)});
+    QCOMPARE(window.roi().shapes.size(), 3);
+
+    // Nothing selected: the action is there, disabled, and says what it needs.
+    QAction *remove = actionLabelled(&window, QStringLiteral("Remove Shape"));
+    QVERIFY(remove);
+    QVERIFY(!remove->isEnabled());
+    QVERIFY2(remove->toolTip().contains(QStringLiteral("Select a shape")), qPrintable(remove->toolTip()));
+    // And the project list says where it is.
+    QVERIFY(projectLine(&window, QStringLiteral("Region of interest"))
+                .contains(QStringLiteral("Remove Shape")));
+
+    // Select the cut in the project list, the way a reader would.
+    QTreeWidgetItem *cutLine = nullptr;
+    for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
+        for (QTreeWidgetItem *item : tree->findItems(QStringLiteral("2. - polygon"),
+                                                     Qt::MatchStartsWith | Qt::MatchRecursive))
+            cutLine = item;
+        if (cutLine)
+            tree->setCurrentItem(cutLine);
+    }
+    QVERIFY2(cutLine, "the cut is not listed in the project");
+    QVERIFY(waitForEnabled(remove));
+    remove->trigger();
+
+    QCOMPARE(window.roi().shapes.size(), 2);
+    QVERIFY2(!window.roi().hasCuts(), "a shape other than the selected cut was removed");
+    QCOMPARE(window.roi().shapes.at(1).kind, RegionShape::Ellipse);
+    QVERIFY2(logView(&window)->toPlainText().contains(QStringLiteral("Removed shape 2")),
+             "removing a shape was not recorded in the log");
+}
+
+void TestWorkspaceWalkthrough::dragging_a_rectangle_s_corner_resizes_it_about_the_opposite_one()
+{
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    auto *viewport = window.findChild<ImageViewport *>();
+
+    actionLabelled(&window, QStringLiteral("Add Rectangle"))->trigger();
+    clickPixels(viewport, {QPoint(60, 50), QPoint(170, 110)});
+    QCOMPARE(window.roi().shapes.first().bounds(), QRect(QPoint(60, 50), QPoint(170, 110)));
+
+    // The top-right corner, which is not one of the two corners stored: all
+    // four have handles.
+    const QPoint from = widgetPointForPixel(viewport, 170, 50);
+    const QPoint to = widgetPointForPixel(viewport, 200, 30);
+    QTest::mousePress(viewport, Qt::LeftButton, Qt::NoModifier, from);
+    QTest::mouseMove(viewport, to);
+    QTest::qWait(30);
+    QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, to);
+    QTest::qWait(50);
+
+    const QRect box = window.roi().shapes.first().bounds();
+    QVERIFY2(qAbs(box.right() - 200) <= 2 && qAbs(box.top() - 30) <= 2,
+             qPrintable(QStringLiteral("the dragged corner landed at %1, %2")
+                            .arg(box.right()).arg(box.top())));
+    // The bottom-left corner, diagonally across, did not move.
+    QCOMPARE(box.left(), 60);
+    QCOMPARE(box.bottom(), 110);
+    QCOMPARE(window.roi().shapes.first().kind, RegionShape::Rectangle);
+}
+
 void TestWorkspaceWalkthrough::exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension()
 {
     // The same numbering rule as the .vtu sequence, in the other format. Found
@@ -2588,13 +2763,13 @@ void TestWorkspaceWalkthrough::a_session_saved_and_reopened_is_the_session_that_
     controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(13);
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
                                 QPoint(170, 110), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
     const RegionOfInterest saved = window.roi();
     QVERIFY(saved.isValid());
 
@@ -2621,7 +2796,7 @@ void TestWorkspaceWalkthrough::a_session_saved_and_reopened_is_the_session_that_
 
     QVERIFY2(window.openProjectFrom(path), "opening the project reported failure");
 
-    QCOMPARE(window.roi().vertices, saved.vertices);
+    QCOMPARE(outlineOf(window.roi()), outlineOf(saved));
     QCOMPARE(controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->value(), 19);
     QCOMPARE(controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->value(), 13);
     QVERIFY2(!projectLine(&window, QStringLiteral("Reference image"))
@@ -2643,15 +2818,15 @@ void TestWorkspaceWalkthrough::a_committed_region_can_be_adjusted_without_drawin
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
                                 QPoint(170, 110), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
-    QCOMPARE(window.roi().vertices.size(), 4);
-    QCOMPARE(window.roi().vertices.at(1), QPoint(170, 50));
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    QCOMPARE(outlineOf(window.roi()).size(), 4);
+    QCOMPARE(outlineOf(window.roi()).at(1), QPoint(170, 50));
 
     // The screen has to say this is possible before a test may do it.
     QVERIFY2(projectLine(&window, QStringLiteral("Region of interest"))
@@ -2668,19 +2843,19 @@ void TestWorkspaceWalkthrough::a_committed_region_can_be_adjusted_without_drawin
     QTest::qWait(50);
 
     const RegionOfInterest adjusted = window.roi();
-    QCOMPARE(adjusted.vertices.size(), 4);
-    QVERIFY2(adjusted.vertices.at(1) != QPoint(170, 50),
+    QCOMPARE(outlineOf(adjusted).size(), 4);
+    QVERIFY2(outlineOf(adjusted).at(1) != QPoint(170, 50),
              "the corner did not move");
-    QVERIFY2(qAbs(adjusted.vertices.at(1).x() - 190) <= 2
-                 && qAbs(adjusted.vertices.at(1).y() - 40) <= 2,
+    QVERIFY2(qAbs(outlineOf(adjusted).at(1).x() - 190) <= 2
+                 && qAbs(outlineOf(adjusted).at(1).y() - 40) <= 2,
              qPrintable(QStringLiteral("corner landed at %1,%2")
-                            .arg(adjusted.vertices.at(1).x())
-                            .arg(adjusted.vertices.at(1).y())));
+                            .arg(outlineOf(adjusted).at(1).x())
+                            .arg(outlineOf(adjusted).at(1).y())));
 
     // And the corners nobody touched stayed exactly where they were.
-    QCOMPARE(adjusted.vertices.at(0), QPoint(60, 50));
-    QCOMPARE(adjusted.vertices.at(2), QPoint(170, 110));
-    QCOMPARE(adjusted.vertices.at(3), QPoint(60, 110));
+    QCOMPARE(outlineOf(adjusted).at(0), QPoint(60, 50));
+    QCOMPARE(outlineOf(adjusted).at(2), QPoint(170, 110));
+    QCOMPARE(outlineOf(adjusted).at(3), QPoint(60, 110));
 }
 
 void TestWorkspaceWalkthrough::the_second_pass_is_on_screen_and_says_what_it_does_and_costs()
@@ -2973,7 +3148,7 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
     window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
 
     auto *viewport = window.findChild<ImageViewport *>();
-    auto *addHole = actionLabelled(&window, QStringLiteral("Add Hole"));
+    auto *addHole = actionLabelled(&window, QStringLiteral("Cut Polygon"));
     QVERIFY2(addHole, "nothing on the toolbar cuts a hole out of a region");
 
     // ⚑ Dead until there is a region to cut it out of, and DISABLED rather than
@@ -2983,7 +3158,7 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
              "Add Hole is offered before any region exists");
 
     // Draw the outer boundary the way a user does.
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     const QVector<QPointF> outer{QPointF(30, 30), QPointF(170, 30),
                                  QPointF(170, 120), QPointF(30, 120)};
     for (const QPointF &corner : outer) {
@@ -2993,14 +3168,14 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
     }
     // Finished from the mode bar's own button, as a user does. The bar carries
     // every way out of the mode, which is why the test never needs a shortcut.
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
     QVERIFY(window.roi().isValid());
-    QVERIFY2(!window.roi().hasHoles(), "a fresh region has no holes");
+    QVERIFY2(!window.roi().hasCuts(), "a fresh region has no holes");
     QVERIFY2(addHole->isEnabled(), "Add Hole stays dead once a region exists");
 
     // Now cut a hole out of it, with the same gesture.
     addHole->trigger();
-    QVERIFY2(viewport->isDrawingHole(),
+    QVERIFY2(viewport->isDrawingCut(),
              "pressing Add Hole did not enter a drawing mode the user can see");
     const QVector<QPointF> hole{QPointF(80, 60), QPointF(120, 60),
                                 QPointF(120, 90), QPointF(80, 90)};
@@ -3009,10 +3184,10 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
         QVERIFY(viewport->widgetPositionForImagePixel(corner, at));
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
 
-    QVERIFY2(window.roi().hasHoles(), "the ring did not become a hole");
-    QCOMPARE(window.roi().vertices.size(), 4);   // the outer boundary is untouched
+    QVERIFY2(window.roi().hasCuts(), "the ring did not become a hole");
+    QCOMPARE(outlineOf(window.roi()).size(), 4);   // the outer boundary is untouched
 
     // ⚑ A SECOND hole, because a specimen usually has more than one -- and
     // because the moment BEFORE its first corner is placed once corrupted VTK's
@@ -3029,7 +3204,7 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
     // Worth knowing, because in CI that reads as a stuck runner rather than as
     // a defect.
     addHole->trigger();
-    QVERIFY(viewport->isDrawingHole());
+    QVERIFY(viewport->isDrawingCut());
     {
         QPointF over;
         QVERIFY(viewport->widgetPositionForImagePixel(QPointF(70, 100), over));
@@ -3043,8 +3218,10 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
         QVERIFY(viewport->widgetPositionForImagePixel(corner, at));
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
-    QCOMPARE(window.roi().holes.size(), 2);
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    QCOMPARE(std::count_if(window.roi().shapes.begin(), window.roi().shapes.end(),
+                           [](const RegionShape &shape) { return shape.subtract; }),
+             2);
     QVERIFY(!regionContains(window.roi(), 75, 100));
 
     // And the hole excludes: a point in it is outside the region, a point
@@ -3756,12 +3933,12 @@ void TestWorkspaceWalkthrough::the_region_says_it_can_be_adjusted_where_the_pane
 
     auto *viewport = window.findChild<ImageViewport *>();
     const QPoint centre(viewport->width() / 2, viewport->height() / 2);
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre);
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(60, 0));
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(60, 40));
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, centre + QPoint(0, 40));
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
 
     QTreeWidgetItem *region = nullptr;
     for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
@@ -3822,14 +3999,14 @@ void TestWorkspaceWalkthrough::a_corner_can_be_added_to_an_edge_and_taken_out_ag
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
                                 QPoint(170, 110), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
-    QCOMPARE(window.roi().vertices.size(), 4);
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    QCOMPARE(outlineOf(window.roi()).size(), 4);
 
     // The screen has to say both gestures are possible before a test may use
     // them, which is the rule this whole suite is written under.
@@ -3847,22 +4024,22 @@ void TestWorkspaceWalkthrough::a_corner_can_be_added_to_an_edge_and_taken_out_ag
     QTest::qWait(50);
 
     const RegionOfInterest grown = window.roi();
-    QCOMPARE(grown.vertices.size(), 5);
+    QCOMPARE(outlineOf(grown).size(), 5);
     // ⚑ In the ring's own order, between the corners whose edge it was placed
     // on. Appended at the end instead, the boundary crosses itself and what
     // counts as inside stops meaning what the reader drew.
-    QCOMPARE(grown.vertices.at(1), QPoint(170, 50));
-    QCOMPARE(grown.vertices.at(3), QPoint(170, 110));
-    QVERIFY2(qAbs(grown.vertices.at(2).x() - 170) <= 2
-                 && qAbs(grown.vertices.at(2).y() - 80) <= 2,
+    QCOMPARE(outlineOf(grown).at(1), QPoint(170, 50));
+    QCOMPARE(outlineOf(grown).at(3), QPoint(170, 110));
+    QVERIFY2(qAbs(outlineOf(grown).at(2).x() - 170) <= 2
+                 && qAbs(outlineOf(grown).at(2).y() - 80) <= 2,
              qPrintable(QStringLiteral("the new corner landed at %1,%2")
-                            .arg(grown.vertices.at(2).x())
-                            .arg(grown.vertices.at(2).y())));
+                            .arg(outlineOf(grown).at(2).x())
+                            .arg(outlineOf(grown).at(2).y())));
 
     // And out again, on the corner itself.
     QTest::mouseClick(viewport, Qt::RightButton, Qt::NoModifier, onTheEdge);
     QTest::qWait(50);
-    QCOMPARE(window.roi().vertices.size(), 4);
+    QCOMPARE(outlineOf(window.roi()).size(), 4);
 }
 
 void TestWorkspaceWalkthrough::a_refusal_to_remove_a_corner_does_not_take_the_picture_with_it()
@@ -3882,20 +4059,20 @@ void TestWorkspaceWalkthrough::a_refusal_to_remove_a_corner_does_not_take_the_pi
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
-    QCOMPARE(window.roi().vertices.size(), 3);
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    QCOMPARE(outlineOf(window.roi()).size(), 3);
 
     QTest::mouseClick(viewport, Qt::RightButton, Qt::NoModifier,
                       widgetPointForPixel(viewport, 170, 50));
     QTest::qWait(50);
 
     // The corner stays, because three is the fewest that enclose anything.
-    QCOMPARE(window.roi().vertices.size(), 3);
+    QCOMPARE(outlineOf(window.roi()).size(), 3);
 
     // ⚑ And so does everything else on screen. The image is still there, and
     // the boundary is still drawn over it.
@@ -3931,15 +4108,15 @@ void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_sti
     window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
 
     auto *viewport = window.findChild<ImageViewport *>();
-    actionLabelled(&window, QStringLiteral("Define ROI"))->trigger();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
     for (const QPoint &pixel : {QPoint(60, 50), QPoint(170, 50),
                                 QPoint(170, 110), QPoint(60, 110)}) {
         QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
                           widgetPointForPixel(viewport, pixel.x(), pixel.y()));
     }
-    byVisibleText<QPushButton>(viewport, QStringLiteral("Close region"))->click();
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
     const RegionOfInterest before = window.roi();
-    QCOMPARE(before.vertices.size(), 4);
+    QCOMPARE(outlineOf(before).size(), 4);
 
     // The screen says so before the test does it.
     QVERIFY2(projectLine(&window, QStringLiteral("Region of interest"))
@@ -3953,7 +4130,7 @@ void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_sti
     const QPoint middle = widgetPointForPixel(viewport, 115, 80);
     QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, middle);
     QTest::qWait(50);
-    QCOMPARE(window.roi().vertices, before.vertices);
+    QCOMPARE(outlineOf(window.roi()), outlineOf(before));
     QVERIFY2(pointPanelText(&window).contains(QStringLiteral("pinned"),
                                               Qt::CaseInsensitive),
              qPrintable(pointPanelText(&window)));
@@ -3972,7 +4149,7 @@ void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_sti
     QTest::qWait(20);
     QTest::mouseRelease(viewport, Qt::LeftButton, Qt::NoModifier, middle + QPoint(2, 1));
     QTest::qWait(50);
-    QVERIFY2(window.roi().vertices == before.vertices,
+    QVERIFY2(outlineOf(window.roi()) == outlineOf(before),
              "a click with a couple of pixels of tremor in it dragged the whole "
              "region, which is how a boundary moves without anyone meaning it to");
 
@@ -3985,18 +4162,18 @@ void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_sti
     QTest::qWait(50);
 
     const RegionOfInterest after = window.roi();
-    QCOMPARE(after.vertices.size(), before.vertices.size());
+    QCOMPARE(outlineOf(after).size(), outlineOf(before).size());
 
-    const QPoint shift = after.vertices.at(0) - before.vertices.at(0);
+    const QPoint shift = outlineOf(after).at(0) - outlineOf(before).at(0);
     QVERIFY2(!shift.isNull(), "the region did not move at all");
-    for (int i = 1; i < after.vertices.size(); i++) {
-        QVERIFY2(after.vertices.at(i) - before.vertices.at(i) == shift,
+    for (int i = 1; i < outlineOf(after).size(); i++) {
+        QVERIFY2(outlineOf(after).at(i) - outlineOf(before).at(i) == shift,
                  qPrintable(QStringLiteral("corner %1 moved by %2,%3 while the "
                                            "first moved by %4,%5: the region was "
                                            "distorted rather than moved")
                                 .arg(i)
-                                .arg((after.vertices.at(i) - before.vertices.at(i)).x())
-                                .arg((after.vertices.at(i) - before.vertices.at(i)).y())
+                                .arg((outlineOf(after).at(i) - outlineOf(before).at(i)).x())
+                                .arg((outlineOf(after).at(i) - outlineOf(before).at(i)).y())
                                 .arg(shift.x()).arg(shift.y())));
     }
 }

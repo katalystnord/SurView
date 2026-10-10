@@ -80,19 +80,16 @@ public:
     bool hasImage() const { return m_hasImage; }
 
     // --- Region of interest ------------------------------------------------
-    // Enter the mode where clicking the image places boundary corners. The
-    // mode announces itself with an on-screen bar carrying its own controls,
-    // so it can be entered, completed and left without knowing a shortcut.
-    void beginRoiDrawing();
-
-    // The same gesture, adding a hole to the region already in force rather
-    // than replacing it. A hole is a ring like any other, so it reuses the
-    // drawing machinery entirely and differs only in what is done with the
-    // ring at the end.
-    void beginHoleDrawing();
+    // Enter the mode where clicking the image draws one shape of the region:
+    // a rectangle or an ellipse by two opposite corners of its box, a polygon
+    // corner by corner. `cut` draws it as a cut rather than an addition. The
+    // mode announces itself with an on-screen bar carrying its own controls, so
+    // it can be entered, completed and left without knowing a shortcut. A cut
+    // needs a region to cut from, and is refused without one.
+    void beginShapeDrawing(RegionShape::Kind kind, bool cut);
     void cancelRoiDrawing();
     bool isDrawingRoi() const { return m_roiDrawing; }
-    bool isDrawingHole() const { return m_roiDrawing && m_drawingHole; }
+    bool isDrawingCut() const { return m_roiDrawing && m_drawCut; }
 
     // Display a region that already exists -- the one just drawn, or one the
     // detector proposed. Passing an invalid region clears the display.
@@ -210,13 +207,14 @@ signals:
     // which one it is reporting on.
     void fieldChannelChanged(FieldChannel channel);
 
-    // A boundary was completed. The region is in image pixel coordinates; the
+    // The region was edited on the image -- a handle dragged, a corner added or
+    // taken out, the whole region moved. In image pixel coordinates; the
     // viewport draws it, but the project owns it.
     void roiDrawn(const RegionOfInterest &roi);
 
-    // A ring was completed as a hole. The viewport does not own the region, so
-    // it hands the ring over and the window decides what to attach it to.
-    void holeDrawn(const QVector<QPoint> &ring);
+    // A shape was completed. The viewport does not own the region, so it hands
+    // the shape over and the window adds it, last, to the region in force.
+    void shapeDrawn(const RegionShape &shape);
 
     // A region edit the viewport declined, with the reason in the words the
     // reader should see.
@@ -419,7 +417,7 @@ private:
     // Which corner of the committed region is being dragged, or -1. A region
     // could only be redrawn from scratch before this: one corner slightly wrong
     // meant placing all of them again.
-    int m_draggingCorner = -1;
+    CornerRef m_draggingCorner;
 
     // ⚑ Moving the WHOLE region shares its gesture with pinning a point
     // reading, and the two are told apart by whether the hand actually moved.
@@ -439,7 +437,8 @@ private:
     double grabReachInPixels(const QPointF &position) const;
 
     bool m_roiDrawing = false;
-    bool m_drawingHole = false;
+    bool m_drawCut = false;
+    RegionShape::Kind m_drawKind = RegionShape::Polygon;
     bool m_roiActorAdded = false;
     QVector<QPoint> m_roiPlaced;   // corners placed so far, while drawing
     QPoint m_roiCursor;            // where the rubber band currently reaches

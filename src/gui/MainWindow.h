@@ -114,7 +114,11 @@ private slots:
     // A boundary was completed in the viewport, or discarded from the project.
     void onRoiDrawn(const RegionOfInterest &roi);
     void detectRoi();
-    void onHoleDrawn(const QVector<QPoint> &ring);
+    void onShapeDrawn(const RegionShape &shape);
+    void removeSelectedShape();
+    // The shape selected in the project list, as its index in the region, or
+    // -1 when no shape is selected.
+    int selectedShapeIndex() const;
     void clearRoi();
 
     void stopCorrelation();
@@ -404,10 +408,15 @@ private:
     // Actions whose enabled state depends on project progress.
     QAction *m_actRun = nullptr;
     QAction *m_actStop = nullptr;
-    QAction *m_actAddHole = nullptr;
+    // Two drop-down buttons, each offering the three shapes, and the action
+    // that takes a shape selected in the project list away again.
+    QAction *m_actAddToRegion = nullptr;
+    QAction *m_actCutFromRegion = nullptr;
+    QVector<QAction *> m_actAddShape;
+    QVector<QAction *> m_actCutShape;
+    QAction *m_actRemoveShape = nullptr;
     QAction *m_actExtensometer = nullptr;
     QAction *m_actProbe = nullptr;
-    QAction *m_actDefineRoi = nullptr;
     QAction *m_actAutoRoi = nullptr;
     QAction *m_actClearRoi = nullptr;
     QAction *m_actExport = nullptr;

@@ -869,6 +869,32 @@ Two things found by looking at the screen, neither by a test:
   not the field bar in a whole viewport: it carries the unit only, since the
   Quantity selector above names the channel for all three panels at once.
 
+### A region is built from shapes, in order (2026-10-10)
+
+`core/Roi.h`: a region is an ORDERED list of rectangles, ellipses and polygons,
+each added or cut. The last shape containing a pixel decides, as paint does, so a
+later addition can put an island back inside a cut (David chose the ordered rule
+over "adds minus cuts"). The order is listed, numbered, in the project tree, so it
+is never a hidden rule. The old model, one outer polygon with polygonal holes, is
+the special case "+ polygon, then a cut per hole", and a version 1 project file
+opens as exactly that; files are now version 2, so an older SurView refuses one
+rather than silently measuring the whole image.
+
+- ⚑ **The run asks the engine; everything else asks the mirror, and the two are
+  held to each other at every pixel.** `regionInsideTest()` in `core/RoiDetect.h`
+  builds the engine's shapes (Polygon2D, and the fork's Ellipse2D added for this,
+  `dfccfa7`); `regionContains()` mirrors them for drawing, overlays and the
+  speckle estimate. Until the pixel-by-pixel case existed the mirror was a bare
+  crossing count, which drops the right and bottom edge of every polygon that the
+  engine keeps, so the picture and the measurement disagreed along half of every
+  boundary. The speckle estimate also ignored holes entirely. Both fixed.
+- ⚑ **`QRect::normalized()` shifts an inverted rectangle by a pixel each side.**
+  A box drawn from its bottom right, or a corner dragged past the opposite one,
+  shrank. Boxes are built from minima and maxima.
+- Box handles are the four corners, though only two are stored; dragging one
+  keeps the diagonally opposite corner fixed. Polygons alone take inserted and
+  removed corners.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

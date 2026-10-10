@@ -73,9 +73,12 @@ RoiDetection detectSpeckleRegion(const QString &imagePath)
             return detection;
         }
 
-        detection.roi.vertices.reserve(corners);
+        RegionShape outline;
+        outline.kind = RegionShape::Polygon;
+        outline.points.reserve(corners);
         for (int i = 0; i < corners; i++)
-            detection.roi.vertices.append(QPoint(x[size_t(i)], y[size_t(i)]));
+            outline.points.append(QPoint(x[size_t(i)], y[size_t(i)]));
+        detection.roi.shapes = {outline};
 
         detection.roi.origin = RegionOfInterest::Detected;
 
@@ -171,20 +174,13 @@ SpeckleQuality speckleQualityIn(const SpeckleField &field,
 
     const SpeckleFieldData &data = *field.data;
 
-    // The engine's own polygon test, as Correlation.cpp uses, so a pixel is
-    // inside the region here exactly when it will be inside it for the run.
-    std::unique_ptr<Polygon2D> region;
-    if (roi.isValid()) {
-        std::vector<int> vertex_x;
-        std::vector<int> vertex_y;
-        vertex_x.reserve(size_t(roi.vertices.size()));
-        vertex_y.reserve(size_t(roi.vertices.size()));
-        for (const QPoint &vertex : roi.vertices) {
-            vertex_x.push_back(vertex.x());
-            vertex_y.push_back(vertex.y());
-        }
-        region = std::make_unique<Polygon2D>(vertex_x, vertex_y);
-    }
+    // The engine's own shapes, as a run uses them, so a pixel is inside the
+    // region here exactly when it will be inside it for the run.
+    // ⚑ Every shape, cuts included. Until 2026-10-10 this asked the outer
+    // boundary alone, so a region with a hole estimated the speckle across the
+    // hole -- background, usually -- while the run never measured there.
+    const bool restricted = roi.isValid();
+    const std::function<bool(int, int)> inside = regionInsideTest(roi);
 
     double migSum = 0.0;
     double sssigSum = 0.0;
@@ -194,7 +190,7 @@ SpeckleQuality speckleQualityIn(const SpeckleField &field,
                                     : QRect(0, 0, data.width, data.height);
     for (int y = std::max(0, box.top()); y <= std::min(data.height - 1, box.bottom()); y++) {
         for (int x = std::max(0, box.left()); x <= std::min(data.width - 1, box.right()); x++) {
-            if (region && !region->contains(x, y))
+            if (restricted && !inside(x, y))
                 continue;
             migSum += double(data.mig(y, x));
             sssigSum += double(data.sssig(y, x));
@@ -237,4 +233,61 @@ SpeckleQuality speckleQualityIn(const QString &imagePath,
                                 const RegionOfInterest &roi, int subsetRadius)
 {
     return speckleQualityIn(prepareSpeckleField(imagePath, subsetRadius), roi);
+}
+
+std::function<bool(int x, int y)> regionInsideTest(const RegionOfInterest &roi)
+{
+    using namespace opencorr;
+
+    struct Applied
+    {
+        std::unique_ptr<Shape2D> shape;
+        bool subtract = false;
+    };
+    auto applied = std::make_shared<std::vector<Applied>>();
+
+    const auto polygon = [](const QVector<QPoint> &corners) {
+        std::vector<int> vertex_x;
+        std::vector<int> vertex_y;
+        vertex_x.reserve(size_t(corners.size()));
+        vertex_y.reserve(size_t(corners.size()));
+        for (const QPoint &corner : corners) {
+            vertex_x.push_back(corner.x());
+            vertex_y.push_back(corner.y());
+        }
+        return std::make_unique<Polygon2D>(vertex_x, vertex_y);
+    };
+
+    if (roi.isValid()) {
+        for (const RegionShape &shape : roi.shapes) {
+            if (!shape.isValid())
+                continue;   // encloses nothing, so it adds and removes nothing
+            Applied entry;
+            entry.subtract = shape.subtract;
+            if (shape.kind == RegionShape::Ellipse) {
+                // Inscribed in the box, its edge pixels on the boundary: the
+                // same centre and semi-axes shapeContains() mirrors.
+                const QRect box = shape.bounds();
+                entry.shape = std::make_unique<Ellipse2D>(
+                    0.5f * float(box.left() + box.right()),
+                    0.5f * float(box.top() + box.bottom()),
+                    0.5f * float(box.right() - box.left()),
+                    0.5f * float(box.bottom() - box.top()));
+            } else {
+                // A rectangle is the engine's polygon of its four corners, whose
+                // boundary-inclusive rule covers the box's edge pixels.
+                entry.shape = polygon(shape.handles());
+            }
+            applied->push_back(std::move(entry));
+        }
+    }
+
+    // The last shape containing the pixel decides, as core/Roi.h states.
+    return [applied](int x, int y) {
+        for (auto it = applied->rbegin(); it != applied->rend(); ++it) {
+            if (it->shape->contains(x, y))
+                return !it->subtract;
+        }
+        return false;
+    };
 }

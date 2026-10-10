@@ -8,6 +8,49 @@
 
 #include <QTest>
 
+namespace {
+
+// A region of one added polygon, which is what every region was before shapes.
+void setOutline(RegionOfInterest &roi, const QVector<QPoint> &corners)
+{
+    RegionShape outline;
+    outline.points = corners;
+    roi.shapes = {outline};
+}
+
+// A cut polygon, applied after everything already there: what a hole became.
+void addCut(RegionOfInterest &roi, const QVector<QPoint> &corners)
+{
+    RegionShape cut;
+    cut.subtract = true;
+    cut.points = corners;
+    roi.shapes.append(cut);
+}
+
+QVector<QPoint> outlineOf(const RegionOfInterest &roi)
+{
+    return roi.shapes.isEmpty() ? QVector<QPoint>() : roi.shapes.first().points;
+}
+
+// The grabbed corner of the first shape, -1 for none, -100 for another shape's.
+int cornerAt(const RegionOfInterest &roi, const QPoint &at, double reach)
+{
+    const CornerRef found = cornerNear(roi, at, reach);
+    if (!found.isValid())
+        return -1;
+    return found.shape == 0 ? found.corner : -100;
+}
+
+int edgeAt(const RegionOfInterest &roi, const QPoint &at, double reach)
+{
+    const CornerRef found = edgeNear(roi, at, reach);
+    if (!found.isValid())
+        return -1;
+    return found.shape == 0 ? found.corner : -100;
+}
+
+}  // namespace
+
 class TestRoi : public QObject
 {
     Q_OBJECT
@@ -81,6 +124,19 @@ private slots:
     void a_whole_region_moves_with_its_holes_and_keeps_its_shape();
     void a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it();
     void a_triangular_hole_is_a_hole_wherever_the_question_is_asked();
+
+    // Shapes, from 2026-10-10: rectangles and ellipses beside polygons, each
+    // added or cut, applied in order.
+    void a_rectangle_covers_its_box_edges_included();
+    void an_ellipse_is_the_one_inscribed_in_its_box();
+    void a_later_shape_decides_where_shapes_overlap();
+    void a_region_of_nothing_but_cuts_encloses_nothing();
+    void the_bounds_span_every_added_shape_and_no_cut();
+    void dragging_a_box_corner_keeps_the_opposite_corner_where_it_was();
+    void a_box_keeps_its_corners_and_takes_none_extra();
+    void of_two_handles_equally_near_the_later_shape_s_is_grabbed();
+    void a_shape_can_be_added_and_taken_away_again();
+    void the_region_describes_itself_shape_by_shape_in_order();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -89,22 +145,22 @@ void TestRoi::a_region_needs_three_corners_to_enclose_anything()
     QVERIFY(!none.isValid());
 
     RegionOfInterest one;
-    one.vertices = {QPoint(5, 5)};
+    setOutline(one, {QPoint(5, 5)});
     QVERIFY(!one.isValid());
 
     RegionOfInterest two;
-    two.vertices = {QPoint(5, 5), QPoint(9, 5)};
+    setOutline(two, {QPoint(5, 5), QPoint(9, 5)});
     QVERIFY(!two.isValid());
 
     RegionOfInterest three;
-    three.vertices = {QPoint(5, 5), QPoint(9, 5), QPoint(9, 9)};
+    setOutline(three, {QPoint(5, 5), QPoint(9, 5), QPoint(9, 9)});
     QVERIFY(three.isValid());
 }
 
 void TestRoi::bounds_include_the_pixels_the_corners_sit_on()
 {
     RegionOfInterest roi;
-    roi.vertices = {QPoint(10, 20), QPoint(30, 20), QPoint(30, 50), QPoint(10, 50)};
+    setOutline(roi, {QPoint(10, 20), QPoint(30, 20), QPoint(30, 50), QPoint(10, 50)});
 
     const QRect box = roi.bounds();
     QCOMPARE(box.left(), 10);
@@ -171,28 +227,26 @@ void TestRoi::the_corner_under_the_pointer_is_the_one_that_gets_grabbed()
     // slightly wrong meant placing all of them again, which is why the corners
     // are grabbable at all.
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(90, 10)
-                 << QPoint(90, 70) << QPoint(10, 70);
+    setOutline(roi, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 70), QPoint(10, 70)});
 
-    QCOMPARE(cornerNear(roi, QPoint(10, 10), 6.0), 0);
-    QCOMPARE(cornerNear(roi, QPoint(88, 12), 6.0), 1);
-    QCOMPARE(cornerNear(roi, QPoint(11, 69), 6.0), 3);
+    QCOMPARE(cornerAt(roi, QPoint(10, 10), 6.0), 0);
+    QCOMPARE(cornerAt(roi, QPoint(88, 12), 6.0), 1);
+    QCOMPARE(cornerAt(roi, QPoint(11, 69), 6.0), 3);
 }
 
 void TestRoi::a_pointer_far_from_every_corner_grabs_none_of_them()
 {
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(90, 10)
-                 << QPoint(90, 70) << QPoint(10, 70);
+    setOutline(roi, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 70), QPoint(10, 70)});
 
     // The middle of the region is not a corner. Grabbing the nearest one
     // regardless of distance would mean a click anywhere inside the boundary
     // silently moved a corner the user was nowhere near.
-    QCOMPARE(cornerNear(roi, QPoint(50, 40), 6.0), -1);
+    QCOMPARE(cornerAt(roi, QPoint(50, 40), 6.0), -1);
     // On an edge, between two corners, is also not a corner.
-    QCOMPARE(cornerNear(roi, QPoint(50, 10), 6.0), -1);
+    QCOMPARE(cornerAt(roi, QPoint(50, 10), 6.0), -1);
 
-    QCOMPARE(cornerNear(RegionOfInterest(), QPoint(0, 0), 6.0), -1);
+    QCOMPARE(cornerAt(RegionOfInterest(), QPoint(0, 0), 6.0), -1);
 }
 
 void TestRoi::the_nearest_corner_wins_when_two_are_within_reach()
@@ -200,27 +254,26 @@ void TestRoi::the_nearest_corner_wins_when_two_are_within_reach()
     RegionOfInterest roi;
     // Deliberately close together, as happens when a region is drawn small or
     // the view is zoomed out.
-    roi.vertices << QPoint(10, 10) << QPoint(16, 10) << QPoint(13, 40);
+    setOutline(roi, {QPoint(10, 10), QPoint(16, 10), QPoint(13, 40)});
 
-    QCOMPARE(cornerNear(roi, QPoint(11, 10), 8.0), 0);
-    QCOMPARE(cornerNear(roi, QPoint(15, 10), 8.0), 1);
+    QCOMPARE(cornerAt(roi, QPoint(11, 10), 8.0), 0);
+    QCOMPARE(cornerAt(roi, QPoint(15, 10), 8.0), 1);
 }
 
 void TestRoi::moving_a_corner_leaves_every_other_corner_alone()
 {
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(90, 10)
-                 << QPoint(90, 70) << QPoint(10, 70);
+    setOutline(roi, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 70), QPoint(10, 70)});
     roi.origin = RegionOfInterest::Detected;
     roi.limitation = QStringLiteral("a detector's caveat");
 
-    const RegionOfInterest moved = withCornerMoved(roi, 1, QPoint(95, 5));
+    const RegionOfInterest moved = withCornerMoved(roi, CornerRef{0, 1}, QPoint(95, 5));
 
-    QCOMPARE(moved.vertices.size(), 4);
-    QCOMPARE(moved.vertices.at(1), QPoint(95, 5));
-    QCOMPARE(moved.vertices.at(0), roi.vertices.at(0));
-    QCOMPARE(moved.vertices.at(2), roi.vertices.at(2));
-    QCOMPARE(moved.vertices.at(3), roi.vertices.at(3));
+    QCOMPARE(outlineOf(moved).size(), 4);
+    QCOMPARE(outlineOf(moved).at(1), QPoint(95, 5));
+    QCOMPARE(outlineOf(moved).at(0), outlineOf(roi).at(0));
+    QCOMPARE(outlineOf(moved).at(2), outlineOf(roi).at(2));
+    QCOMPARE(outlineOf(moved).at(3), outlineOf(roi).at(3));
 
     // ⚑ A region a person has adjusted is no longer the region the detector
     // proposed, and it must stop claiming to be: the origin decides what the
@@ -230,18 +283,18 @@ void TestRoi::moving_a_corner_leaves_every_other_corner_alone()
     QVERIFY2(moved.limitation.isEmpty(), qPrintable(moved.limitation));
 
     // An index nobody has returns the region untouched rather than growing it.
-    QCOMPARE(withCornerMoved(roi, 9, QPoint(0, 0)).vertices, roi.vertices);
-    QCOMPARE(withCornerMoved(roi, -1, QPoint(0, 0)).vertices, roi.vertices);
+    QCOMPARE(outlineOf(withCornerMoved(roi, CornerRef{0, 9}, QPoint(0, 0))), outlineOf(roi));
+    QCOMPARE(outlineOf(withCornerMoved(roi, CornerRef{0, -1}, QPoint(0, 0))), outlineOf(roi));
 }
 
 void TestRoi::a_region_without_holes_is_unchanged_by_the_hole_machinery()
 {
     // Every region drawn before holes existed must behave exactly as it did.
     RegionOfInterest square;
-    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    setOutline(square, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
 
     QVERIFY(square.isValid());
-    QVERIFY(!square.hasHoles());
+    QVERIFY(!square.hasCuts());
     QVERIFY(regionContains(square, 50, 50));
     QVERIFY(!regionContains(square, 150, 50));
 }
@@ -254,10 +307,10 @@ void TestRoi::a_point_inside_a_hole_is_outside_the_region()
     // reports, confidently, that nothing moved -- which on a strain map is a
     // cold spot exactly where the stress concentrates.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
 
-    QVERIFY(region.hasHoles());
+    QVERIFY(region.hasCuts());
     QVERIFY2(regionContains(region, 10, 10), "outside the hole is still inside");
     QVERIFY2(!regionContains(region, 50, 50), "inside the hole is outside the region");
     QVERIFY2(!regionContains(region, 150, 50), "outside the outer boundary is outside");
@@ -269,10 +322,10 @@ void TestRoi::a_hole_needs_three_corners_like_any_other_ring()
     // cannot exclude anything. Dropped rather than carried, so nothing
     // downstream has to keep asking whether a hole is real.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(40, 40), QPoint(60, 40)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40)});
 
-    QVERIFY2(!region.hasHoles(), "a two-corner hole is not a hole");
+    QVERIFY2(!region.hasCuts(), "a two-corner hole is not a hole");
     QVERIFY2(regionContains(region, 50, 50), "and it excludes nothing");
 }
 
@@ -282,10 +335,10 @@ void TestRoi::the_regions_bounds_are_the_outer_boundarys_alone()
     // bounds -- and a bounds that grew to include one would put the grid's
     // origin somewhere no point can be placed.
     RegionOfInterest region;
-    region.vertices = {QPoint(10, 10), QPoint(90, 10), QPoint(90, 90), QPoint(10, 90)};
+    setOutline(region, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 90), QPoint(10, 90)});
     const QRect withoutHole = region.bounds();
 
-    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
     QCOMPARE(region.bounds(), withoutHole);
 }
 
@@ -302,12 +355,12 @@ void TestRoi::a_subset_reaching_into_a_hole_is_reported_not_hidden()
     // reason. Counted instead, so the run can say so and a reader can widen the
     // hole or accept it.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
 
-    QVERIFY2(subsetReachesAHole(region, 30, 50, 16),
+    QVERIFY2(subsetReachesACut(region, 30, 50, 16),
              "a point 10 px from the hole with a 16 px subset reaches into it");
-    QVERIFY2(!subsetReachesAHole(region, 10, 50, 16),
+    QVERIFY2(!subsetReachesACut(region, 10, 50, 16),
              "a point 30 px away with a 16 px subset does not");
 }
 
@@ -324,12 +377,12 @@ void TestRoi::a_subset_that_just_touches_a_hole_is_reported()
     // x = 39, one pixel short. At x = 24 it reaches exactly 40, the hole's own
     // edge, and touching is reaching: those pixels are background.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
 
-    QVERIFY2(!subsetReachesAHole(region, 23, 50, 16),
+    QVERIFY2(!subsetReachesACut(region, 23, 50, 16),
              "a subset ending one pixel short of the hole does not reach it");
-    QVERIFY2(subsetReachesAHole(region, 24, 50, 16),
+    QVERIFY2(subsetReachesACut(region, 24, 50, 16),
              "a subset whose edge lands exactly on the hole's edge does");
 }
 
@@ -340,9 +393,9 @@ void TestRoi::a_region_with_no_holes_has_no_subset_reaching_one()
     // message about a region with no holes -- so the no-holes path had never
     // been run. Found by the mutation sweep, not by reading the file.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
 
-    QVERIFY2(!subsetReachesAHole(region, 50, 50, 16),
+    QVERIFY2(!subsetReachesACut(region, 50, 50, 16),
              "a region with no holes has nothing for a subset to reach into");
 }
 
@@ -357,17 +410,17 @@ void TestRoi::two_corners_the_same_distance_away_resolve_the_same_way_every_time
     // The existing case puts the pointer 1 px from one corner and 5 from the
     // other, so it never meets a tie at all.
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(20, 10) << QPoint(15, 40);
+    setOutline(roi, {QPoint(10, 10), QPoint(20, 10), QPoint(15, 40)});
 
     // Exactly between the first two, and 5 px from each.
-    QCOMPARE(cornerNear(roi, QPoint(15, 10), 8.0), 0);
+    QCOMPARE(cornerAt(roi, QPoint(15, 10), 8.0), 0);
 
     // The same two corners stored the other way round still hand back index 0,
     // which is the point: the FIRST of the tied pair wins, so the answer is a
     // property of the list rather than of floating-point luck.
     RegionOfInterest swapped;
-    swapped.vertices << QPoint(20, 10) << QPoint(10, 10) << QPoint(15, 40);
-    QCOMPARE(cornerNear(swapped, QPoint(15, 10), 8.0), 0);
+    setOutline(swapped, {QPoint(20, 10), QPoint(10, 10), QPoint(15, 40)});
+    QCOMPARE(cornerAt(swapped, QPoint(15, 10), 8.0), 0);
 }
 
 void TestRoi::a_corner_exactly_at_the_edge_of_reach_is_still_within_it()
@@ -375,10 +428,10 @@ void TestRoi::a_corner_exactly_at_the_edge_of_reach_is_still_within_it()
     // The boundary of the grab radius, which no existing case lands on: at
     // exactly `reach` the corner is grabbable, a pixel further out it is not.
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(90, 10) << QPoint(90, 70);
+    setOutline(roi, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 70)});
 
-    QCOMPARE(cornerNear(roi, QPoint(18, 10), 8.0), 0);
-    QCOMPARE(cornerNear(roi, QPoint(19, 10), 8.0), -1);
+    QCOMPARE(cornerAt(roi, QPoint(18, 10), 8.0), 0);
+    QCOMPARE(cornerAt(roi, QPoint(19, 10), 8.0), -1);
 }
 
 
@@ -394,8 +447,8 @@ void TestRoi::the_notch_of_a_concave_region_is_outside_it()
     // region read as its own bounding box puts subsets on background that
     // never moves, and those correlate confidently against themselves.
     RegionOfInterest ell;
-    ell.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 40),
-                    QPoint(40, 40), QPoint(40, 100), QPoint(0, 100)};
+    setOutline(ell, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 40),
+                    QPoint(40, 40), QPoint(40, 100), QPoint(0, 100)});
 
     QVERIFY2(regionContains(ell, 20, 20), "the corner of the L is inside it");
     QVERIFY2(regionContains(ell, 80, 20), "the foot of the L is inside it");
@@ -412,7 +465,7 @@ void TestRoi::a_slanted_boundary_is_crossed_where_it_actually_lies()
     // difference, and a region whose every edge is axis-aligned never
     // exercises the arithmetic at all.
     RegionOfInterest triangle;
-    triangle.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(0, 100)};
+    setOutline(triangle, {QPoint(0, 0), QPoint(100, 0), QPoint(0, 100)});
 
     QVERIFY2(regionContains(triangle, 10, 10), "well inside the triangle is inside");
     QVERIFY2(regionContains(triangle, 45, 50), "just inside the slanted edge is inside");
@@ -424,16 +477,24 @@ void TestRoi::a_slanted_boundary_is_crossed_where_it_actually_lies()
 void TestRoi::a_point_exactly_on_a_boundary_is_decided_the_same_way_every_time()
 {
     // ⚑ A grid lands on round numbers, so a boundary at a round number is a
-    // place points really sit. The rule is half-open -- the region owns one of
-    // each pair of opposite edges and not the other -- which is what stops two
-    // abutting regions from either double-counting a point or dropping it.
-    // Which way round it falls is a fact about this code, checked here rather
-    // than assumed, and it is the opposite of what a first reading suggests.
+    // place points really sit. The rule is the ENGINE'S: a pixel on an edge is
+    // inside, on every edge, decided exactly in integers before anything else.
+    //
+    // ⚑ This case used to pin the opposite. Until 2026-10-10 the engine-free
+    // test was a bare crossing count, which owns the left edge and not the right,
+    // and this case recorded that as the rule -- while the run, asking the
+    // engine's Polygon2D, took both. So the region drawn, the subset overlay and
+    // the speckle estimate disagreed with the measurement along the right and
+    // bottom of every boundary. Held to the engine pixel by pixel now, in
+    // tests/test_roi_engine_boundary.cpp.
     RegionOfInterest square;
-    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    setOutline(square, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
 
     QVERIFY2(regionContains(square, 0, 50), "a point on the left boundary is inside");
-    QVERIFY2(!regionContains(square, 100, 50), "a point on the right boundary is not");
+    QVERIFY2(regionContains(square, 100, 50), "and so is one on the right boundary");
+    QVERIFY2(regionContains(square, 50, 100), "and on the bottom");
+    QVERIFY2(regionContains(square, 100, 100), "and on a corner");
+    QVERIFY2(!regionContains(square, 101, 50), "one pixel past it is not");
 }
 
 void TestRoi::a_ring_of_fewer_than_three_corners_encloses_nothing()
@@ -443,12 +504,12 @@ void TestRoi::a_ring_of_fewer_than_three_corners_encloses_nothing()
     // every position, rather than whatever the crossing count of a degenerate
     // ring happens to come to.
     RegionOfInterest line;
-    line.vertices = {QPoint(0, 0), QPoint(100, 0)};
+    setOutline(line, {QPoint(0, 0), QPoint(100, 0)});
     QVERIFY2(!regionContains(line, 50, 0), "a two-corner ring contains nothing, not even its own line");
     QVERIFY2(!regionContains(line, 50, 50), "nor anything else");
 
     RegionOfInterest single;
-    single.vertices = {QPoint(0, 0)};
+    setOutline(single, {QPoint(0, 0)});
     QVERIFY2(!regionContains(single, 0, 0), "and one corner contains nothing either");
 
     const RegionOfInterest nothing;
@@ -462,17 +523,17 @@ void TestRoi::a_subset_of_no_size_reaches_only_what_it_sits_on()
     // radius, where a square of 32 and one of 33 both reach a hole 10 px away
     // and neither the width nor its "+ 1" can be seen.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
 
-    QVERIFY2(subsetReachesAHole(region, 40, 50, 0),
+    QVERIFY2(subsetReachesACut(region, 40, 50, 0),
              "a subset of no radius sitting exactly on the hole's edge reaches it");
-    QVERIFY2(!subsetReachesAHole(region, 39, 50, 0),
+    QVERIFY2(!subsetReachesACut(region, 39, 50, 0),
              "and one pixel outside it does not");
 
     // A negative radius is not a subset at all, and must not be turned into
     // one by the arithmetic that follows.
-    QVERIFY2(!subsetReachesAHole(region, 50, 50, -1),
+    QVERIFY2(!subsetReachesACut(region, 50, 50, -1),
              "a negative radius reaches nothing, even sitting inside the hole");
 }
 
@@ -482,18 +543,18 @@ void TestRoi::moving_a_corner_that_does_not_exist_leaves_the_region_alone()
     // negative one are separate conditions, and a region handed either must
     // come back unchanged rather than gaining a corner or losing one.
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(90, 10) << QPoint(90, 70);
+    setOutline(roi, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 70)});
 
-    const RegionOfInterest tooLarge = withCornerMoved(roi, 3, QPoint(0, 0));
-    QCOMPARE(tooLarge.vertices, roi.vertices);
+    const RegionOfInterest tooLarge = withCornerMoved(roi, CornerRef{0, 3}, QPoint(0, 0));
+    QCOMPARE(outlineOf(tooLarge), outlineOf(roi));
 
-    const RegionOfInterest negative = withCornerMoved(roi, -1, QPoint(0, 0));
-    QCOMPARE(negative.vertices, roi.vertices);
+    const RegionOfInterest negative = withCornerMoved(roi, CornerRef{0, -1}, QPoint(0, 0));
+    QCOMPARE(outlineOf(negative), outlineOf(roi));
 
     // And the last real corner still moves, so the check is not simply
     // refusing everything.
-    const RegionOfInterest moved = withCornerMoved(roi, 2, QPoint(5, 5));
-    QCOMPARE(moved.vertices.at(2), QPoint(5, 5));
+    const RegionOfInterest moved = withCornerMoved(roi, CornerRef{0, 2}, QPoint(5, 5));
+    QCOMPARE(outlineOf(moved).at(2), QPoint(5, 5));
 }
 
 void TestRoi::the_first_corner_of_a_region_moves_like_any_other()
@@ -505,12 +566,12 @@ void TestRoi::the_first_corner_of_a_region_moves_like_any_other()
     // silently immovable while every other corner obeyed. Nothing on screen
     // would say why. Found standing after the sweep of 2026-09-09.
     RegionOfInterest roi;
-    roi.vertices << QPoint(10, 10) << QPoint(90, 10) << QPoint(90, 70);
+    setOutline(roi, {QPoint(10, 10), QPoint(90, 10), QPoint(90, 70)});
 
-    const RegionOfInterest moved = withCornerMoved(roi, 0, QPoint(5, 5));
-    QCOMPARE(moved.vertices.at(0), QPoint(5, 5));
-    QCOMPARE(moved.vertices.at(1), roi.vertices.at(1));
-    QCOMPARE(moved.vertices.at(2), roi.vertices.at(2));
+    const RegionOfInterest moved = withCornerMoved(roi, CornerRef{0, 0}, QPoint(5, 5));
+    QCOMPARE(outlineOf(moved).at(0), QPoint(5, 5));
+    QCOMPARE(outlineOf(moved).at(1), outlineOf(roi).at(1));
+    QCOMPARE(outlineOf(moved).at(2), outlineOf(roi).at(2));
 }
 
 void TestRoi::a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it()
@@ -525,19 +586,19 @@ void TestRoi::a_subset_reaches_a_hole_above_it_as_readily_as_one_beside_it()
     // reaches y = 39, one pixel short; at y = 24 it reaches exactly 40, and
     // touching is reaching.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
 
-    QVERIFY2(!subsetReachesAHole(region, 50, 23, 16),
+    QVERIFY2(!subsetReachesACut(region, 50, 23, 16),
              "a subset ending one pixel above the hole does not reach it");
-    QVERIFY2(subsetReachesAHole(region, 50, 24, 16),
+    QVERIFY2(subsetReachesACut(region, 50, 24, 16),
              "and one that ends exactly on its edge does");
 
     // And at a radius of zero, where the height's own "+ 1" is the whole
     // difference between a one-pixel subset and no subset at all.
-    QVERIFY2(subsetReachesAHole(region, 50, 40, 0),
+    QVERIFY2(subsetReachesACut(region, 50, 40, 0),
              "a subset of no radius sitting on the hole's top edge reaches it");
-    QVERIFY2(!subsetReachesAHole(region, 50, 39, 0),
+    QVERIFY2(!subsetReachesACut(region, 50, 39, 0),
              "and one pixel above it does not");
 }
 
@@ -554,10 +615,10 @@ void TestRoi::a_triangular_hole_is_a_hole_wherever_the_question_is_asked()
     // hasHoles() answers false, the run never builds a region with holes at
     // all, and the void the user drew round is measured straight across.
     RegionOfInterest region;
-    region.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
-    region.holes.append({QPoint(30, 30), QPoint(70, 30), QPoint(50, 70)});
+    setOutline(region, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
+    addCut(region, {QPoint(30, 30), QPoint(70, 30), QPoint(50, 70)});
 
-    QVERIFY2(region.hasHoles(),
+    QVERIFY2(region.hasCuts(),
              "a region whose only hole is a triangle reported no holes at all");
 
     QVERIFY2(!regionContains(region, 50, 40),
@@ -565,18 +626,18 @@ void TestRoi::a_triangular_hole_is_a_hole_wherever_the_question_is_asked()
     QVERIFY2(regionContains(region, 10, 10),
              "and a point clear of it is still inside");
 
-    QVERIFY2(subsetReachesAHole(region, 20, 40, 12),
+    QVERIFY2(subsetReachesACut(region, 20, 40, 12),
              "a subset reaching a triangular hole was not reported");
 
     // And a ring of two corners still encloses nothing, in all three, which is
     // the rule the one above must not be confused with.
     RegionOfInterest twoCorners;
-    twoCorners.vertices = region.vertices;
-    twoCorners.holes.append({QPoint(30, 30), QPoint(70, 30)});
-    QVERIFY2(!twoCorners.hasHoles(), "a two-corner ring was counted as a hole");
+    setOutline(twoCorners, outlineOf(region));
+    addCut(twoCorners, {QPoint(30, 30), QPoint(70, 30)});
+    QVERIFY2(!twoCorners.hasCuts(), "a two-corner ring was counted as a hole");
     QVERIFY2(regionContains(twoCorners, 50, 30),
              "a two-corner ring excluded a point from the region");
-    QVERIFY2(!subsetReachesAHole(twoCorners, 50, 30, 12),
+    QVERIFY2(!subsetReachesACut(twoCorners, 50, 30, 12),
              "a subset was said to reach a hole that encloses nothing");
 }
 
@@ -593,16 +654,16 @@ void TestRoi::a_corner_can_be_added_to_an_edge_without_redrawing_the_region()
     // and a self-crossing ring is not a region at all - its inside is decided
     // by a parity rule that no longer means what the reader drew.
     RegionOfInterest square;
-    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    setOutline(square, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
 
-    const RegionOfInterest five = withCornerInserted(square, 1, QPoint(100, 50));
-    QCOMPARE(five.vertices.size(), 5);
-    QCOMPARE(five.vertices.at(2), QPoint(100, 50));
+    const RegionOfInterest five = withCornerInserted(square, CornerRef{0, 1}, QPoint(100, 50));
+    QCOMPARE(outlineOf(five).size(), 5);
+    QCOMPARE(outlineOf(five).at(2), QPoint(100, 50));
 
     // The corners either side of it are the ones the edge joined, in the order
     // they were in.
-    QCOMPARE(five.vertices.at(1), QPoint(100, 0));
-    QCOMPARE(five.vertices.at(3), QPoint(100, 100));
+    QCOMPARE(outlineOf(five).at(1), QPoint(100, 0));
+    QCOMPARE(outlineOf(five).at(3), QPoint(100, 100));
 
     // The shape is unchanged by a corner placed ON its edge: a point inside
     // stays inside, one outside stays outside.
@@ -611,15 +672,15 @@ void TestRoi::a_corner_can_be_added_to_an_edge_without_redrawing_the_region()
 
     // An index that names no edge leaves the region alone rather than growing
     // it somewhere arbitrary.
-    QCOMPARE(withCornerInserted(square, -1, QPoint(50, 50)).vertices, square.vertices);
-    QCOMPARE(withCornerInserted(square, 9, QPoint(50, 50)).vertices, square.vertices);
+    QCOMPARE(outlineOf(withCornerInserted(square, CornerRef{0, -1}, QPoint(50, 50))), outlineOf(square));
+    QCOMPARE(outlineOf(withCornerInserted(square, CornerRef{0, 9}, QPoint(50, 50))), outlineOf(square));
 
     // ⚑ And an adjusted region is no longer the detector's proposal, the same
     // rule moving a corner already follows.
     RegionOfInterest detected = square;
     detected.origin = RegionOfInterest::Detected;
     detected.limitation = QStringLiteral("single outline, no holes");
-    const RegionOfInterest adjusted = withCornerInserted(detected, 0, QPoint(50, 0));
+    const RegionOfInterest adjusted = withCornerInserted(detected, CornerRef{0, 0}, QPoint(50, 0));
     QVERIFY(adjusted.origin == RegionOfInterest::Drawn);
     QVERIFY(adjusted.limitation.isEmpty());
 }
@@ -629,13 +690,13 @@ void TestRoi::a_corner_can_be_taken_out_unless_it_is_one_of_the_last_three()
     // The other half: a corner placed by mistake, or one left over from a
     // boundary that has been adjusted past needing it.
     RegionOfInterest five;
-    five.vertices = {QPoint(0, 0), QPoint(50, 0), QPoint(100, 0),
-                     QPoint(100, 100), QPoint(0, 100)};
+    setOutline(five, {QPoint(0, 0), QPoint(50, 0), QPoint(100, 0),
+                     QPoint(100, 100), QPoint(0, 100)});
 
-    const RegionOfInterest four = withCornerRemoved(five, 1);
-    QCOMPARE(four.vertices.size(), 4);
-    QCOMPARE(four.vertices.at(0), QPoint(0, 0));
-    QCOMPARE(four.vertices.at(1), QPoint(100, 0));
+    const RegionOfInterest four = withCornerRemoved(five, CornerRef{0, 1});
+    QCOMPARE(outlineOf(four).size(), 4);
+    QCOMPARE(outlineOf(four).at(0), QPoint(0, 0));
+    QCOMPARE(outlineOf(four).at(1), QPoint(100, 0));
     QVERIFY(regionContains(four, 50, 50));
 
     // ⚑ THREE CORNERS IS THE FLOOR, and the rule is the same one the drawing
@@ -644,22 +705,22 @@ void TestRoi::a_corner_can_be_taken_out_unless_it_is_one_of_the_last_three()
     // is refused and the region comes back as it was - rather than accepted,
     // leaving a reader with a boundary that has silently stopped being one.
     RegionOfInterest triangle;
-    triangle.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(50, 100)};
-    QCOMPARE(withCornerRemoved(triangle, 1).vertices, triangle.vertices);
+    setOutline(triangle, {QPoint(0, 0), QPoint(100, 0), QPoint(50, 100)});
+    QCOMPARE(outlineOf(withCornerRemoved(triangle, CornerRef{0, 1})), outlineOf(triangle));
 
     // An index that names no corner leaves it alone, both ends.
-    QCOMPARE(withCornerRemoved(five, -1).vertices, five.vertices);
-    QCOMPARE(withCornerRemoved(five, 5).vertices, five.vertices);
+    QCOMPARE(outlineOf(withCornerRemoved(five, CornerRef{0, -1})), outlineOf(five));
+    QCOMPARE(outlineOf(withCornerRemoved(five, CornerRef{0, 5})), outlineOf(five));
 
     // ⚑ The FIRST corner comes out like any other, which the cases above this
     // file have twice found to be where an index check is tightened by mistake.
-    const RegionOfInterest withoutFirst = withCornerRemoved(five, 0);
-    QCOMPARE(withoutFirst.vertices.size(), 4);
-    QCOMPARE(withoutFirst.vertices.at(0), QPoint(50, 0));
+    const RegionOfInterest withoutFirst = withCornerRemoved(five, CornerRef{0, 0});
+    QCOMPARE(outlineOf(withoutFirst).size(), 4);
+    QCOMPARE(outlineOf(withoutFirst).at(0), QPoint(50, 0));
 
     RegionOfInterest detected = five;
     detected.origin = RegionOfInterest::Detected;
-    const RegionOfInterest adjusted = withCornerRemoved(detected, 1);
+    const RegionOfInterest adjusted = withCornerRemoved(detected, CornerRef{0, 1});
     QVERIFY(adjusted.origin == RegionOfInterest::Drawn);
 }
 
@@ -669,24 +730,24 @@ void TestRoi::the_edge_under_the_pointer_is_the_one_a_new_corner_joins()
     // to it, and "nearest corner" is the wrong question: a click halfway along
     // a side is far from both of its ends.
     RegionOfInterest square;
-    square.vertices = {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)};
+    setOutline(square, {QPoint(0, 0), QPoint(100, 0), QPoint(100, 100), QPoint(0, 100)});
 
     // Halfway down the right-hand side: the edge from corner 1 to corner 2.
-    QCOMPARE(edgeNear(square, QPoint(100, 50), 6.0), 1);
+    QCOMPARE(edgeAt(square, QPoint(100, 50), 6.0), 1);
     // Halfway along the top: the edge from corner 0 to corner 1.
-    QCOMPARE(edgeNear(square, QPoint(50, 0), 6.0), 0);
+    QCOMPARE(edgeAt(square, QPoint(50, 0), 6.0), 0);
     // ⚑ The CLOSING edge, from the last corner back to the first, which is the
     // one an implementation walking pairs of vertices forgets.
-    QCOMPARE(edgeNear(square, QPoint(0, 50), 6.0), 3);
+    QCOMPARE(edgeAt(square, QPoint(0, 50), 6.0), 3);
 
     // Well clear of every edge is no edge at all, rather than the least bad one.
-    QCOMPARE(edgeNear(square, QPoint(50, 50), 6.0), -1);
-    QCOMPARE(edgeNear(square, QPoint(200, 200), 6.0), -1);
+    QCOMPARE(edgeAt(square, QPoint(50, 50), 6.0), -1);
+    QCOMPARE(edgeAt(square, QPoint(200, 200), 6.0), -1);
 
     // A ring that encloses nothing has no edge to offer.
     RegionOfInterest line;
-    line.vertices = {QPoint(0, 0), QPoint(100, 0)};
-    QCOMPARE(edgeNear(line, QPoint(50, 0), 6.0), -1);
+    setOutline(line, {QPoint(0, 0), QPoint(100, 0)});
+    QCOMPARE(edgeAt(line, QPoint(50, 0), 6.0), -1);
 }
 
 void TestRoi::a_whole_region_moves_with_its_holes_and_keeps_its_shape()
@@ -697,24 +758,25 @@ void TestRoi::a_whole_region_moves_with_its_holes_and_keeps_its_shape()
     // rebuilt corner by corner, or dragged one corner at a time and distorted
     // in the process.
     RegionOfInterest region;
-    region.vertices = {QPoint(10, 10), QPoint(60, 10), QPoint(60, 40), QPoint(10, 40)};
+    setOutline(region, {QPoint(10, 10), QPoint(60, 10), QPoint(60, 40), QPoint(10, 40)});
     // ⚑ WITH A HOLE IN IT, because a hole is part of the region and a move that
     // left it behind would be the worst kind of wrong: the boundary lands where
     // the reader put it while the void it was drawn around stays where the
     // specimen no longer is, and the run measures across a hole and reports
     // confident numbers off the back of it.
-    region.holes.append({QPoint(20, 20), QPoint(30, 20), QPoint(30, 30), QPoint(20, 30)});
+    addCut(region, {QPoint(20, 20), QPoint(30, 20), QPoint(30, 30), QPoint(20, 30)});
 
     const QPoint by(100, 5);
     const RegionOfInterest moved = withRegionMoved(region, by);
 
-    QCOMPARE(moved.vertices.size(), region.vertices.size());
-    for (int i = 0; i < moved.vertices.size(); i++)
-        QCOMPARE(moved.vertices.at(i), region.vertices.at(i) + by);
+    QCOMPARE(outlineOf(moved).size(), outlineOf(region).size());
+    for (int i = 0; i < outlineOf(moved).size(); i++)
+        QCOMPARE(outlineOf(moved).at(i), outlineOf(region).at(i) + by);
 
-    QCOMPARE(moved.holes.size(), 1);
-    for (int i = 0; i < moved.holes.at(0).size(); i++)
-        QCOMPARE(moved.holes.at(0).at(i), region.holes.at(0).at(i) + by);
+    QCOMPARE(moved.shapes.size(), 2);
+    QVERIFY(moved.shapes.at(1).subtract);
+    for (int i = 0; i < moved.shapes.at(1).points.size(); i++)
+        QCOMPARE(moved.shapes.at(1).points.at(i), region.shapes.at(1).points.at(i) + by);
 
     // The shape is carried, not redrawn: what was inside is inside at the new
     // place, what was in the hole is still in the hole, and what was outside
@@ -735,7 +797,7 @@ void TestRoi::a_whole_region_moves_with_its_holes_and_keeps_its_shape()
     untouched.origin = RegionOfInterest::Detected;
     untouched.limitation = QStringLiteral("single outline, no holes");
     const RegionOfInterest still = withRegionMoved(untouched, QPoint(0, 0));
-    QCOMPARE(still.vertices, region.vertices);
+    QCOMPARE(outlineOf(still), outlineOf(region));
     QVERIFY2(still.origin == RegionOfInterest::Detected,
              "a region that was not moved was restated as drawn by hand");
     QVERIFY2(!still.limitation.isEmpty(),
@@ -749,6 +811,186 @@ void TestRoi::a_whole_region_moves_with_its_holes_and_keeps_its_shape()
     const RegionOfInterest adjusted = withRegionMoved(detected, by);
     QVERIFY(adjusted.origin == RegionOfInterest::Drawn);
     QVERIFY(adjusted.limitation.isEmpty());
+}
+
+namespace {
+
+RegionShape box(RegionShape::Kind kind, QPoint a, QPoint b, bool cut = false)
+{
+    RegionShape shape;
+    shape.kind = kind;
+    shape.subtract = cut;
+    shape.points = {a, b};
+    return shape;
+}
+
+}  // namespace
+
+void TestRoi::a_rectangle_covers_its_box_edges_included()
+{
+    // Lopsided, 61 wide and 21 tall, and stored corner-last-first: the box is
+    // the same whichever two opposite corners are given, in whichever order.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(70, 31), QPoint(10, 11))};
+    QVERIFY(roi.isValid());
+    QVERIFY(regionContains(roi, 10, 11));
+    QVERIFY(regionContains(roi, 70, 31));
+    QVERIFY(regionContains(roi, 40, 20));
+    QVERIFY(!regionContains(roi, 9, 20));
+    QVERIFY(!regionContains(roi, 71, 20));
+    QVERIFY(!regionContains(roi, 40, 32));
+    QCOMPARE(roi.bounds(), QRect(QPoint(10, 11), QPoint(70, 31)));
+    QCOMPARE(roi.shapes.first().handles(),
+             (QVector<QPoint>{QPoint(10, 11), QPoint(70, 11), QPoint(70, 31), QPoint(10, 31)}));
+}
+
+void TestRoi::an_ellipse_is_the_one_inscribed_in_its_box()
+{
+    // Box x 0..60, y 0..20: centre (30, 10), semi-axes 30 and 10. Wider than it
+    // is tall, so an ellipse with its axes swapped answers differently.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Ellipse, QPoint(0, 0), QPoint(60, 20))};
+    QVERIFY(regionContains(roi, 30, 10));
+    QVERIFY2(regionContains(roi, 0, 10), "the left end of the long axis is on it");
+    QVERIFY2(regionContains(roi, 60, 10), "and the right end");
+    QVERIFY2(regionContains(roi, 30, 0), "and the top of the short axis");
+    QVERIFY2(!regionContains(roi, 2, 2), "the box's corner is not in the ellipse");
+    QVERIFY2(!regionContains(roi, 30, 21), "past the short axis is outside");
+    QVERIFY2(regionContains(roi, 50, 4), "(50, 4): 0.444 + 0.36 = 0.80, inside");
+    QVERIFY2(!regionContains(roi, 55, 4), "(55, 4): 0.694 + 0.36 = 1.05, outside");
+}
+
+void TestRoi::a_later_shape_decides_where_shapes_overlap()
+{
+    // ⚑ THE ORDERED RULE (David, 2026-10-10). Painting, not set algebra: a cut
+    // removes what came before it, and a later addition puts back what it
+    // covers, so an island can stand inside a hole.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(0, 0), QPoint(100, 60)),
+                  box(RegionShape::Ellipse, QPoint(20, 10), QPoint(80, 50), true),
+                  box(RegionShape::Rectangle, QPoint(45, 25), QPoint(55, 35))};
+    QVERIFY2(regionContains(roi, 5, 5), "the outer rectangle, outside the cut");
+    QVERIFY2(!regionContains(roi, 30, 30), "inside the cut ellipse");
+    QVERIFY2(regionContains(roi, 50, 30), "the island added back inside the cut");
+    QVERIFY(!regionContains(roi, 150, 30));
+
+    // The same three in another order are a different region: the island drawn
+    // FIRST is then cut away with everything else under the ellipse.
+    RegionOfInterest reordered;
+    reordered.shapes = {roi.shapes.at(2), roi.shapes.at(0), roi.shapes.at(1)};
+    QVERIFY2(!regionContains(reordered, 50, 30),
+             "a cut applied after the island removes it");
+}
+
+void TestRoi::a_region_of_nothing_but_cuts_encloses_nothing()
+{
+    // Every pixel starts outside, so a cut on its own removes nothing from
+    // nothing, and a region of cuts alone is no region.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(0, 0), QPoint(50, 50), true)};
+    QVERIFY(!roi.isValid());
+    QVERIFY(roi.hasCuts());
+    QVERIFY(!regionContains(roi, 10, 10));
+    QVERIFY(roi.bounds().isNull());
+}
+
+void TestRoi::the_bounds_span_every_added_shape_and_no_cut()
+{
+    // Two separate patches and a cut reaching past both: the grid has to cover
+    // both patches, and the cut cannot drag its origin out to where nothing is
+    // measured.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(40, 30)),
+                  box(RegionShape::Ellipse, QPoint(100, 50), QPoint(140, 90)),
+                  box(RegionShape::Rectangle, QPoint(0, 0), QPoint(300, 300), true)};
+    QCOMPARE(roi.bounds(), QRect(QPoint(10, 10), QPoint(140, 90)));
+}
+
+void TestRoi::dragging_a_box_corner_keeps_the_opposite_corner_where_it_was()
+{
+    // As every drawing program does it. Handles run clockwise from the top
+    // left, so handle 1 is the top right, and the one diagonally across it --
+    // the bottom left -- is what stays.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 20), QPoint(50, 40))};
+    roi.origin = RegionOfInterest::Detected;
+    const RegionOfInterest moved = withCornerMoved(roi, CornerRef{0, 1}, QPoint(80, 5));
+    QCOMPARE(moved.shapes.first().bounds(), QRect(QPoint(10, 5), QPoint(80, 40)));
+    QVERIFY(moved.origin == RegionOfInterest::Drawn);
+
+    // Dragged past the opposite corner, the box turns over rather than
+    // collapsing: the two stored corners are re-normalised whenever asked.
+    const RegionOfInterest flipped = withCornerMoved(roi, CornerRef{0, 2}, QPoint(0, 0));
+    QCOMPARE(flipped.shapes.first().bounds(), QRect(QPoint(0, 0), QPoint(10, 20)));
+}
+
+void TestRoi::a_box_keeps_its_corners_and_takes_none_extra()
+{
+    // A rectangle with a fifth corner is not a rectangle, and one with three is
+    // nothing. Both edits are refused and the region comes back as it was.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Ellipse, QPoint(10, 20), QPoint(50, 40))};
+    QCOMPARE(withCornerRemoved(roi, CornerRef{0, 1}).shapes.first().points,
+             roi.shapes.first().points);
+    QCOMPARE(withCornerInserted(roi, CornerRef{0, 0}, QPoint(30, 20)).shapes.first().points,
+             roi.shapes.first().points);
+    // And it offers no edge to add a corner to.
+    QVERIFY(!edgeNear(roi, QPoint(30, 20), 6.0).isValid());
+    // A box of no width encloses nothing.
+    QVERIFY(!box(RegionShape::Rectangle, QPoint(10, 20), QPoint(10, 40)).isValid());
+    QVERIFY(!box(RegionShape::Ellipse, QPoint(10, 20), QPoint(50, 20)).isValid());
+}
+
+void TestRoi::of_two_handles_equally_near_the_later_shape_s_is_grabbed()
+{
+    // Two shapes sharing a corner: the later one is drawn on top, so it is the
+    // one a press grabs. Lopsided so the earlier shape's handle comes first in
+    // a walk and would win any first-found rule.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(50, 50)),
+                  box(RegionShape::Rectangle, QPoint(50, 50), QPoint(90, 70), true)};
+    const CornerRef grabbed = cornerNear(roi, QPoint(50, 50), 6.0);
+    QCOMPARE(grabbed.shape, 1);
+    QCOMPARE(grabbed.corner, 0);
+}
+
+void TestRoi::a_shape_can_be_added_and_taken_away_again()
+{
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(0, 0), QPoint(100, 100))};
+    roi.origin = RegionOfInterest::Detected;
+    roi.limitation = QStringLiteral("single outline, no holes");
+
+    const RegionShape cut = box(RegionShape::Ellipse, QPoint(40, 40), QPoint(60, 60), true);
+    const RegionOfInterest holed = withShapeAdded(roi, cut);
+    QCOMPARE(holed.shapes.size(), 2);
+    QVERIFY(!regionContains(holed, 50, 50));
+    // Somebody has added to the detector's proposal, so it is no longer its.
+    QVERIFY(holed.origin == RegionOfInterest::Drawn);
+    QVERIFY(holed.limitation.isEmpty());
+
+    const RegionOfInterest back = withShapeRemoved(holed, 1);
+    QCOMPARE(back.shapes.size(), 1);
+    QVERIFY(regionContains(back, 50, 50));
+
+    // An invalid shape adds nothing; an index nobody has removes nothing.
+    QCOMPARE(withShapeAdded(roi, box(RegionShape::Rectangle, QPoint(5, 5), QPoint(5, 9))).shapes.size(), 1);
+    QCOMPARE(withShapeRemoved(holed, 2).shapes.size(), 2);
+    QCOMPARE(withShapeRemoved(holed, -1).shapes.size(), 2);
+    // ⚑ And the FIRST shape comes out like any other.
+    QCOMPARE(withShapeRemoved(holed, 0).shapes.size(), 1);
+    QVERIFY(withShapeRemoved(holed, 0).shapes.first().subtract);
+}
+
+void TestRoi::the_region_describes_itself_shape_by_shape_in_order()
+{
+    RegionOfInterest roi;
+    setOutline(roi, {QPoint(0, 0), QPoint(90, 0), QPoint(90, 50), QPoint(40, 70), QPoint(0, 50)});
+    roi.shapes.append(box(RegionShape::Ellipse, QPoint(20, 10), QPoint(50, 30), true));
+    QCOMPARE(regionSummary(roi),
+             QStringLiteral("2 shapes, applied in order: + polygon of 5 corners, "
+                            "- ellipse 31 x 21 px"));
+    QVERIFY(regionSummary(RegionOfInterest()).isEmpty());
 }
 
 QTEST_MAIN(TestRoi)

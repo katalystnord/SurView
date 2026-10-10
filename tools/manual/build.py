@@ -875,12 +875,29 @@ part2_body = """
     because its answer looks like a measurement. Leaving those places out
     can. So a field measured without a region says so beside the field, in
     the run report and on the Run button, and names
-    <strong>Define ROI</strong> as the remedy.
+    <strong>Add to Region</strong> as the remedy.
+  </p>
+
+  <h2>A region is built from shapes, in order</h2>
+  <p>
+    A region is drawn as shapes - rectangles, ellipses and polygons -
+    each either <strong>added</strong> to the region or
+    <strong>cut</strong> from it, with the two buttons
+    <strong>Add to Region</strong> and <strong>Cut from Region</strong>.
+    A rectangle or an ellipse takes two clicks, one corner of its box and
+    then the opposite one; a polygon is placed corner by corner. The
+    shapes apply in the order they were drawn, as paint does: a cut
+    removes what is under it from everything before it, and a shape added
+    later puts back what it covers - so an island can stand inside a
+    hole. The order is listed, numbered, in the project, where any shape
+    can be selected and taken away again with Remove Shape. Additions are
+    outlined in green and cuts in coral, so two overlapping outlines say
+    which is which.
   </p>
 
   <h2>Drawn or detected, the region is honest about which</h2>
   <p>
-    A region of interest can be drawn by hand, corner by corner, or
+    A region of interest can be drawn by hand, shape by shape, or
     proposed automatically by segmenting the image for wherever the
     speckle is strong enough to correlate well. The two are not the same
     kind of claim: a hand-drawn boundary is a person's judgement about
@@ -935,8 +952,8 @@ part2_body = """
     mistake.
   </p>
   <p>
-    A region that can describe a hole - an outer boundary with a
-    place cut out of it, excluded from measurement - fixes this by
+    A region that can describe a hole - a shape with another cut out
+    of it, excluded from measurement - fixes this by
     simply not placing points there at all. What is drawn is then a
     positive statement about the specimen's actual shape, not merely a
     rough outer boundary hoping nobody looks too closely at what is
@@ -948,8 +965,9 @@ part2_body = """
     <figcaption>
       <b>Drawing a region.</b> Corners are placed by clicking the image,
       and the mode states what it is doing, how many corners exist so far,
-      and every way to finish or abandon it. A hole is added the same way,
-      as a second ring cut out of the region already in force.
+      and every way to finish or abandon it. A hole is drawn the same way,
+      with Cut from Region, as a shape cut out of the region already in
+      force.
     </figcaption>
   </figure>
 
@@ -2097,8 +2115,9 @@ appendix_body = """
     <thead><tr><th>To do this</th><th>Look here</th></tr></thead>
     <tbody>
       <tr><td>Import the reference or target images</td><td>Toolbar: <strong>Reference</strong>, <strong>Target</strong></td></tr>
-      <tr><td>Draw or auto-detect a region</td><td>Toolbar: <strong>Define ROI</strong>, <strong>Auto-detect ROI</strong></td></tr>
-      <tr><td>Exclude a hole from a region</td><td>Toolbar: <strong>Add Hole</strong> (needs a region first)</td></tr>
+      <tr><td>Draw or auto-detect a region</td><td>Toolbar: <strong>Add to Region</strong> (rectangle, ellipse or polygon), <strong>Auto-detect ROI</strong></td></tr>
+      <tr><td>Cut a hole out of a region</td><td>Toolbar: <strong>Cut from Region</strong> (needs a region first)</td></tr>
+      <tr><td>Take one shape out of the region</td><td>Select it in the project list, then Analysis &gt; <strong>Remove Shape</strong></td></tr>
       <tr><td>Choose the solver, subset, grid step, strain settings</td><td><strong>Analysis</strong> panel</td></tr>
       <tr><td>Turn reference updating on and see its cost</td><td><strong>Analysis</strong> panel, "Reference" group</td></tr>
       <tr><td>Turn the recovery pass on and adjust it</td><td><strong>Analysis</strong> panel, "Points that failed" group</td></tr>

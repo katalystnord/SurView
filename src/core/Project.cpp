@@ -15,7 +15,10 @@ namespace
 {
 
 constexpr const char *kMagic = "SurView DIC project";
-constexpr int kVersion = 1;
+// 2 since 2026-10-10: the region is a list of shapes. An older SurView would
+// find no region in it and silently measure the whole image; with the version
+// raised it refuses the file, in words, instead. Version 1 files still open.
+constexpr int kVersion = 2;
 
 QString hashOf(const QString &path)
 {
@@ -88,30 +91,32 @@ QString saveProject(const QString &path, const Project &project)
         targets.append(imageEntry(base, target));
     root[QStringLiteral("targets")] = targets;
 
-    QJsonArray vertices;
-    for (const QPoint &vertex : project.roi.vertices) {
-        QJsonArray point;
-        point.append(vertex.x());
-        point.append(vertex.y());
-        vertices.append(point);
-    }
-    QJsonObject roi;
-    roi[QStringLiteral("vertices")] = vertices;
-    roi[QStringLiteral("origin")] = int(project.roi.origin);
-    // Written in the same [x, y] form the outer boundary uses, so one reader
-    // serves both and the two cannot drift apart.
-    QJsonArray holes;
-    for (const QVector<QPoint> &hole : project.roi.holes) {
-        QJsonArray ring;
-        for (const QPoint &vertex : hole) {
+    // One entry per shape, in the order they apply, each its kind, whether it
+    // cuts, and its points in the [x, y] form every point here uses.
+    QJsonArray shapes;
+    for (const RegionShape &shape : project.roi.shapes) {
+        QJsonObject entry;
+        entry[QStringLiteral("kind")] = shape.kind == RegionShape::Rectangle ? QStringLiteral("rectangle")
+                                        : shape.kind == RegionShape::Ellipse ? QStringLiteral("ellipse")
+                                                                             : QStringLiteral("polygon");
+        entry[QStringLiteral("cut")] = shape.subtract;
+        QJsonArray points;
+        for (const QPoint &vertex : shape.points) {
             QJsonArray point;
             point.append(vertex.x());
             point.append(vertex.y());
-            ring.append(point);
+            points.append(point);
         }
-        holes.append(ring);
+        entry[QStringLiteral("points")] = points;
+        shapes.append(entry);
     }
-    roi[QStringLiteral("holes")] = holes;
+    QJsonObject roi;
+    roi[QStringLiteral("shapes")] = shapes;
+    roi[QStringLiteral("origin")] = int(project.roi.origin);
+    // The detector's own caveat travels with the region it describes; reopened
+    // without it, a detected region would stop saying what it cannot represent.
+    if (!project.roi.limitation.isEmpty())
+        roi[QStringLiteral("limitation")] = project.roi.limitation;
     root[QStringLiteral("region")] = roi;
 
     const CorrelationSettings &s = project.settings;
@@ -227,21 +232,47 @@ ProjectLoad loadProject(const QString &path)
     }
 
     const QJsonObject roi = root[QStringLiteral("region")].toObject();
-    for (const QJsonValue &value : roi[QStringLiteral("vertices")].toArray()) {
-        const QJsonArray point = value.toArray();
-        out.project.roi.vertices << QPoint(point.at(0).toInt(), point.at(1).toInt());
-    }
-    for (const QJsonValue &ringValue : roi[QStringLiteral("holes")].toArray()) {
-        QVector<QPoint> hole;
-        for (const QJsonValue &value : ringValue.toArray()) {
+    const auto pointsOf = [](const QJsonArray &array) {
+        QVector<QPoint> points;
+        for (const QJsonValue &value : array) {
             const QJsonArray point = value.toArray();
-            hole << QPoint(point.at(0).toInt(), point.at(1).toInt());
+            points << QPoint(point.at(0).toInt(), point.at(1).toInt());
         }
-        // A ring of fewer than three corners encloses nothing, so it is dropped
-        // on the way in rather than carried as something to keep re-checking.
-        if (hole.size() >= 3)
-            out.project.roi.holes.append(hole);
+        return points;
+    };
+    if (roi.contains(QStringLiteral("shapes"))) {
+        for (const QJsonValue &value : roi[QStringLiteral("shapes")].toArray()) {
+            const QJsonObject entry = value.toObject();
+            RegionShape shape;
+            const QString kind = entry[QStringLiteral("kind")].toString();
+            shape.kind = kind == QStringLiteral("rectangle") ? RegionShape::Rectangle
+                         : kind == QStringLiteral("ellipse") ? RegionShape::Ellipse
+                                                             : RegionShape::Polygon;
+            shape.subtract = entry[QStringLiteral("cut")].toBool();
+            shape.points = pointsOf(entry[QStringLiteral("points")].toArray());
+            // A shape that encloses nothing is dropped on the way in rather than
+            // carried as something to keep re-checking.
+            if (shape.isValid())
+                out.project.roi.shapes.append(shape);
+        }
+    } else {
+        // ⚑ A project written before shapes existed: one outer boundary and its
+        // holes, which is exactly "+ polygon, then a cut polygon per hole".
+        // Read as that, so a saved session measures the same region it did.
+        RegionShape outline;
+        outline.points = pointsOf(roi[QStringLiteral("vertices")].toArray());
+        if (outline.isValid()) {
+            out.project.roi.shapes.append(outline);
+            for (const QJsonValue &ring : roi[QStringLiteral("holes")].toArray()) {
+                RegionShape hole;
+                hole.subtract = true;
+                hole.points = pointsOf(ring.toArray());
+                if (hole.isValid())
+                    out.project.roi.shapes.append(hole);
+            }
+        }
     }
+    out.project.roi.limitation = roi[QStringLiteral("limitation")].toString();
     out.project.roi.origin =
         RegionOfInterest::Origin(roi[QStringLiteral("origin")].toInt());
 

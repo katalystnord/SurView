@@ -31,6 +31,8 @@
 #include "core/Roi.h"
 #include "core/RoiDetect.h"
 
+#include "roi_helpers.h"
+
 #include <QTest>
 
 namespace {
@@ -64,7 +66,7 @@ void TestRoiDetect::a_speckled_patch_on_a_plain_background_is_found()
 
     QVERIFY2(detection.found, qPrintable(detection.reason));
     QVERIFY(detection.roi.isValid());
-    QVERIFY(detection.roi.vertices.size() >= 3);
+    QVERIFY(outlineOf(detection.roi).size() >= 3);
     QVERIFY(detection.reason.isEmpty());
 }
 
@@ -135,7 +137,7 @@ void TestRoiDetect::a_blank_frame_is_declined_rather_than_guessed_at()
     QVERIFY2(!detection.found,
              "a frame with no speckle produced a region anyway");
     QVERIFY(!detection.roi.isValid());
-    QVERIFY(detection.roi.vertices.isEmpty());
+    QVERIFY(outlineOf(detection.roi).isEmpty());
 }
 
 void TestRoiDetect::a_refusal_explains_what_was_looked_for()

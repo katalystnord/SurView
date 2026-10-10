@@ -66,6 +66,8 @@
 #include "core/SpeckleQuality.h"
 
 #include <QElapsedTimer>
+#include "roi_helpers.h"
+
 #include <QTest>
 
 #include <algorithm>
@@ -83,8 +85,7 @@ QString fixture(const QString &name)
 RegionOfInterest boxAt(int x, int y, int w, int h)
 {
     RegionOfInterest roi;
-    roi.vertices << QPoint(x, y) << QPoint(x + w, y)
-                 << QPoint(x + w, y + h) << QPoint(x, y + h);
+    setOutline(roi, {QPoint(x, y), QPoint(x + w, y), QPoint(x + w, y + h), QPoint(x, y + h)});
     return roi;
 }
 
@@ -228,11 +229,11 @@ void TestSpeckleQuality::a_region_that_is_not_a_rectangle_measures_only_what_is_
         QStringLiteral(SURVIEW_EXAMPLES "/real/01_tension_without_holes/image_0000.png");
 
     RegionOfInterest triangle;
-    triangle.vertices << QPoint(95, 700) << QPoint(185, 700) << QPoint(140, 1100);
+    setOutline(triangle, {QPoint(95, 700), QPoint(185, 700), QPoint(140, 1100)});
 
     RegionOfInterest itsBoundingBox;
     const QRect box = triangle.bounds();
-    itsBoundingBox.vertices << box.topLeft() << box.topRight()
+    outlineOf(itsBoundingBox) << box.topLeft() << box.topRight()
                             << box.bottomRight() << box.bottomLeft();
 
     const SpeckleQuality inside = speckleQualityIn(photograph, triangle, 16);

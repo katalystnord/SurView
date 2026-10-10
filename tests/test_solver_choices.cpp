@@ -40,6 +40,8 @@
 #include "core/Roi.h"
 
 #include <QSignalSpy>
+#include "roi_helpers.h"
+
 #include <QTest>
 
 #include <cmath>
@@ -217,8 +219,8 @@ void TestSolverChoices::every_offered_combination_honours_a_region_of_interest()
     // which is shared by every solver -- but "shared" is an assumption until
     // something checks it for each one.
     RegionOfInterest roi;
-    roi.vertices = {QPoint(60, 50), QPoint(170, 50),
-                    QPoint(170, 110), QPoint(60, 110)};
+    setOutline(roi, {QPoint(60, 50), QPoint(170, 50),
+                    QPoint(170, 110), QPoint(60, 110)});
     const QRect box = roi.bounds();
 
     for (const SolverChoice &choice : offeredSolverChoices()) {

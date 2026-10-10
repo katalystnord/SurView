@@ -1,5 +1,6 @@
 #include "core/Correlation.h"
 #include "core/Clipping.h"
+#include "core/RoiDetect.h"
 
 #include "core/PoiGrid.h"
 
@@ -161,39 +162,10 @@ void CorrelationRunner::run()
         // wherever else the shape is used.
         const int radius = m_settings.subsetRadius;
 
-        const auto polygonFor = [](const QVector<QPoint> &ring) {
-            std::vector<int> vertex_x;
-            std::vector<int> vertex_y;
-            vertex_x.reserve(size_t(ring.size()));
-            vertex_y.reserve(size_t(ring.size()));
-            for (const QPoint &vertex : ring) {
-                vertex_x.push_back(vertex.x());
-                vertex_y.push_back(vertex.y());
-            }
-            return std::make_unique<Polygon2D>(vertex_x, vertex_y);
-        };
-
-        // ⚑ The engine's own shape answers membership, holes included, so a
-        // boundary means the same thing here as everywhere else it is used.
-        // RegionWithHoles2D is the fork's, from issue #15, and this is its
-        // first consumer: a specimen with a hole through it could not be
-        // described at all before, and the open-hole tension example that ships
-        // with SurView is exactly such a specimen.
-        std::unique_ptr<Shape2D> region;
-        if (m_roi.isValid()) {
-            if (m_roi.hasHoles()) {
-                std::vector<std::unique_ptr<Shape2D>> holes;
-                for (const QVector<QPoint> &hole : m_roi.holes) {
-                    if (hole.size() < 3)
-                        continue;   // encloses nothing, so it excludes nothing
-                    holes.push_back(polygonFor(hole));
-                }
-                region = std::make_unique<RegionWithHoles2D>(
-                    polygonFor(m_roi.vertices), std::move(holes));
-            } else {
-                region = polygonFor(m_roi.vertices);
-            }
-        }
+        // ⚑ The engine's own shapes answer membership, every shape in the
+        // region's order, so a boundary means the same thing here as
+        // everywhere else it is used (regionInsideTest(), core/RoiDetect.h).
+        const std::function<bool(int, int)> inside = regionInsideTest(m_roi);
 
         std::vector<POI2D> queue;
         std::vector<int> gridIndex;
@@ -203,7 +175,7 @@ void CorrelationRunner::run()
         if (m_seeding.isEmpty()) {
             const PoiGrid grid = buildPoiGrid(
                 ref_img.width, ref_img.height, radius, m_settings.gridStep, m_roi,
-                [&region](int x, int y) { return region->contains(x, y); });
+                inside);
 
             if (!grid.isValid()) {
                 emit failed(grid.refusal);
@@ -218,11 +190,11 @@ void CorrelationRunner::run()
             }
 
             // How many of the points that WILL be measured have a subset
-            // reaching into a hole. Computed here, where the grid and the
-            // subset radius are both known, and reported with the run.
-            if (m_roi.hasHoles()) {
+            // reaching ground a cut removed. Computed here, where the grid and
+            // the subset radius are both known, and reported with the run.
+            if (m_roi.hasCuts()) {
                 for (const PoiGridCell &cell : grid.cells) {
-                    if (subsetReachesAHole(m_roi, cell.x, cell.y, radius))
+                    if (subsetReachesACut(m_roi, cell.x, cell.y, radius))
                         result.subsetsReachingAHole++;
                 }
             }

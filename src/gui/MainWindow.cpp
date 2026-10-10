@@ -57,8 +57,12 @@
 #include <QStyle>
 #include <QTime>
 #include <QToolBar>
+#include <QToolButton>
 #include <QTreeWidget>
 #include <QVBoxLayout>
+
+// The project list's region entry marks each shape line with its index.
+constexpr int kShapeRole = Qt::UserRole + 41;
 
 namespace {
 
@@ -183,7 +187,7 @@ MainWindow::MainWindow(QWidget *parent)
                 statusBar()->showMessage(reason, 6000);
                 log(reason);
             });
-    connect(m_viewport, &ImageViewport::holeDrawn, this, &MainWindow::onHoleDrawn);
+    connect(m_viewport, &ImageViewport::shapeDrawn, this, &MainWindow::onShapeDrawn);
     connect(m_viewport, &ImageViewport::extensometerPlaced, this,
             &MainWindow::onExtensometerPlaced);
     connect(m_viewport, &ImageViewport::probePlaced, this, &MainWindow::onProbePlaced);
@@ -285,12 +289,56 @@ void MainWindow::createActions()
         paint.drawEllipse(QPointF(10, 10), 3.4, 3.4);
     }
 
-    m_actAddHole = new QAction(QIcon(holeIcon), tr("Add Hole"), this);
-    m_actAddHole->setStatusTip(
-        tr("Exclude a place inside the region: a hole through the specimen, or "
-           "anywhere the pattern cannot be trusted"));
-    connect(m_actAddHole, &QAction::triggered, this,
-            [this] { m_viewport->beginHoleDrawing(); });
+    // ⚑ The region is built from shapes, each added or cut, applied in order
+    // (core/Roi.h). Two drop-down buttons rather than six: the toolbar already
+    // runs off the edge of a narrow window, and "add" and "cut" are the two
+    // decisions a reader is making -- the shape is the detail under each.
+    QPixmap addIcon(20, 20);
+    addIcon.fill(Qt::transparent);
+    {
+        QPainter paint(&addIcon);
+        paint.setRenderHint(QPainter::Antialiasing);
+        const QColor ink = palette().color(QPalette::WindowText);
+        paint.setPen(QPen(ink, 1.6));
+        paint.drawRect(2, 5, 11, 11);
+        paint.drawLine(15, 4, 15, 12);
+        paint.drawLine(11, 8, 19, 8);
+    }
+    const struct { RegionShape::Kind kind; const char *add; const char *cut; } kinds[] = {
+        {RegionShape::Rectangle, QT_TR_NOOP("Add Rectangle"), QT_TR_NOOP("Cut Rectangle")},
+        {RegionShape::Ellipse, QT_TR_NOOP("Add Ellipse"), QT_TR_NOOP("Cut Ellipse")},
+        {RegionShape::Polygon, QT_TR_NOOP("Add Polygon"), QT_TR_NOOP("Cut Polygon")},
+    };
+    auto *addMenu = new QMenu(this);
+    auto *cutMenu = new QMenu(this);
+    for (const auto &entry : kinds) {
+        const RegionShape::Kind kind = entry.kind;
+        QAction *add = addMenu->addAction(tr(entry.add));
+        connect(add, &QAction::triggered, this,
+                [this, kind] { m_viewport->beginShapeDrawing(kind, false); });
+        m_actAddShape.append(add);
+        QAction *cut = cutMenu->addAction(tr(entry.cut));
+        connect(cut, &QAction::triggered, this,
+                [this, kind] { m_viewport->beginShapeDrawing(kind, true); });
+        m_actCutShape.append(cut);
+    }
+
+    m_actAddToRegion = new QAction(QIcon(addIcon), tr("Add to Region"), this);
+    m_actAddToRegion->setStatusTip(
+        tr("Draw a rectangle, ellipse or polygon on the image and add it to the "
+           "region measured"));
+    m_actAddToRegion->setMenu(addMenu);
+
+    m_actCutFromRegion = new QAction(QIcon(holeIcon), tr("Cut from Region"), this);
+    m_actCutFromRegion->setStatusTip(
+        tr("Draw a rectangle, ellipse or polygon to take out of the region: a hole "
+           "through the specimen, or anywhere the pattern cannot be trusted"));
+    m_actCutFromRegion->setMenu(cutMenu);
+
+    m_actRemoveShape = new QAction(tr("Remove Shape"), this);
+    m_actRemoveShape->setStatusTip(
+        tr("Take the shape selected in the project list out of the region"));
+    connect(m_actRemoveShape, &QAction::triggered, this, &MainWindow::removeSelectedShape);
 
     m_actExtensometer = new QAction(QIcon(gaugeIcon), tr("Extensometer"), this);
     m_actExtensometer->setStatusTip(
@@ -324,13 +372,6 @@ void MainWindow::createActions()
            "on screen along it, for the frame on screen"));
     connect(m_actProbe, &QAction::triggered, this,
             [this] { m_viewport->beginProbePlacement(); });
-
-    m_actDefineRoi = new QAction(
-        style()->standardIcon(QStyle::SP_FileDialogDetailedView), tr("Define ROI"), this);
-    m_actDefineRoi->setStatusTip(
-        tr("Draw the region of interest by clicking corners on the image"));
-    connect(m_actDefineRoi, &QAction::triggered, this,
-            [this] { m_viewport->beginRoiDrawing(); });
 
     m_actAutoRoi = new QAction(
         style()->standardIcon(QStyle::SP_FileDialogContentsView), tr("Auto-detect ROI"), this);
@@ -432,7 +473,11 @@ void MainWindow::createMenus()
 
     // Analysis -- the DIC core pipeline.
     QMenu *analysisMenu = menuBar()->addMenu(tr("&Analysis"));
-    analysisMenu->addAction(m_actDefineRoi);
+    QMenu *addSub = analysisMenu->addMenu(m_actAddToRegion->icon(), tr("Add to Region"));
+    addSub->addActions(m_actAddShape);
+    QMenu *cutSub = analysisMenu->addMenu(m_actCutFromRegion->icon(), tr("Cut from Region"));
+    cutSub->addActions(m_actCutShape);
+    analysisMenu->addAction(m_actRemoveShape);
     analysisMenu->addAction(m_actAutoRoi);
     analysisMenu->addAction(m_actClearRoi);
     analysisMenu->addSeparator();
@@ -469,9 +514,14 @@ void MainWindow::createToolBar()
             &MainWindow::importTargetImages);
 
     toolbar->addSeparator();
-    toolbar->addAction(m_actDefineRoi);
+    toolbar->addAction(m_actAddToRegion);
+    toolbar->addAction(m_actCutFromRegion);
+    // A press opens the menu of shapes; there is no default shape to guess.
+    for (QAction *action : {m_actAddToRegion, m_actCutFromRegion}) {
+        if (auto *button = qobject_cast<QToolButton *>(toolbar->widgetForAction(action)))
+            button->setPopupMode(QToolButton::InstantPopup);
+    }
     toolbar->addAction(m_actAutoRoi);
-    toolbar->addAction(m_actAddHole);
     toolbar->addAction(m_actClearRoi);
     toolbar->addSeparator();
     toolbar->addAction(m_actRun);
@@ -806,6 +856,10 @@ QWidget *MainWindow::createProjectPanel()
     m_projectTree = tree;
     connect(tree, &QTreeWidget::itemSelectionChanged, this,
             &MainWindow::showSelectedImage);
+    // Remove Shape follows the selection, so it is live exactly when a shape is
+    // selected and says why when it is not.
+    connect(tree, &QTreeWidget::itemSelectionChanged, this,
+            &MainWindow::updateActionStates);
 
     m_referenceItem = new QTreeWidgetItem(tree);
     m_referenceItem->setText(0, tr("Reference image - none"));
@@ -1478,28 +1532,60 @@ void MainWindow::updateProfileContext()
         m_plot->setProfileContext(std::max(0, m_displayedFrame), m_viewport->fieldChannel());
 }
 
-void MainWindow::onHoleDrawn(const QVector<QPoint> &ring)
+void MainWindow::onShapeDrawn(const RegionShape &shape)
 {
-    if (!m_roi.isValid() || ring.size() < 3)
+    // A cut with nothing to cut from is refused before it can be drawn; this is
+    // the second line of that, for a region cleared while the cut was drawn.
+    if (!shape.isValid() || (shape.subtract && !m_roi.isValid()))
         return;
 
-    m_roi.holes.append(ring);
-    // A region somebody has added a hole to is no longer the detector's
-    // proposal, and the detector's own caveat -- that it cannot represent a
-    // hole -- has just stopped describing this shape. The same rule
-    // withCornerMoved() keeps.
-    m_roi.origin = RegionOfInterest::Drawn;
-    m_roi.limitation.clear();
+    // Added last, which is where a new shape applies: over everything before
+    // it. withShapeAdded() makes the region Drawn, and drops the detector's
+    // caveat, since a region somebody has added to is no longer its proposal.
+    m_roi = withShapeAdded(m_roi, shape);
 
     m_viewport->showRoi(m_roi);
     showRoiInProject();
     discardStaleResult();
     updateActionStates();
 
-    log(tr("Added a hole of %1 corners. The region now excludes %2 place(s); "
-           "points there will not be measured.")
-            .arg(ring.size())
-            .arg(m_roi.holes.size()));
+    log(tr("%1 the region: %2. It is shape %3 of %4, applied last.")
+            .arg(shape.subtract ? tr("Cut from") : tr("Added to"))
+            .arg(shape.describe())
+            .arg(m_roi.shapes.size())
+            .arg(m_roi.shapes.size()));
+}
+
+int MainWindow::selectedShapeIndex() const
+{
+    if (!m_projectTree)
+        return -1;
+    const QList<QTreeWidgetItem *> selected = m_projectTree->selectedItems();
+    if (selected.size() != 1 || selected.first()->parent() != m_roiItem)
+        return -1;
+    const QVariant index = selected.first()->data(0, kShapeRole);
+    return index.isValid() ? index.toInt() : -1;
+}
+
+void MainWindow::removeSelectedShape()
+{
+    const int index = selectedShapeIndex();
+    if (index < 0 || index >= m_roi.shapes.size())
+        return;
+    const QString removed = m_roi.shapes.at(index).describe();
+    m_roi = withShapeRemoved(m_roi, index);
+
+    discardStaleResult();
+    showRoiInProject();
+    updateActionStates();
+    // A region whose last added shape was removed is no region at all, and the
+    // next run measures the whole image; said, so it is not discovered later.
+    log(m_roi.isValid()
+            ? tr("Removed shape %1 (%2) from the region; %3.")
+                  .arg(index + 1).arg(removed).arg(regionSummary(m_roi))
+            : tr("Removed shape %1 (%2). Nothing is added to the region any more, "
+                 "so the next run measures the whole image.")
+                  .arg(index + 1).arg(removed));
 }
 
 void MainWindow::clearExtensometers()
@@ -2126,12 +2212,31 @@ void MainWindow::showRoiInProject()
     // children of their own. They are expanded below rather than left folded,
     // for the reason the Analysis panel folds nothing that acts: a hint nobody
     // can see is a hint nobody has.
-    const QString summary = tr("Region of interest - %1 corners, %2")
-                                .arg(m_roi.vertices.size())
+    int shapes = 0;
+    for (const RegionShape &shape : m_roi.shapes)
+        shapes += shape.isValid() ? 1 : 0;
+    const QString summary = (shapes == 1 ? tr("Region of interest - 1 shape, %1")
+                                         : tr("Region of interest - %1 shapes, %2").arg(shapes))
                                 .arg(m_roi.originText());
     m_roiItem->setText(0, summary);
 
     qDeleteAll(m_roiItem->takeChildren());
+    // ⚑ THE SHAPES, NUMBERED IN THE ORDER THEY APPLY. Order decides what a
+    // shape drawn over another does (core/Roi.h), so it is shown rather than
+    // being a rule a reader has to know. Each line can be selected, which is
+    // what Remove Shape acts on.
+    for (int i = 0; i < m_roi.shapes.size(); i++) {
+        const RegionShape &shape = m_roi.shapes.at(i);
+        if (!shape.isValid())
+            continue;
+        auto *line = new QTreeWidgetItem(m_roiItem);
+        line->setText(0, tr("%1. %2").arg(i + 1).arg(shape.describe()));
+        line->setData(0, kShapeRole, i);
+        line->setToolTip(0, shape.subtract
+                                ? tr("Cut: removes what it covers from everything before it")
+                                : tr("Added: everything it covers is measured, unless a later cut "
+                                     "removes it"));
+    }
     // ⚑ EVERY GESTURE THE REGION ANSWERS TO, in words, because none of them is
     // visible on the image itself. The handles look grabbable once the pointer
     // is over one and the cursor changes, but a reader has no reason to try an
@@ -2139,8 +2244,9 @@ void MainWindow::showRoiInProject()
     // is one this project treats as absent.
     for (const QString &gesture : {tr("Drag a corner to move it"),
                                    tr("Drag inside it to move the whole region"),
-                                   tr("Double-click an edge to add a corner"),
-                                   tr("Right-click a corner to take it out")}) {
+                                   tr("Double-click a polygon edge to add a corner"),
+                                   tr("Right-click a polygon corner to take it out"),
+                                   tr("Select a shape above, then Analysis > Remove Shape")}) {
         auto *line = new QTreeWidgetItem(m_roiItem);
         line->setText(0, gesture);
     }
@@ -2154,6 +2260,7 @@ void MainWindow::showRoiInProject()
     QStringList notes;
     notes << tr("%1, %2 x %3 px box. Drag a corner to adjust it.")
                  .arg(summary).arg(box.width()).arg(box.height());
+    notes << regionSummary(m_roi);
     notes << tr("Selects the point centres that get measured. Each subset still "
                 "reaches up to its radius beyond the boundary, so pixels just "
                 "outside it contribute to the points near its edge.");
@@ -2171,10 +2278,10 @@ void MainWindow::onRoiDrawn(const RegionOfInterest &roi)
     showRoiInProject();
 
     const QRect box = m_roi.bounds();
-    log(tr("Region of interest defined by hand - %1 corners, bounding box "
+    log(tr("Region of interest adjusted - %1, bounding box "
            "%2×%3 px at (%4, %5). Point centres are taken inside it; each "
            "subset still reaches up to its radius beyond it.")
-            .arg(roi.vertices.size())
+            .arg(regionSummary(m_roi))
             .arg(box.width())
             .arg(box.height())
             .arg(box.left())
@@ -2222,10 +2329,10 @@ void MainWindow::detectRoi()
     showRoiInProject();
 
     const QRect box = m_roi.bounds();
-    log(tr("Region of interest detected in %1 s - %2 corners, bounding box "
+    log(tr("Region of interest detected in %1 s - %2, bounding box "
            "%3×%4 px at (%5, %6), from %7.")
             .arg(detection.secondsElapsed, 0, 'f', 1)
-            .arg(m_roi.vertices.size())
+            .arg(regionSummary(m_roi))
             .arg(box.width())
             .arg(box.height())
             .arg(box.left())
@@ -2320,6 +2427,8 @@ void MainWindow::runCorrelation()
 
     if (!m_roi.isValid())
         log(tr("  %1").arg(wholeImageMeasuredNote()));
+    else
+        log(tr("  Region: %1.").arg(regionSummary(m_roi)));
     log(tr("  %1").arg(displacementResolutionNote(settings.subsetRadius)));
 
     if (targetPaths.size() > 1) {
@@ -2902,10 +3011,12 @@ void MainWindow::updateActionStates()
     // While a boundary is being placed, the viewport's own bar is the control
     // surface. Leaving these live would offer two ways to decide the same
     // thing, one of which the user cannot see they are already inside.
-    m_actDefineRoi->setEnabled(hasImage && !running && !drawing);
-    m_actDefineRoi->setToolTip(
-        drawing ? tr("A region is being defined - use the bar on the image")
-                : (hasImage ? tr("Click corners on the image to enclose a region")
+    m_actAddToRegion->setEnabled(hasImage && !running && !drawing);
+    for (QAction *add : m_actAddShape)
+        add->setEnabled(hasImage && !running && !drawing);
+    m_actAddToRegion->setToolTip(
+        drawing ? tr("A shape is being drawn - use the bar on the image")
+                : (hasImage ? tr("Add a rectangle, ellipse or polygon to the region")
                             : tr("Import an image first")));
 
     m_actAutoRoi->setEnabled(hasImage && !running && !drawing);
@@ -2914,10 +3025,21 @@ void MainWindow::updateActionStates()
                  : tr("Import an image first"));
 
     m_actClearRoi->setEnabled(m_roi.isValid() && !running && !drawing);
-    // A hole needs a region to be a hole IN, so the action is dead until there
-    // is one -- and says so through being disabled rather than by failing when
+    // A cut needs a region to cut from, so the action is dead until there is
+    // one -- and says so through being disabled rather than by failing when
     // pressed.
-    m_actAddHole->setEnabled(m_roi.isValid() && !running && !drawing);
+    const bool canCut = m_roi.isValid() && !running && !drawing;
+    m_actCutFromRegion->setEnabled(canCut);
+    for (QAction *cut : m_actCutShape)
+        cut->setEnabled(canCut);
+    m_actCutFromRegion->setToolTip(
+        m_roi.isValid() ? tr("Cut a rectangle, ellipse or polygon out of the region")
+                        : tr("Add something to the region first, to have something to cut"));
+    const bool shapeSelected = selectedShapeIndex() >= 0;
+    m_actRemoveShape->setEnabled(shapeSelected && !running && !drawing);
+    m_actRemoveShape->setToolTip(shapeSelected
+                                     ? tr("Take the selected shape out of the region")
+                                     : tr("Select a shape in the project list first"));
     m_actClearRoi->setToolTip(m_roi.isValid()
                                   ? tr("Discard the region and measure the "
                                        "whole image")

@@ -33,6 +33,8 @@
 #include <QJsonArray>
 #include <QJsonDocument>
 #include <QJsonObject>
+#include "roi_helpers.h"
+
 #include <QTest>
 
 namespace
@@ -54,8 +56,7 @@ Project sampleProject(const QString &dir)
                         << writeImage(dir + QStringLiteral("/t_01.tif"), "two");
 
     project.roi.origin = RegionOfInterest::Drawn;
-    project.roi.vertices << QPoint(10, 20) << QPoint(90, 20)
-                         << QPoint(90, 80) << QPoint(10, 80);
+    setOutline(project.roi, {QPoint(10, 20), QPoint(90, 20), QPoint(90, 80), QPoint(10, 80)});
 
     project.settings.solver = CorrelationSettings::ICLM;
     project.settings.shapeOrder = 2;
@@ -95,7 +96,19 @@ Project sampleProject(const QString &dir)
 
     // A hole, because a region that reopened without one would measure across
     // exactly the place the user went to the trouble of excluding.
-    project.roi.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    addCut(project.roi, {QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
+    // And one of each other kind, both signs, the box corners stored last-first
+    // and lopsided, so a file that lost a kind, a sign or the corners' order
+    // reads back as a different region.
+    RegionShape ellipse;
+    ellipse.kind = RegionShape::Ellipse;
+    ellipse.subtract = true;
+    ellipse.points = {QPoint(85, 70), QPoint(66, 51)};
+    project.roi.shapes.append(ellipse);
+    RegionShape island;
+    island.kind = RegionShape::Rectangle;
+    island.points = {QPoint(48, 52), QPoint(45, 43)};
+    project.roi.shapes.append(island);
 
     project.referenceUpdate.enabled = true;
     project.referenceUpdate.znccThreshold = 0.85;
@@ -162,6 +175,7 @@ private slots:
     void something_that_is_not_a_project_is_refused_with_a_reason();
     void a_path_that_cannot_be_written_is_reported_as_a_reason();
     void a_hole_of_three_corners_survives_the_round_trip();
+    void a_project_written_before_shapes_opens_as_the_same_region();
     void an_entry_with_no_recorded_hash_is_not_reported_as_changed();
 };
 
@@ -180,7 +194,14 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
     QCOMPARE(QFileInfo(loaded.project.referencePath).canonicalFilePath(),
              QFileInfo(saved.referencePath).canonicalFilePath());
     QCOMPARE(loaded.project.targetPaths.size(), 2);
-    QCOMPARE(loaded.project.roi.vertices, saved.roi.vertices);
+    // Every shape, in order, kind and sign and corners alike.
+    QCOMPARE(loaded.project.roi.shapes.size(), saved.roi.shapes.size());
+    for (int i = 0; i < saved.roi.shapes.size(); i++)
+        QVERIFY2(loaded.project.roi.shapes.at(i) == saved.roi.shapes.at(i),
+                 qPrintable(QStringLiteral("shape %1 came back as %2, saved as %3")
+                                .arg(i + 1)
+                                .arg(loaded.project.roi.shapes.at(i).describe(),
+                                     saved.roi.shapes.at(i).describe())));
     QCOMPARE(loaded.project.roi.origin, saved.roi.origin);
 
     // Every setting, not a subset: a project that restores the region but
@@ -218,9 +239,7 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
     QCOMPARE(loaded.project.probe.bx, saved.probe.bx);
     QCOMPARE(loaded.project.probe.by, saved.probe.by);
 
-    QCOMPARE(loaded.project.roi.holes.size(), saved.roi.holes.size());
-    QVERIFY(loaded.project.roi.hasHoles());
-    QCOMPARE(loaded.project.roi.holes.first(), saved.roi.holes.first());
+    QVERIFY(loaded.project.roi.hasCuts());
 
     QCOMPARE(loaded.project.settings.recovery.enabled,
              saved.settings.recovery.enabled);
@@ -395,27 +414,68 @@ void TestProject::a_hole_of_three_corners_survives_the_round_trip()
     QTemporaryDir dir;
     QVERIFY(dir.isValid());
     Project saved = sampleProject(dir.path());
-    saved.roi.holes.clear();
-    saved.roi.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(50, 60)});
+    saved.roi.shapes.resize(1);
+    addCut(saved.roi, {QPoint(40, 40), QPoint(60, 40), QPoint(50, 60)});
 
     const QString path = dir.filePath(QStringLiteral("triangle.svproj"));
     QVERIFY2(saveProject(path, saved).isEmpty(), "saving reported a failure");
 
     const ProjectLoad loaded = loadProject(path);
     QVERIFY2(loaded.failure.isEmpty(), qPrintable(loaded.failure));
-    QCOMPARE(loaded.project.roi.holes.size(), 1);
-    QCOMPARE(loaded.project.roi.holes.first().size(), 3);
-    QCOMPARE(loaded.project.roi.holes.first(), saved.roi.holes.first());
+    QCOMPARE(loaded.project.roi.shapes.size(), 2);
+    QVERIFY(loaded.project.roi.shapes.at(1).subtract);
+    QCOMPARE(loaded.project.roi.shapes.at(1).points.size(), 3);
+    QVERIFY(loaded.project.roi.shapes.at(1) == saved.roi.shapes.at(1));
 
     // And a ring that encloses nothing is still dropped, so the case is about
     // the boundary rather than about keeping everything.
     Project degenerate = sampleProject(dir.path());
-    degenerate.roi.holes.clear();
-    degenerate.roi.holes.append({QPoint(40, 40), QPoint(60, 40)});
+    degenerate.roi.shapes.resize(1);
+    addCut(degenerate.roi, {QPoint(40, 40), QPoint(60, 40)});
     const QString twoPath = dir.filePath(QStringLiteral("two.svproj"));
     QVERIFY(saveProject(twoPath, degenerate).isEmpty());
-    QVERIFY2(loadProject(twoPath).project.roi.holes.isEmpty(),
+    QVERIFY2(!loadProject(twoPath).project.roi.hasCuts(),
              "a two-corner ring was carried in as a hole");
+}
+
+void TestProject::a_project_written_before_shapes_opens_as_the_same_region()
+{
+    // ⚑ Every project saved before 2026-10-10 states its region as an outer
+    // ring and holes. It must open as exactly that region -- "+ polygon, then a
+    // cut polygon per hole" -- or a saved session would quietly measure
+    // somewhere else. Written by hand in the old form, since nothing writes it
+    // any more; a hole of two corners in it is dropped, as it always was.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("old.svproj"));
+    QFile file(path);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write(R"({
+        "format": "SurView DIC project",
+        "version": 1,
+        "region": {
+            "vertices": [[10, 20], [90, 20], [95, 80], [10, 70]],
+            "origin": 1,
+            "holes": [[[40, 40], [60, 40], [50, 55]], [[1, 1], [2, 2]]]
+        }
+    })");
+    file.close();
+
+    const ProjectLoad loaded = loadProject(path);
+    QVERIFY2(loaded.failure.isEmpty(), qPrintable(loaded.failure));
+    const RegionOfInterest &roi = loaded.project.roi;
+    QCOMPARE(roi.shapes.size(), 2);
+    QCOMPARE(roi.shapes.at(0).kind, RegionShape::Polygon);
+    QVERIFY(!roi.shapes.at(0).subtract);
+    QCOMPARE(roi.shapes.at(0).points,
+             (QVector<QPoint>{QPoint(10, 20), QPoint(90, 20), QPoint(95, 80), QPoint(10, 70)}));
+    QCOMPARE(roi.shapes.at(1).kind, RegionShape::Polygon);
+    QVERIFY(roi.shapes.at(1).subtract);
+    QCOMPARE(roi.shapes.at(1).points,
+             (QVector<QPoint>{QPoint(40, 40), QPoint(60, 40), QPoint(50, 55)}));
+    QCOMPARE(roi.origin, RegionOfInterest::Detected);
+    QVERIFY(!regionContains(roi, 50, 45));
+    QVERIFY(regionContains(roi, 20, 30));
 }
 
 void TestProject::an_entry_with_no_recorded_hash_is_not_reported_as_changed()

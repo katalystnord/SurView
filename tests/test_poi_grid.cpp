@@ -9,6 +9,8 @@
 #include "core/PoiGrid.h"
 
 #include <QSet>
+#include "roi_helpers.h"
+
 #include <QTest>
 
 namespace {
@@ -26,8 +28,8 @@ PoiInsideTest insideRect(int left, int top, int right, int bottom)
 RegionOfInterest rectRoi(int left, int top, int right, int bottom)
 {
     RegionOfInterest roi;
-    roi.vertices = {QPoint(left, top), QPoint(right, top),
-                    QPoint(right, bottom), QPoint(left, bottom)};
+    setOutline(roi, {QPoint(left, top), QPoint(right, top),
+                    QPoint(right, bottom), QPoint(left, bottom)});
     return roi;
 }
 
@@ -290,7 +292,7 @@ void TestPoiGrid::an_image_degenerate_on_only_one_axis_is_still_refused()
 
     // And a region degenerate on one axis only.
     RegionOfInterest sliver;
-    sliver.vertices = {QPoint(2, 20), QPoint(3, 20), QPoint(3, 300), QPoint(2, 300)};
+    setOutline(sliver, {QPoint(2, 20), QPoint(3, 20), QPoint(3, 300), QPoint(2, 300)});
     const PoiGrid clipped =
         buildPoiGrid(400, 400, 20, 1, sliver, insideRect(2, 20, 3, 300));
     QVERIFY(!clipped.isValid());
@@ -361,16 +363,16 @@ void TestPoiGrid::a_region_leaving_exactly_one_column_or_row_is_measured_not_ref
     const int oneSubset = 2 * radius + 5;
 
     RegionOfInterest whole;
-    whole.vertices = {QPoint(0, 0), QPoint(oneSubset - 1, 0),
-                      QPoint(oneSubset - 1, 479), QPoint(0, 479)};
+    setOutline(whole, {QPoint(0, 0), QPoint(oneSubset - 1, 0),
+                      QPoint(oneSubset - 1, 479), QPoint(0, 479)});
     const PoiGridExtent narrow = poiGridExtent(oneSubset, 480, radius, step, whole);
     QVERIFY2(narrow.valid, qPrintable(narrow.refusal));
     QCOMPARE(narrow.firstX, narrow.lastX);
     QVERIFY2(narrow.lastY > narrow.firstY, "with room to spare on the other axis");
 
     RegionOfInterest flat;
-    flat.vertices = {QPoint(0, 0), QPoint(639, 0),
-                     QPoint(639, oneSubset - 1), QPoint(0, oneSubset - 1)};
+    setOutline(flat, {QPoint(0, 0), QPoint(639, 0),
+                     QPoint(639, oneSubset - 1), QPoint(0, oneSubset - 1)});
     const PoiGridExtent shallow = poiGridExtent(640, oneSubset, radius, step, flat);
     QVERIFY2(shallow.valid, qPrintable(shallow.refusal));
     QCOMPARE(shallow.firstY, shallow.lastY);
