@@ -487,8 +487,14 @@ Understood well enough to start, large enough to need their own care.
   like glare everywhere, and written to the `.vtu` and the CSV.
   ⚑ Judged against the image's OWN extremes, not the type's: the test
   fixtures paint their glare at 250, so a rule judging against 255 finds none.
-  **Still open, and a decision for David:** whether a mostly clipped subset is
-  also REFUSED, with a reason of its own. On the glare fixtures five or six edge
+  **Decided 2026-10-10: flagged, not refused.** David asked instead for a
+  number for the view and the problem areas highlighted, which became the
+  Cautions switch (`core/Cautions.h`, done the same day): every caution this
+  application states about a measured point, marked over whichever map is
+  shown and counted over the whole field or what is in view. ⚑ A COUNT, never
+  a confidence: nothing here converts to a probability that a point is right.
+  The question it replaced was whether a mostly clipped subset should be
+  refused, with a reason of its own. On the glare fixtures five or six edge
   points (depending on the iteration limit) are mostly glare and still solve; on the tension example the glare subsets
   sit at 87 per cent or more and the specimen's at about 10 per cent or less.
 

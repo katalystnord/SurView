@@ -56,6 +56,8 @@ add_library(surview_core STATIC
     core/SpatialResolution.h
     core/Clipping.cpp
     core/Clipping.h
+    core/Cautions.cpp
+    core/Cautions.h
     core/DisplacementArrows.cpp
     core/DisplacementArrows.h
     core/ViewFit.cpp

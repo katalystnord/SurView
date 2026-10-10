@@ -982,6 +982,27 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     what shows where it is.
   </p>
 
+  <h2>Every caution at once, over the map you are reading</h2>
+  <p>
+    Each of these cautions is stated where it belongs - in the point
+    readout, in the run report, on a map of its own - and none of them is
+    visible on the displacement or strain map a reader is actually
+    deciding from. The <strong>Cautions</strong> switch beside Arrows marks
+    every measured point that carries one, on whichever map is showing:
+    &times; more than half the subset clipped, &#9675; moved less than its
+    own noise floor, &#9651; correlation below 0.9, &#9633; a match too
+    flat to probe. Beside the marks it counts them, over the whole field
+    or, once zoomed in, over what is in view, and says which.
+  </p>
+  <p>
+    It is deliberately a <em>count</em>, not a confidence. Nothing here
+    converts to a probability that a point is right, and a percentage
+    labelled confidence would claim a calibration the instrument does not
+    have. "154 of 160 measured points carry no caution; 6 do, 5 of them
+    mostly clipped" says exactly what is known and where to look.
+    Cautioned points are not removed: they stay in the field, marked.
+  </p>
+
   <h2>Both read the opposite way from everything else</h2>
   <p>
     Every other quantity in a DIC result - displacement, strain
@@ -1740,6 +1761,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
       <tr><td>Read a value at one point of the field</td><td><strong>Point</strong> panel; hover the field, click to pin</td></tr>
       <tr><td>Switch between displacement, strain, and reliability channels</td><td>The "Showing" selector above the field</td></tr>
       <tr><td>See which way each point moved</td><td><strong>Arrows</strong>, beside the "Showing" selector; the line under it gives their drawing scale</td></tr>
+      <tr><td>See which measured points carry a caution, and how many</td><td>Field bar over the image: <strong>Cautions</strong></td></tr>
       <tr><td>Bring the whole image back after zooming</td><td>View menu: <strong>Fit Image to Window</strong> (Ctrl+0)</td></tr>
       <tr><td>Place a virtual extensometer</td><td>Toolbar: <strong>Extensometer</strong>, then two clicks on the specimen</td></tr>
       <tr><td>Plot a quantity against frame</td><td><strong>Plot</strong> panel</td></tr>

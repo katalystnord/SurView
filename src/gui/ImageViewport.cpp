@@ -371,7 +371,6 @@ void ImageViewport::buildRoiBar()
     stack->addWidget(m_roiBarText);
 
     auto *row = new QHBoxLayout;
-    m_fieldBarRow = row;
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(10);
     stack->addLayout(row);
@@ -1394,6 +1393,9 @@ void ImageViewport::mouseReleaseEvent(QMouseEvent *event)
     }
 
     QVTKOpenGLNativeWidget::mouseReleaseEvent(event);
+    // A drag may have panned the view, which changes what is in it.
+    if (m_cautionToggle && m_cautionToggle->isChecked())
+        refreshCautions();
 }
 
 void ImageViewport::mouseDoubleClickEvent(QMouseEvent *event)
@@ -1468,6 +1470,7 @@ void ImageViewport::wheelEvent(QWheelEvent *event)
         refreshSettingsPreview();
     // And how many arrows fit, for the same reason.
     refreshArrows();
+    refreshCautions();
 }
 
 void ImageViewport::resizeEvent(QResizeEvent *event)
@@ -1675,9 +1678,17 @@ void ImageViewport::buildFieldBar()
     stack->setSpacing(6);
 
     auto *row = new QHBoxLayout;
+    m_fieldBarRow = row;
     row->setContentsMargins(0, 0, 0, 0);
     row->setSpacing(8);
     stack->addLayout(row);
+
+    // A second row the switches move to when the first cannot hold them, in a
+    // viewport too narrow for a selector and two switches side by side.
+    m_fieldBarSwitches = new QHBoxLayout;
+    m_fieldBarSwitches->setContentsMargins(0, 0, 0, 0);
+    m_fieldBarSwitches->setSpacing(12);
+    stack->addLayout(m_fieldBarSwitches);
 
     row->addWidget(new QLabel(tr("Showing"), m_fieldBar));
 
@@ -1726,6 +1737,20 @@ void ImageViewport::buildFieldBar()
     });
     row->addWidget(m_arrowToggle);
 
+    // Every caution this application states about a measured point, marked on
+    // whichever map is showing, because the map is where a reader decides what
+    // to lean on. See core/Cautions.h.
+    m_cautionToggle = new QCheckBox(tr("Cautions"), m_fieldBar);
+    m_cautionToggle->setToolTip(tr("Mark the measured points that carry a caution, "
+                                   "on whichever map is shown, and count them"));
+    m_cautionToggle->setStyleSheet(QStringLiteral("QCheckBox { color: #e8eaed; }"));
+    connect(m_cautionToggle, &QCheckBox::toggled, this, [this] {
+        refreshCautions();
+        positionFieldBar();
+        refitIfStillFitted();
+    });
+    row->addWidget(m_cautionToggle);
+
     // Says why the strain entries are unselectable, when they are. A disabled
     // control with no stated reason is a dead end -- the reader cannot tell
     // whether it is broken, not yet reached, or not applicable.
@@ -1771,6 +1796,13 @@ void ImageViewport::buildFieldBar()
     m_arrowNote->setWordWrap(true);
     m_arrowNote->hide();
     notes->addWidget(m_arrowNote);
+
+    // The count, on its own line while the marks are drawn, with the mark that
+    // stands for each cause: the legend and the number in one sentence.
+    m_cautionNote = new QLabel(m_fieldNotes);
+    m_cautionNote->setWordWrap(true);
+    m_cautionNote->hide();
+    notes->addWidget(m_cautionNote);
 
     m_fieldBar->hide();
 }
@@ -1913,6 +1945,7 @@ void ImageViewport::updateFieldBar()
 
     m_fieldNote->setText(note);
     refreshArrows();
+    refreshCautions();
 
     m_fieldBar->show();
     m_fieldBar->raise();
@@ -1932,11 +1965,45 @@ void ImageViewport::positionFieldBar()
     // are on screen together whenever a region is redrawn over a field.
     const int barWidth = std::max(120, width() - 2 * kMargin);
 
-    // Sized by hand, because a scroll area reports no height for its width:
-    // the selector row, then the notes at the width they will wrap to.
     const QMargins margins = m_fieldBar->layout()->contentsMargins();
     const int spacing = m_fieldBar->layout()->spacing();
-    const int rowHeight = m_fieldBarRow->sizeHint().height();
+
+    // The switches beside the selector while they fit, on a row of their own
+    // when they do not. Decided on the widgets' own widths, not a breakpoint.
+    const int inner = barWidth - margins.left() - margins.right();
+    const bool wrapped = m_fieldBarSwitches->count() > 0;
+    int together = m_fieldBarRow->minimumSize().width();
+    if (wrapped) {
+        together += 2 * m_fieldBarRow->spacing() + m_arrowToggle->minimumSizeHint().width()
+                    + m_cautionToggle->minimumSizeHint().width();
+    }
+    const bool wrap = together > inner;
+    if (wrap != wrapped) {
+        for (QWidget *toggle : {static_cast<QWidget *>(m_arrowToggle),
+                                static_cast<QWidget *>(m_cautionToggle)}) {
+            if (wrap) {
+                m_fieldBarRow->removeWidget(toggle);
+                m_fieldBarSwitches->addWidget(toggle);
+            } else {
+                m_fieldBarSwitches->removeWidget(toggle);
+                // Back before the first row's trailing stretch.
+                m_fieldBarRow->insertWidget(m_fieldBarRow->count() - 1, toggle);
+            }
+        }
+        if (wrap) {
+            m_fieldBarSwitches->addStretch(1);
+        } else {
+            while (QLayoutItem *item = m_fieldBarSwitches->takeAt(0))
+                delete item;
+        }
+    }
+
+    // Sized by hand, because a scroll area reports no height for its width:
+    // the selector row, the switches' row when it is in use, then the notes at
+    // the width they will wrap to.
+    int rowHeight = m_fieldBarRow->sizeHint().height();
+    if (wrap)
+        rowHeight += spacing + m_fieldBarSwitches->sizeHint().height();
     const int notesWidth = barWidth - margins.left() - margins.right();
     int notesHeight = m_fieldNotes->layout()->hasHeightForWidth()
                           ? m_fieldNotes->layout()->heightForWidth(notesWidth)
@@ -1971,6 +2038,7 @@ void ImageViewport::clearField()
         m_hasField = false;
         // Arrows describe the field; with no field they go too.
         refreshArrows();
+        refreshCautions();
     }
     // After the field is gone, so the fit no longer keeps clear of its bar or
     // its colour scale.
@@ -2127,6 +2195,7 @@ void ImageViewport::fitImageToWindow()
     if (m_previewSubregion)
         refreshSettingsPreview();
     refreshArrows();
+    refreshCautions();
 }
 
 void ImageViewport::refitIfStillFitted()
@@ -2224,6 +2293,117 @@ void ImageViewport::refreshArrows()
         m_renderer->AddActor(m_arrowHalo);
         m_renderer->AddActor(m_arrowActor);
         m_arrowActorAdded = true;
+    }
+    m_renderWindow->Render();
+}
+
+QRectF ImageViewport::visibleImageRect() const
+{
+    // The image pixels under the widget's corners, held to the image. When
+    // both corners land on the image's own corners the whole picture is on
+    // screen, and the answer is null: "the whole field" rather than a view.
+    QPoint topLeft, bottomRight;
+    if (!widgetToImagePixel(QPointF(0.0, 0.0), topLeft)
+        || !widgetToImagePixel(QPointF(width(), height()), bottomRight)) {
+        return QRectF();
+    }
+    if (topLeft == QPoint(0, 0)
+        && bottomRight == QPoint(m_record.width - 1, m_record.height - 1)) {
+        return QRectF();
+    }
+    return QRectF(QPointF(topLeft), QPointF(bottomRight));
+}
+
+void ImageViewport::refreshCautions()
+{
+    m_cautionMarks.clear();
+    const bool wanted = m_hasField && m_cautionToggle && m_cautionToggle->isChecked();
+
+    if (m_cautionNote) {
+        m_cautionNote->setVisible(wanted);
+        if (wanted)
+            m_cautionNote->setText(
+                cautionSummary(countCautions(m_fieldResult, visibleImageRect())));
+    }
+
+    // Marked everywhere, not only in view: they cost nothing off screen, and a
+    // pan should not reveal a region that has not been drawn yet.
+    if (wanted) {
+        for (const CorrelationPoint &point : m_fieldResult.points) {
+            for (Caution caution : cautionsAt(point))
+                m_cautionMarks.append({point.x, point.y, caution});
+        }
+    }
+
+    if (m_cautionMarks.isEmpty()) {
+        if (m_cautionActorAdded) {
+            m_renderer->RemoveActor(m_cautionHalo);
+            m_renderer->RemoveActor(m_cautionActor);
+            m_cautionActorAdded = false;
+        }
+        m_renderWindow->Render();
+        return;
+    }
+
+    // In front of the field and the arrows, behind the settings preview.
+    constexpr double kDepth = -0.25;
+    // Sized to the grid, so neighbouring marks touch and a patch of cautioned
+    // points reads as a region rather than as scattered specks.
+    const double r = 0.42 * std::max(1, m_fieldResult.step);
+    vtkNew<vtkPoints> points;
+    vtkNew<vtkCellArray> lines;
+    auto segment = [&](double x0, double y0, double x1, double y1) {
+        const vtkIdType ends[2] = {points->InsertNextPoint(x0, y0, kDepth),
+                                   points->InsertNextPoint(x1, y1, kDepth)};
+        lines->InsertNextCell(2, ends);
+    };
+    auto polygon = [&](double x, double y, double radius, int corners, double turn) {
+        for (int k = 0; k < corners; k++) {
+            const double a0 = turn + 2.0 * M_PI * k / corners;
+            const double a1 = turn + 2.0 * M_PI * (k + 1) / corners;
+            segment(x + radius * std::cos(a0), y + radius * std::sin(a0),
+                    x + radius * std::cos(a1), y + radius * std::sin(a1));
+        }
+    };
+    for (const CautionMarkShown &mark : m_cautionMarks) {
+        // Four shapes that stay distinct drawn over one another, and match the
+        // marks the bar names. y is DOWN, so "up" on screen is negative y.
+        switch (mark.caution) {
+        case Caution::MostlyClipped:
+            segment(mark.x - r, mark.y - r, mark.x + r, mark.y + r);
+            segment(mark.x - r, mark.y + r, mark.x + r, mark.y - r);
+            break;
+        case Caution::BelowNoiseFloor:
+            polygon(mark.x, mark.y, 0.8 * r, 16, 0.0);
+            break;
+        case Caution::PoorCorrelation:
+            polygon(mark.x, mark.y, 0.9 * r, 3, -M_PI / 2.0);
+            break;
+        case Caution::ConditioningUnusable:
+            polygon(mark.x, mark.y, 0.95 * r, 4, M_PI / 4.0);
+            break;
+        }
+    }
+    m_cautionGeometry->SetPoints(points);
+    m_cautionGeometry->SetLines(lines);
+    m_cautionGeometry->Modified();
+    m_cautionMapper->SetInputData(m_cautionGeometry);
+    m_cautionMapper->ScalarVisibilityOff();
+
+    // Dark on a light halo, like the arrows, so they read over every colour.
+    m_cautionHalo->SetMapper(m_cautionMapper);
+    m_cautionHalo->GetProperty()->SetColor(1.0, 1.0, 1.0);
+    m_cautionHalo->GetProperty()->SetLineWidth(3.6);
+    m_cautionHalo->GetProperty()->SetLighting(false);
+    m_cautionHalo->SetPosition(0.0, 0.0, 0.01);
+    m_cautionActor->SetMapper(m_cautionMapper);
+    m_cautionActor->GetProperty()->SetColor(0.08, 0.09, 0.11);
+    m_cautionActor->GetProperty()->SetLineWidth(1.7);
+    m_cautionActor->GetProperty()->SetLighting(false);
+    if (!m_cautionActorAdded) {
+        m_renderer->AddActor(m_cautionHalo);
+        m_renderer->AddActor(m_cautionActor);
+        m_cautionActorAdded = true;
     }
     m_renderWindow->Render();
 }

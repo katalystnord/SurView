@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/Cautions.h"
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/DisplacementArrows.h"
@@ -10,6 +11,7 @@
 #include "core/ViewFit.h"
 
 #include <QRect>
+#include <QRectF>
 #include <QSize>
 #include <QVector>
 #include <QVTKOpenGLNativeWidget.h>
@@ -163,6 +165,16 @@ public:
     // Exposed so a walkthrough can check what is on screen, not what was meant.
     const ArrowLayout &arrowsShown() const { return m_arrowsShown; }
 
+    // The caution marks drawn, one per point and cause, in image pixels.
+    // Empty while the Cautions switch is off.
+    struct CautionMarkShown
+    {
+        double x = 0.0;
+        double y = 0.0;
+        Caution caution = Caution::MostlyClipped;
+    };
+    const QVector<CautionMarkShown> &cautionMarksShown() const { return m_cautionMarks; }
+
 signals:
     // The empty workspace's own first step was pressed. The viewport does not
     // import anything itself; it only offers the step where the step is
@@ -240,6 +252,10 @@ private:
     void refitIfStillFitted();
     // Redraws the displacement arrows for the current field and zoom.
     void refreshArrows();
+    // The caution marks and their count; see core/Cautions.h.
+    void refreshCautions();
+    // The part of the image on screen, in image pixels, or null when all of it is.
+    QRectF visibleImageRect() const;
     void updateFieldBar();
     void drawField();
 
@@ -320,6 +336,12 @@ private:
     vtkNew<vtkActor> m_arrowHalo;
     bool m_arrowActorAdded = false;
     ArrowLayout m_arrowsShown;
+    QVector<CautionMarkShown> m_cautionMarks;
+    vtkNew<vtkPolyData> m_cautionGeometry;
+    vtkNew<vtkPolyDataMapper> m_cautionMapper;
+    vtkNew<vtkActor> m_cautionActor;
+    vtkNew<vtkActor> m_cautionHalo;
+    bool m_cautionActorAdded = false;
 
     // What the preview is asked to draw, and where it last drew it.
     bool m_previewSubset = false;
@@ -357,8 +379,11 @@ private:
     QScrollArea *m_fieldNotesScroll = nullptr;
     QWidget *m_fieldNotes = nullptr;
     QHBoxLayout *m_fieldBarRow = nullptr;
+    QHBoxLayout *m_fieldBarSwitches = nullptr;
     QCheckBox *m_arrowToggle = nullptr;
     QLabel *m_arrowNote = nullptr;
+    QCheckBox *m_cautionToggle = nullptr;
+    QLabel *m_cautionNote = nullptr;
 
     // The result on display, kept so the channel can be changed without
     // re-running anything. The viewport owns a copy rather than a pointer: the

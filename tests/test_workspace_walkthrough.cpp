@@ -13,6 +13,7 @@
 // provides one.
 
 #include "core/DisplacementArrows.h"
+#include "core/Cautions.h"
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/PointReadout.h"
@@ -46,6 +47,7 @@
 #include <QMenu>
 #include <QMenuBar>
 #include <QPushButton>
+#include <QScrollArea>
 #include <QSignalSpy>
 #include <QTest>
 #include <QToolBar>
@@ -373,6 +375,7 @@ private slots:
     void the_colour_scale_is_clear_of_the_legend_the_bar_and_the_field();
     void the_field_bar_fits_a_narrow_viewport_and_names_the_channel_in_full();
     void glare_in_the_photographs_can_be_seen_and_is_counted_where_it_misleads();
+    void the_cautions_can_be_marked_over_any_map_and_are_counted_in_view();
     void the_whole_image_can_be_brought_back_into_view_from_the_menu();
     void the_strain_channels_say_why_they_are_unavailable();
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
@@ -1312,21 +1315,23 @@ void TestWorkspaceWalkthrough::the_field_bar_fits_a_narrow_viewport_and_names_th
     // spare, and on a display rendering text a quarter larger the same row
     // overlapped itself until the selector's own minimum came down.
     constexpr int kNarrowViewport = 320;
-    const int needed = bar->layout()->minimumSize().width();
-    QVERIFY2(needed <= kNarrowViewport - 2 * kOverlayMargin,
-             qPrintable(QStringLiteral("the bar's first row needs %1 px, more than "
-                                       "a %2 px viewport leaves it")
-                            .arg(needed).arg(kNarrowViewport)));
     viewport->setFixedWidth(kNarrowViewport);
     QTest::qWait(150);
     QCOMPARE(viewport->width(), kNarrowViewport);
+    const int needed = bar->layout()->minimumSize().width();
+    QVERIFY2(needed <= bar->width(),
+             qPrintable(QStringLiteral("the bar's controls need %1 px, more than the "
+                                       "%2 px a %3 px viewport gives it")
+                            .arg(needed).arg(bar->width()).arg(kNarrowViewport)));
 
+    // Every control on the bar, whichever row it sits on: the switches move to
+    // a row of their own when the first cannot hold them.
     QList<QWidget *> row;
     for (QWidget *child : bar->findChildren<QWidget *>(Qt::FindDirectChildrenOnly)) {
-        if (child->isVisible() && child->geometry().top() < choice->geometry().bottom())
+        if (child->isVisible() && !qobject_cast<QScrollArea *>(child))
             row << child;
     }
-    QVERIFY2(row.size() >= 3, "the row should hold a label, the selector and Arrows");
+    QVERIFY2(row.size() >= 4, "the bar should hold a label, the selector and two switches");
     for (int i = 0; i < row.size(); i++) {
         const QRect a = row[i]->geometry();
         QVERIFY2(bar->rect().contains(a),
@@ -1364,6 +1369,16 @@ void TestWorkspaceWalkthrough::the_field_bar_fits_a_narrow_viewport_and_names_th
     QCOMPARE(choice->toolTip(), choice->currentText());
     window.resize(1600, 800);
     QTest::qWait(100);
+    // With room, the switches stay beside the selector rather than taking a
+    // row of their own. Found by putting back a defect that measured the
+    // wrong row (2026-10-10): it moved them down at every width, and nothing
+    // else here noticed.
+    auto *arrows = byVisibleText<QCheckBox>(bar, QStringLiteral("Arrows"));
+    QVERIFY(arrows);
+    QVERIFY2(arrows->geometry().top() < choice->geometry().bottom()
+                 && choice->geometry().top() < arrows->geometry().bottom(),
+             qPrintable(QStringLiteral("in a %1 px viewport the switches sit on a row "
+                                       "of their own").arg(viewport->width())));
     // Asked of the style, which is what paints the text, rather than of the
     // box's own size hint -- a box that elides everywhere reports a small hint
     // and satisfies it.
@@ -1421,6 +1436,72 @@ void TestWorkspaceWalkthrough::glare_in_the_photographs_can_be_seen_and_is_count
                                                  .arg(window.lastResult().converged)),
              qPrintable(QStringLiteral("the bar does not state the count: ")
                         + visibleText(fieldExplanationBar(viewport))));
+}
+
+void TestWorkspaceWalkthrough::the_cautions_can_be_marked_over_any_map_and_are_counted_in_view()
+{
+    // Every caution was already said somewhere, and none of them over the map
+    // a reader is actually looking at. One switch beside Arrows marks them all
+    // on whatever map is shown and counts them -- over the whole field, or
+    // over what is in view once zoomed, and saying which.
+    //
+    // Written red first (2026-10-10): there was no such switch. NEGATIVE
+    // CHECKS: the count taken over the whole field when zoomed failed on "does
+    // not say it is of the view"; the marks not recorded failed on the count of
+    // marks; the note left on with the switch off failed on the last check.
+    // NOT COVERED: refreshing the count when the view is panned by dragging.
+    MainWindow window;
+    window.resize(1600, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference_glare.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target_glare.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QWidget *bar = fieldExplanationBar(viewport);
+    auto *toggle = byVisibleText<QCheckBox>(bar, QStringLiteral("Cautions"));
+    QVERIFY2(toggle, "there is no visible switch for marking the cautions");
+    QVERIFY2(!toggle->toolTip().isEmpty(), "the switch does not say what it does");
+    QVERIFY(viewport->cautionMarksShown().isEmpty());
+
+    toggle->setChecked(true);
+    const CautionCount whole = countCautions(window.lastResult());
+    QVERIFY2(whole.cautioned > 0, "the glare fixture produced no caution to mark");
+    QVERIFY2(somethingOnScreenSays(bar, cautionSummary(whole)),
+             qPrintable(QStringLiteral("the bar does not give the whole-field count: ")
+                        + visibleText(bar)));
+    int pairs = 0;
+    for (int n : whole.byCause)
+        pairs += n;
+    QCOMPARE(viewport->cautionMarksShown().size(), pairs);
+
+    // Over a different map, the same marks: they belong to the points, not to
+    // the channel.
+    auto *choice = bar->findChild<QComboBox *>();
+    choice->setCurrentIndex(choice->findText(fieldChannelName(FieldChannel::DisplacementY)));
+    QCOMPARE(viewport->cautionMarksShown().size(), pairs);
+
+    // Zoomed in on the glare, the count is of what is in view, and says so.
+    QPointF glare;
+    QVERIFY(viewport->widgetPositionForImagePixel(QPointF(175, 60), glare));
+    for (int i = 0; i < 6; i++) {
+        QWheelEvent wheel(glare, viewport->mapToGlobal(glare), QPoint(), QPoint(0, 120),
+                          Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+        QApplication::sendEvent(viewport, &wheel);
+    }
+    QTest::qWait(50);
+    QVERIFY2(somethingOnScreenSays(bar, QStringLiteral("In view:")),
+             qPrintable(QStringLiteral("zoomed in, the count does not say it is of the "
+                                       "view: ") + visibleText(bar)));
+
+    toggle->setChecked(false);
+    QVERIFY(viewport->cautionMarksShown().isEmpty());
+    QVERIFY2(!somethingOnScreenSays(bar, QStringLiteral("carry no caution")),
+             "the count stays on screen with the marks switched off");
 }
 
 void TestWorkspaceWalkthrough::the_whole_image_can_be_brought_back_into_view_from_the_menu()
