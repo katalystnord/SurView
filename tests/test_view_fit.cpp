@@ -24,6 +24,10 @@ private slots:
     void an_inset_moves_the_image_down_not_up();
     void a_band_with_no_room_left_fits_nothing();
     void a_right_inset_moves_the_image_left_and_clear_of_it();
+    void the_scale_sits_between_the_field_bar_and_the_legend();
+    void a_column_too_short_for_the_scale_puts_it_beside_the_legend();
+    void without_a_legend_the_scale_sits_on_the_bottom_bar();
+    void the_scale_never_meets_the_bars_or_the_legend_at_any_size();
 };
 
 void TestViewFit::without_bars_the_image_is_centred_and_fills_the_tighter_axis()
@@ -71,6 +75,89 @@ void TestViewFit::a_right_inset_moves_the_image_left_and_clear_of_it()
     const ScreenRect placed = imageOnScreen(fit, 0, 300, 0, 100, 400, 400);
     QVERIFY2(placed.right <= 300.0 + 1e-9, qPrintable(QString::number(placed.right)));
     QVERIFY2(placed.left >= -1e-9, qPrintable(QString::number(placed.left)));
+}
+
+namespace {
+ScreenBox legendAt(int left, int top, int right, int bottom)
+{
+    ScreenBox box;
+    box.valid = true;
+    box.left = left;
+    box.top = top;
+    box.width = right - left;
+    box.height = bottom - top;
+    return box;
+}
+}  // namespace
+
+void TestViewFit::the_scale_sits_between_the_field_bar_and_the_legend()
+{
+    // 800 x 600, field bar down to 100, legend's corner at (600, 480). Lopsided
+    // on purpose: room above the legend is 374 px and the preferred height is
+    // 252, so a scale stretched to the band and one bottom-aligned in it differ.
+    const ScreenBox box = placeScaleBar(800, 600, 100, 600, legendAt(600, 480, 790, 590));
+    QVERIFY(box.valid);
+    QCOMPARE(box.right(), 800 - kOverlayMargin);
+    QCOMPARE(box.width, kScaleBarWidth);
+    QCOMPARE(box.bottom(), 480 - kOverlayGap);
+    QCOMPARE(box.height, 252);
+}
+
+void TestViewFit::a_column_too_short_for_the_scale_puts_it_beside_the_legend()
+{
+    // A field bar down to 300 and a legend from 380: 68 px between them, too
+    // short to read a scale in. Beside the legend, from below the field bar to
+    // above the bottom edge, there is room.
+    const ScreenBox box = placeScaleBar(400, 500, 300, 500, legendAt(200, 380, 390, 490));
+    QVERIFY(box.valid);
+    QCOMPARE(box.right(), 200 - kOverlayGap);
+    QCOMPARE(box.bottom(), 500 - kOverlayMargin);
+    QVERIFY2(box.top >= 300 + kOverlayGap, qPrintable(QString::number(box.top)));
+    QVERIFY2(box.height >= kScaleBarShortest, qPrintable(QString::number(box.height)));
+}
+
+void TestViewFit::without_a_legend_the_scale_sits_on_the_bottom_bar()
+{
+    // No legend, and a region bar along the bottom from 450.
+    const ScreenBox box = placeScaleBar(800, 600, 0, 450, ScreenBox());
+    QVERIFY(box.valid);
+    QCOMPARE(box.bottom(), 450 - kOverlayGap);
+    QCOMPARE(box.right(), 800 - kOverlayMargin);
+}
+
+void TestViewFit::the_scale_never_meets_the_bars_or_the_legend_at_any_size()
+{
+    // The property the cases above are instances of, over a spread of
+    // viewports, field bar depths and legend sizes. A legend is about 200 x
+    // 130, so the narrowest viewports here are narrower than it -- its left
+    // edge negative, as it really is in a 197 px viewport -- and there the
+    // scale cannot sit beside it and must still not sit under it.
+    for (int w = 150; w <= 1400; w += 50) {
+        for (int h = 300; h <= 1100; h += 80) {
+            for (int barDepth : {0, 60, 140, int(0.4 * h)}) {
+                for (bool hasLegend : {false, true}) {
+                    const ScreenBox legend =
+                        hasLegend ? legendAt(w - kOverlayMargin - 200, h - kOverlayMargin - 130,
+                                             w - kOverlayMargin, h - kOverlayMargin)
+                                  : ScreenBox();
+                    const ScreenBox box = placeScaleBar(w, h, barDepth, h, legend);
+                    const QString where = QStringLiteral("%1 x %2, bar to %3, legend %4: "
+                                                         "scale (%5, %6) to (%7, %8)")
+                                              .arg(w).arg(h).arg(barDepth).arg(hasLegend)
+                                              .arg(box.left).arg(box.top)
+                                              .arg(box.right()).arg(box.bottom());
+                    QVERIFY2(box.valid, qPrintable(where));
+                    QVERIFY2(box.top >= barDepth, qPrintable(where));
+                    QVERIFY2(box.left >= 0 && box.right() <= w && box.bottom() <= h,
+                             qPrintable(where));
+                    if (hasLegend)
+                        QVERIFY2(!box.intersects(legend.left, legend.top, legend.right(),
+                                                 legend.bottom()),
+                                 qPrintable(where));
+                }
+            }
+        }
+    }
 }
 
 QTEST_GUILESS_MAIN(TestViewFit)

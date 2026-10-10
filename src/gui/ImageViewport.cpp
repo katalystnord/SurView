@@ -7,6 +7,7 @@
 #include "core/ViewFit.h"
 #include "gui/FieldColours.h"
 
+#include <QAbstractItemView>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFrame>
@@ -37,6 +38,7 @@
 #include <vtkPolyData.h>
 #include <vtkPolyDataMapper.h>
 #include <vtkProperty.h>
+#include <vtkCoordinate.h>
 #include <vtkScalarBarActor.h>
 #include <vtkCellData.h>
 #include <vtkTextProperty.h>
@@ -241,6 +243,7 @@ void ImageViewport::buildFrameLegend()
     // is in the IMAGE (a reader could take the dot for the picture's centre),
     // and cannot say these are pixels rather than millimetres.
     auto *caption = new QLabel(coordinateFrameCaption(), m_frameLegend);
+    m_frameCaption = caption;
     caption->setWordWrap(true);
     // ⚑ FIXED, not maximum. A wrapped QLabel reports one line as its minimum
     // width as well as its minimum height, so a layout sized by the small
@@ -261,6 +264,13 @@ void ImageViewport::positionFrameLegend()
         return;
 
     constexpr int kMargin = 10;
+    // ⚑ Narrower in a viewport too narrow for it, where at its usual width it
+    // reached past the left edge and lost the first letter of every line. The
+    // caption wraps to more lines instead; the figure above it is 46 px.
+    constexpr int kCaptionWidth = 178;
+    constexpr int kLegendChrome = 22;
+    m_frameCaption->setFixedWidth(
+        std::clamp(width() - 2 * kMargin - kLegendChrome, 60, kCaptionWidth));
     m_frameLegend->resize(m_frameLegend->sizeHint());
 
     // Clear of the region and gauge bars, which own the bottom edge whenever
@@ -274,6 +284,64 @@ void ImageViewport::positionFrameLegend()
     m_frameLegend->move(width() - m_frameLegend->width() - kMargin,
                         bottom - m_frameLegend->height());
     m_frameLegend->raise();
+    positionScaleBar();
+}
+
+void ImageViewport::positionScaleBar()
+{
+    int freeTop = 0;
+    if (m_fieldBar && !m_fieldBar->isHidden())
+        freeTop = m_fieldBar->geometry().bottom() + 1;
+    int freeBottom = height();
+    for (QFrame *bar : {m_roiBar, m_gaugeBar}) {
+        if (bar && !bar->isHidden())
+            freeBottom = std::min(freeBottom, bar->y());
+    }
+    ScreenBox legend;
+    if (m_frameLegend && !m_frameLegend->isHidden()) {
+        legend.valid = true;
+        legend.left = m_frameLegend->x();
+        legend.top = m_frameLegend->y();
+        legend.width = m_frameLegend->width();
+        legend.height = m_frameLegend->height();
+    }
+    m_scaleBox = placeScaleBar(width(), height(), freeTop, freeBottom, legend);
+    // ⚑ Nowhere to put it, in a viewport narrower than the scale itself: left
+    // where it last stood it would sit over the field. Hidden instead, which
+    // loses nothing a reader needs, because the field bar states the same range
+    // in words; it comes back as soon as the view is wide enough.
+    m_scalarBar->SetVisibility(m_scaleBox.valid ? 1 : 0);
+    if (!m_scaleBox.valid || width() <= 0 || height() <= 0)
+        return;
+
+    // The actor is placed in normalised viewport coordinates, y UP from the
+    // bottom, which is the one place here that counts y the other way.
+    const double w = width();
+    const double h = height();
+    m_scalarBar->SetPosition(m_scaleBox.left / w, (h - m_scaleBox.bottom()) / h);
+    m_scalarBar->SetWidth(m_scaleBox.width / w);
+    m_scalarBar->SetHeight(m_scaleBox.height / h);
+}
+
+QRect ImageViewport::scaleBarOnScreen() const
+{
+    if (!m_hasField || !m_scalarBar->GetVisibility())
+        return {};
+    // Display coordinates are device pixels with y up; the widget's are
+    // logical pixels with y down.
+    auto *self = const_cast<ImageViewport *>(this);
+    int *low = m_scalarBar->GetPositionCoordinate()->GetComputedDisplayValue(
+        self->m_renderer);
+    const int x0 = low[0], y0 = low[1];
+    int *high = m_scalarBar->GetPosition2Coordinate()->GetComputedDisplayValue(
+        self->m_renderer);
+    const int x1 = high[0], y1 = high[1];
+    const double ratio = devicePixelRatioF();
+    const int deviceHeight = int(std::lround(height() * ratio));
+    return QRect(QPoint(int(std::lround(x0 / ratio)),
+                        int(std::lround((deviceHeight - y1) / ratio))),
+                 QPoint(int(std::lround(x1 / ratio)) - 1,
+                        int(std::lround((deviceHeight - y0) / ratio)) - 1));
 }
 
 void ImageViewport::buildRoiBar()
@@ -1565,9 +1633,7 @@ void ImageViewport::drawField()
             + "g";
         m_scalarBar->SetLabelFormat(labelFormat.constData());
     }
-    m_scalarBar->SetWidth(0.08);
-    m_scalarBar->SetHeight(0.42);
-    m_scalarBar->SetPosition(0.90, 0.06);
+    positionScaleBar();
 
     if (!m_hasField) {
         m_renderer->AddActor(m_fieldActor);
@@ -1632,6 +1698,19 @@ void ImageViewport::buildFieldBar()
         updateFieldBar();
         emit fieldChannelChanged(m_fieldChannel);
     });
+    // ⚑ It gives way in a narrow viewport rather than pushing the row past
+    // the bar's edge, where the row was clipped to "Showir", "D" and "Arrc".
+    // Its text is elided then, so the full name is on the tooltip, and the
+    // list it opens is never elided.
+    // Its natural width is the longest name, which it keeps whenever there is
+    // room; an explicit minimum below that is what lets it shrink, since a
+    // combo box otherwise reports its full width as its minimum.
+    m_fieldChoice->setSizePolicy(QSizePolicy::Preferred, QSizePolicy::Fixed);
+    m_fieldChoice->setMinimumWidth(5 * m_fieldChoice->fontMetrics().averageCharWidth() + 36);
+    m_fieldChoice->view()->setMinimumWidth(m_fieldChoice->view()->sizeHintForColumn(0) + 24);
+    m_fieldChoice->setToolTip(m_fieldChoice->currentText());
+    connect(m_fieldChoice, &QComboBox::currentTextChanged, m_fieldChoice,
+            &QComboBox::setToolTip);
     row->addWidget(m_fieldChoice);
 
     // Direction is legible from none of the scalar maps, so the movement can
@@ -1869,21 +1948,26 @@ void ImageViewport::positionFieldBar()
     m_fieldNotesScroll->setFixedHeight(std::max(0, notesHeight));
 
     m_fieldBar->setGeometry(kMargin, kMargin, barWidth, chrome + notesHeight);
+    positionScaleBar();
 }
 
 void ImageViewport::clearField()
 {
-    if (m_fieldBar && !m_fieldBar->isHidden()) {
+    const bool barShown = m_fieldBar && !m_fieldBar->isHidden();
+    const bool hadField = m_hasField;
+    if (barShown)
         m_fieldBar->hide();
-        refitIfStillFitted();
+    if (m_hasField) {
+        m_renderer->RemoveActor(m_fieldActor);
+        m_renderer->RemoveActor2D(m_scalarBar);
+        m_hasField = false;
+        // Arrows describe the field; with no field they go too.
+        refreshArrows();
     }
-    if (!m_hasField)
-        return;
-    m_renderer->RemoveActor(m_fieldActor);
-    m_renderer->RemoveActor2D(m_scalarBar);
-    m_hasField = false;
-    // Arrows describe the field; with no field they go too.
-    refreshArrows();
+    // After the field is gone, so the fit no longer keeps clear of its bar or
+    // its colour scale.
+    if (barShown || hadField)
+        refitIfStillFitted();
 }
 
 void ImageViewport::showMessage(const QString &text)
@@ -1977,9 +2061,15 @@ void ImageViewport::fitImageToWindow()
     m_imageActor->GetBounds(bounds);
     const double x0 = bounds[0] - 0.5, x1 = bounds[1] + 0.5;
     const double y0 = bounds[2] - 0.5, y1 = bounds[3] + 0.5;
+    // The colour scale stands along the right-hand side while a field is
+    // shown, and the picture is fitted to its left.
+    int right = 0;
+    if (m_hasField && m_scaleBox.valid)
+        right = width() - m_scaleBox.left + kGap;
+
     constexpr double kPadding = 0.04;
     ViewFit fit = fitImageInView(x0, x1, y0, y1, width(), height(), top, bottom,
-                                 kPadding);
+                                 kPadding, right);
 
     // ⚑ The coordinate-frame legend sits in a bottom corner, and over a tall
     // specimen that corner is the specimen. It covers only a corner, so
@@ -1994,10 +2084,10 @@ void ImageViewport::fitImageToWindow()
                                  legend.bottom() + 1)) {
             const ViewFit above = fitImageInView(
                 x0, x1, y0, y1, width(), height(), top,
-                std::max(bottom, height() - legend.top()), kPadding);
+                std::max(bottom, height() - legend.top()), kPadding, right);
             const ViewFit beside = fitImageInView(
                 x0, x1, y0, y1, width(), height(), top, bottom, kPadding,
-                width() - legend.left());
+                std::max(right, width() - legend.left()));
             if (above.valid && (!beside.valid || above.parallelScale <= beside.parallelScale))
                 fit = above;
             else if (beside.valid)

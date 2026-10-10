@@ -1,6 +1,7 @@
 #include "core/ViewFit.h"
 
 #include <algorithm>
+#include <cmath>
 
 ViewFit fitImageInView(double x0, double x1, double y0, double y1,
                        int viewWidth, int viewHeight, int topInset,
@@ -44,4 +45,39 @@ ScreenRect imageOnScreen(const ViewFit &fit, double x0, double x1, double y0,
     rect.top = 0.5 * viewHeight + (y0 - fit.centreY) / perPixel;
     rect.bottom = 0.5 * viewHeight + (y1 - fit.centreY) / perPixel;
     return rect;
+}
+
+ScreenBox placeScaleBar(int viewWidth, int viewHeight, int freeTop, int freeBottom,
+                        const ScreenBox &legend)
+{
+    // Off a bar by the gap between overlays, off the viewport's own edge by the
+    // margin every overlay keeps.
+    const int top = freeTop > 0 ? freeTop + kOverlayGap : kOverlayMargin;
+    const int floor = freeBottom < viewHeight ? freeBottom - kOverlayGap
+                                              : viewHeight - kOverlayMargin;
+    const int preferred = int(std::lround(0.42 * viewHeight));
+
+    auto inColumn = [&](int right, int bottom) {
+        ScreenBox box;
+        box.width = kScaleBarWidth;
+        box.left = right - kScaleBarWidth;
+        box.height = std::min(bottom - top, preferred);
+        box.top = bottom - box.height;
+        box.valid = box.height > 0 && box.left >= 0;
+        return box;
+    };
+
+    // The right-hand edge, above the legend when there is one.
+    const ScreenBox edge = inColumn(viewWidth - kOverlayMargin,
+                                    legend.valid ? legend.top - kOverlayGap : floor);
+    if (edge.valid && edge.height >= kScaleBarShortest)
+        return edge;
+
+    // Beside the legend, down to the bottom, when the edge is too short.
+    if (legend.valid) {
+        const ScreenBox beside = inColumn(legend.left - kOverlayGap, floor);
+        if (beside.valid && (!edge.valid || beside.height > edge.height))
+            return beside;
+    }
+    return edge;
 }

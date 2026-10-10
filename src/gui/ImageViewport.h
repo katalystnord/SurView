@@ -7,7 +7,9 @@
 #include "core/Roi.h"
 #include "core/Series.h"
 #include "core/SubsetOverlay.h"
+#include "core/ViewFit.h"
 
+#include <QRect>
 #include <QSize>
 #include <QVector>
 #include <QVTKOpenGLNativeWidget.h>
@@ -65,6 +67,11 @@ public:
     void showField(const CorrelationResult &result);
     void clearField();
     bool hasField() const { return m_hasField; }
+
+    // Where the colour scale is drawn, in widget pixels, read back from the
+    // scale bar actor itself rather than from the arithmetic that placed it.
+    // Null with no field on screen.
+    QRect scaleBarOnScreen() const;
 
     FieldChannel fieldChannel() const { return m_fieldChannel; }
 
@@ -248,6 +255,8 @@ private:
     // --- ROI drawing internals ---------------------------------------------
     void buildFrameLegend();
     void positionFrameLegend();
+    // The colour scale among the other overlays; see placeScaleBar().
+    void positionScaleBar();
     void buildRoiBar();
     void buildGaugeBar();
     void positionGaugeBar();
@@ -293,6 +302,7 @@ private:
     vtkNew<vtkImageActor> m_fieldActor;
     vtkNew<vtkLookupTable> m_fieldColours;
     vtkNew<vtkScalarBarActor> m_scalarBar;
+    ScreenBox m_scaleBox;
     vtkNew<vtkInteractorStyleImage> m_style;
 
     vtkNew<vtkPolyData> m_roiGeometry;
@@ -361,6 +371,7 @@ private:
     // the axes run. Shown whenever there is a picture to orient, because a
     // convention with nothing on screen to apply it to is just trivia.
     QFrame *m_frameLegend = nullptr;
+    QLabel *m_frameCaption = nullptr;
 
     QFrame *m_roiBar = nullptr;
     QFrame *m_gaugeBar = nullptr;

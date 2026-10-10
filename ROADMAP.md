@@ -454,14 +454,20 @@ a design pass first.
      every line now.
 
 
-- **The axes legend covers the lowest labels of the colour scale** when the
-  viewport is small. Seen 2026-10-09 at a 1200 x 800 window on the shift
-  fixture: the "Image pixels: x right, y down" box sits over the bottom two
-  scale labels. The view fit already keeps the legend off the picture; the
-  scale bar needs the same consideration. In a very narrow viewport (a
-  1000 px window leaves it about 330 px) the field bar's selector row and the
-  legend's text are clipped too; the field bar's notes already scroll past
-  40 per cent of the viewport, but its first row does not wrap.
+- ~~**The axes legend covers the lowest labels of the colour scale**~~ DONE
+  2026-10-10. The scale stood at fixed fractions of the viewport, the corner
+  the legend owns, and the image fit knew about neither. `placeScaleBar()` in
+  `core/ViewFit.h` puts it in the right-hand column between the field bar and
+  the legend, or beside the legend when that column is too short, and the
+  picture is fitted to its left. In a viewport narrower than the scale it is
+  hidden, and the field bar still states the range in words.
+  ⚑ Found on the way: a legend wider than the viewport has a NEGATIVE left
+  edge, which the first version took for "no legend" and put the scale under.
+  Also in narrow viewports: the selector now gives way (its text elided, the
+  full name on its tooltip) instead of clipping the row to "Showir", "D" and
+  "Arrc", and the legend's caption wraps narrower instead of losing the first
+  letter of every line. Pinned down to a 320 px viewport; below about 250 px
+  the row still collides, which no usable field view reaches.
 
   What is deliberately NOT on this list, from the same review: their flat
   single-weight control layout, which answers nothing about where to start,
@@ -721,10 +727,13 @@ Understood well enough to start, large enough to need their own care.
   must not look like a strain field with a stated noise floor of 0.004 px. That
   is the visual language entry below, extended to a fifth kind of picture.
 
-- **Packaging.** `install()` rules exist, so the pieces are in place; what is
-  missing is an installer and release artifacts anyone can download. Everyone
-  else in this field ships binaries and we ship a build, which is the single
-  biggest thing standing between the tool and somebody trying it.
+- **Packaging, the remaining half.** The AppImage exists
+  (`tools/make-appimage.sh`, since 2026-09-08) and runs on a machine that has
+  never heard of VTK. What is still missing is PUBLISHING it: the one
+  release so far, v2026.09.0, carries the manual and no binary, so the next
+  one should carry the AppImage and let somebody download the tool rather
+  than build it. Then the `.deb`, which first wants a survey of what
+  the target distributions ship, and Windows and macOS builds.
 
 ## Big
 

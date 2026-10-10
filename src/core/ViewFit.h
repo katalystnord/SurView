@@ -39,3 +39,39 @@ struct ScreenRect
 };
 ScreenRect imageOnScreen(const ViewFit &fit, double x0, double x1, double y0,
                          double y1, int viewWidth, int viewHeight);
+
+// Where the colour scale goes, in widget pixels, y down.
+//
+// ⚑ It used to sit at fixed fractions of the viewport -- the right edge, from
+// 6 to 48 per cent of the height up from the bottom -- which is the corner the
+// coordinate-frame legend owns, so in any viewport short enough the legend
+// covered the scale's lowest labels, and the image fit knew about neither. It
+// is placed among the other overlays now: in the right-hand column between the
+// field bar and the legend, and when that column is too short to read a scale
+// in, beside the legend instead. The image is then fitted clear of it.
+struct ScreenBox
+{
+    bool valid = false;
+    int left = 0, top = 0, width = 0, height = 0;
+    int right() const { return left + width; }
+    int bottom() const { return top + height; }
+    bool intersects(int l, int t, int r, int b) const
+    {
+        return left < r && l < right() && top < b && t < bottom();
+    }
+};
+
+constexpr int kScaleBarWidth = 84;     // the bar and its labels
+constexpr int kScaleBarShortest = 120; // below this its labels collide
+constexpr int kOverlayMargin = 10;     // from the viewport's edge
+constexpr int kOverlayGap = 6;         // between two overlays
+
+// `freeTop`: the first row below the field bar (0 with none). `freeBottom`:
+// the first row taken by a bar along the bottom (`viewHeight` with none).
+// `legend`: where the legend is, invalid for none on screen. ⚑ A box with a
+// flag, not a corner with -1 for absent: in a narrow viewport the legend is
+// wider than the viewport and its left edge IS negative, which a sentinel
+// read as "no legend" and put the scale straight under it. Invalid when no
+// place is left for the scale at all.
+ScreenBox placeScaleBar(int viewWidth, int viewHeight, int freeTop, int freeBottom,
+                        const ScreenBox &legend);

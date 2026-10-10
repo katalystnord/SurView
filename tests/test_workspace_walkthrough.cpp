@@ -20,6 +20,7 @@
 #include "core/SubsetOverlay.h"
 #include "core/Sequence.h"
 #include "core/Roi.h"
+#include "core/ViewFit.h"
 #include "gui/ImageViewport.h"
 #include "gui/PlotPanel.h"
 #include "gui/PointPanel.h"
@@ -36,6 +37,8 @@
 #include <QCheckBox>
 #include <QWheelEvent>
 #include <QComboBox>
+#include <QStyle>
+#include <QStyleOptionComboBox>
 #include <QIcon>
 #include <QPixmap>
 #include <QFrame>
@@ -367,6 +370,8 @@ private slots:
     void a_measured_field_can_be_switched_to_strain_from_the_screen();
     void a_measured_field_can_be_shown_as_arrows_pointing_the_way_it_moved();
     void the_field_explanation_does_not_cover_the_field_it_explains();
+    void the_colour_scale_is_clear_of_the_legend_the_bar_and_the_field();
+    void the_field_bar_fits_a_narrow_viewport_and_names_the_channel_in_full();
     void the_whole_image_can_be_brought_back_into_view_from_the_menu();
     void the_strain_channels_say_why_they_are_unavailable();
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
@@ -1189,6 +1194,188 @@ void TestWorkspaceWalkthrough::the_field_explanation_does_not_cover_the_field_it
                                         .arg(legend->geometry().left())
                                         .arg(legend->geometry().top())));
     }
+}
+
+void TestWorkspaceWalkthrough::the_colour_scale_is_clear_of_the_legend_the_bar_and_the_field()
+{
+    // Found by screenshot (2026-10-09): the scale stood at fixed fractions of
+    // the viewport, the corner the coordinate legend owns, so in a short
+    // viewport the legend covered its lowest labels, and the image was fitted
+    // as though the scale were not there. Read back from the scale bar actor
+    // and through the renderer's projection, at three window shapes.
+    //
+    // NEGATIVE CHECKS (2026-10-10): the old fixed placement restored failed on
+    // "under the coordinate legend" at 1600 x 700; the fit left blind to the
+    // scale failed there too, on "the image runs under the colour scale". The
+    // third size is narrower than the scale under ctest (a 78 px viewport), and
+    // pins the other rule: hidden only where it cannot fit, with the range
+    // still said in words. A legend wider than the viewport, its left edge
+    // negative, is pinned in tests/test_view_fit.cpp.
+    MainWindow window;
+    window.resize(1600, 700);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QWidget *bar = fieldExplanationBar(viewport);
+    QWidget *legend = nullptr;
+    for (QLabel *label : viewport->findChildren<QLabel *>()) {
+        if (label->text().contains(QStringLiteral("x right, y down")))
+            legend = label->parentWidget() == viewport ? label : label->parentWidget();
+    }
+    QVERIFY(bar && legend);
+
+    const ImageRecord &record = viewport->record();
+    for (const QSize &size : {QSize(1600, 700), QSize(1200, 800), QSize(1000, 1000)}) {
+        window.resize(size);
+        QTest::qWait(100);
+        const QRect scale = viewport->scaleBarOnScreen();
+        QVector<QPointF> corners;
+        QVERIFY(imageCornersOnScreen(viewport, record.width, record.height, corners));
+        const QRectF image(QPointF(std::min(corners[0].x(), corners[2].x()),
+                                   std::min(corners[0].y(), corners[1].y())),
+                           QPointF(std::max(corners[1].x(), corners[3].x()),
+                                   std::max(corners[2].y(), corners[3].y())));
+        const QString where = QStringLiteral("at %1 x %2 (viewport %7 x %8): scale "
+                                             "(%3, %4) to (%5, %6)")
+                                  .arg(size.width()).arg(size.height())
+                                  .arg(scale.left()).arg(scale.top())
+                                  .arg(scale.right()).arg(scale.bottom())
+                                  .arg(viewport->width()).arg(viewport->height());
+        if (scale.isEmpty()) {
+            // Only where it cannot fit at all, and then the range must still be
+            // on screen in words.
+            QVERIFY2(viewport->width() < kScaleBarWidth + 2 * kOverlayMargin,
+                     qPrintable(where + QStringLiteral(", no scale in a viewport "
+                                                       "wide enough for one")));
+            QVERIFY2(somethingOnScreenSays(bar, QStringLiteral(" runs from "))
+                         || somethingOnScreenSays(bar, QStringLiteral(" at every measured point")),
+                     qPrintable(where + QStringLiteral(", no scale and no range "
+                                                       "in words either")));
+            continue;
+        }
+        QVERIFY2(viewport->rect().contains(scale),
+                 qPrintable(where + QStringLiteral(", not inside the viewport")));
+        QVERIFY2(!scale.intersects(legend->geometry()),
+                 qPrintable(where + QStringLiteral(", under the coordinate legend")));
+        QVERIFY2(!scale.intersects(bar->geometry()),
+                 qPrintable(where + QStringLiteral(", under the explanation bar")));
+        QVERIFY2(!image.intersects(QRectF(scale)),
+                 qPrintable(where + QStringLiteral(", the image runs under the colour "
+                                                   "scale (%1, %2) to (%3, %4)")
+                                        .arg(image.left()).arg(image.top())
+                                        .arg(image.right()).arg(image.bottom())));
+    }
+}
+
+void TestWorkspaceWalkthrough::the_field_bar_fits_a_narrow_viewport_and_names_the_channel_in_full()
+{
+    // Found by screenshot (2026-10-09): in a viewport about 330 px wide the
+    // bar's first row was wider than the bar and clipped, reading "Showir",
+    // "D" and "Arrc". The selector gives way now, eliding its text, and the
+    // name it can no longer show in full is on its tooltip and in its list.
+    //
+    // NEGATIVE CHECKS (2026-10-10): before the change the row overflowed the
+    // bar; with the tooltip not kept in step it failed on the comparison.
+    // Keeping its full width where there is room was found by screenshot,
+    // after a first version elided it at every width; with that version back
+    // the case fails on "elided with room to spare".
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QWidget *bar = fieldExplanationBar(viewport);
+    QVERIFY(bar);
+    auto *choice = bar->findChild<QComboBox *>();
+    QVERIFY(choice);
+
+    // What the row says it needs must fit a 320 px viewport, and held at that
+    // width what is drawn must agree: inside the bar, nothing overlapping,
+    // nothing squeezed below its own width. Both, because text size differs
+    // between displays -- at this suite's font the row fits with room to
+    // spare, and on a display rendering text a quarter larger the same row
+    // overlapped itself until the selector's own minimum came down.
+    constexpr int kNarrowViewport = 320;
+    const int needed = bar->layout()->minimumSize().width();
+    QVERIFY2(needed <= kNarrowViewport - 2 * kOverlayMargin,
+             qPrintable(QStringLiteral("the bar's first row needs %1 px, more than "
+                                       "a %2 px viewport leaves it")
+                            .arg(needed).arg(kNarrowViewport)));
+    viewport->setFixedWidth(kNarrowViewport);
+    QTest::qWait(150);
+    QCOMPARE(viewport->width(), kNarrowViewport);
+
+    QList<QWidget *> row;
+    for (QWidget *child : bar->findChildren<QWidget *>(Qt::FindDirectChildrenOnly)) {
+        if (child->isVisible() && child->geometry().top() < choice->geometry().bottom())
+            row << child;
+    }
+    QVERIFY2(row.size() >= 3, "the row should hold a label, the selector and Arrows");
+    for (int i = 0; i < row.size(); i++) {
+        const QRect a = row[i]->geometry();
+        QVERIFY2(bar->rect().contains(a),
+                 qPrintable(QStringLiteral("%1 reaches past the bar")
+                                .arg(row[i]->metaObject()->className())));
+        QVERIFY2(a.width() >= (row[i] == choice ? choice->minimumWidth()
+                                                : row[i]->minimumSizeHint().width()),
+                 qPrintable(QStringLiteral("%1 squeezed below its own width, clipping it")
+                                .arg(row[i]->metaObject()->className())));
+        for (int j = i + 1; j < row.size(); j++) {
+            QVERIFY2(!a.intersects(row[j]->geometry()),
+                     qPrintable(QStringLiteral("%1 and %2 overlap")
+                                    .arg(row[i]->metaObject()->className(),
+                                         row[j]->metaObject()->className())));
+        }
+    }
+
+    // The legend is about 200 px wide at its usual size, so it is checked
+    // narrower than that, where it used to reach past the left edge.
+    viewport->setFixedWidth(180);
+    QTest::qWait(150);
+    QWidget *legend = nullptr;
+    for (QLabel *label : viewport->findChildren<QLabel *>()) {
+        if (label->text().contains(QStringLiteral("x right, y down")))
+            legend = label->parentWidget();
+    }
+    QVERIFY(legend);
+    QVERIFY2(viewport->rect().contains(legend->geometry()),
+             qPrintable(QStringLiteral("the coordinate legend reaches past the viewport, "
+                                       "at x %1").arg(legend->geometry().left())));
+
+    viewport->setMinimumWidth(0);
+    viewport->setMaximumWidth(QWIDGETSIZE_MAX);
+
+    QCOMPARE(choice->toolTip(), choice->currentText());
+    window.resize(1600, 800);
+    QTest::qWait(100);
+    // Asked of the style, which is what paints the text, rather than of the
+    // box's own size hint -- a box that elides everywhere reports a small hint
+    // and satisfies it.
+    QStyleOptionComboBox option;
+    option.initFrom(choice);
+    option.editable = false;
+    const QRect field = choice->style()->subControlRect(
+        QStyle::CC_ComboBox, &option, QStyle::SC_ComboBoxEditField, choice);
+    const int name = choice->fontMetrics().horizontalAdvance(choice->currentText());
+    QVERIFY2(field.width() >= name,
+             qPrintable(QStringLiteral("elided with room to spare: %1 px for a name "
+                                       "%2 px long, in a %3 px viewport")
+                            .arg(field.width()).arg(name).arg(viewport->width())));
 }
 
 void TestWorkspaceWalkthrough::the_whole_image_can_be_brought_back_into_view_from_the_menu()
