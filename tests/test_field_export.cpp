@@ -152,6 +152,7 @@ class TestFieldExport : public QObject
 
 private slots:
     void a_written_field_reads_back_as_the_points_and_cells_it_was_made_of();
+    void the_clipped_share_travels_with_the_field();
     void the_points_land_where_they_were_measured();
     void a_point_the_solver_rejected_exports_as_nothing_not_as_zero();
     void a_strain_the_fit_declined_exports_as_nothing_not_as_zero();
@@ -408,6 +409,32 @@ void TestFieldExport::a_path_that_cannot_be_written_is_reported_rather_than_swal
     QVERIFY2(!refusal.isEmpty(), "an unwritable path reported success");
     QVERIFY2(refusal.contains(QStringLiteral("field.vtu")),
              "the refusal does not name the file it could not write");
+}
+
+void TestFieldExport::the_clipped_share_travels_with_the_field()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.vtu"));
+    CorrelationResult result = twoByTwo();
+    result.points[0].clippedShare = 0.125f;
+    result.points[0].clippedShareMeasured = true;
+    result.points[1].converged = false;      // rejected, and still has a share
+    result.points[1].clippedShare = 0.75f;
+    result.points[1].clippedShareMeasured = true;
+    result.points[3].clippedShare = 0.5f;
+    result.points[3].clippedShareMeasured = true;
+
+    QCOMPARE(writeFieldVtu(path, result, provenanceFor()), QString());
+    auto grid = readBack(path);
+    auto *clipped = grid->GetPointData()->GetArray("subset_clipped_share");
+    QVERIFY2(clipped, "the file carries no clipped share");
+    QCOMPARE(float(clipped->GetComponent(0, 0)), 0.125f);
+    QCOMPARE(float(clipped->GetComponent(1, 0)), 0.75f);
+    QVERIFY2(std::isnan(clipped->GetComponent(2, 0)),
+             "a share nobody established was written as a number");
+    QCOMPARE(float(clipped->GetComponent(3, 0)), 0.5f);
+    QVERIFY2(allFieldText(grid).contains(QStringLiteral("subset_clipped_share is the share")),
+             "the file does not say what subset_clipped_share is");
 }
 
 QTEST_MAIN(TestFieldExport)

@@ -140,6 +140,9 @@ private slots:
     void a_rejected_point_is_not_flagged_against_a_displacement_it_never_measured();
     void the_noise_floor_is_reported_with_what_it_cannot_see();
     void a_conditioning_the_probe_could_not_establish_is_a_warning_not_a_blank();
+    void a_mostly_clipped_subset_is_the_row_that_warns();
+    void a_subset_clipped_exactly_half_or_less_is_stated_without_a_warning();
+    void a_rejected_point_over_glare_says_how_much_of_it_was_clipped();
 
     // --- strain, which is fitted rather than measured ----------------------
     void strain_is_absent_when_the_run_never_asked_for_it();
@@ -646,6 +649,54 @@ void TestPointReadout::the_magnitude_row_is_the_length_of_the_displacement_it_fo
                  qPrintable(line.value));
     }
     QVERIFY2(found, "the readout has no magnitude row at all");
+}
+
+void TestPointReadout::a_mostly_clipped_subset_is_the_row_that_warns()
+{
+    // A subset in glare can converge, and its answer then reads like any
+    // other. The readout says so at the point, with the share.
+    CorrelationResult result = plainResult();
+    result.points[4].clippedShare = 0.92f;
+    result.points[4].clippedShareMeasured = true;
+
+    const PointReadout readout = pointReadout(result, 4);
+    QVERIFY(readout.solved);
+    QCOMPARE(warningLabels(readout), QStringList{QStringLiteral("Clipped share of subset")});
+    QVERIFY2(spoken(readout).contains(QStringLiteral("92%")), qPrintable(spoken(readout)));
+}
+
+void TestPointReadout::a_subset_clipped_exactly_half_or_less_is_stated_without_a_warning()
+{
+    // "More than half" means more than half: a share exactly at the line does
+    // not warn, and a light share is stated to a decimal place, since "4%" and
+    // "0%" read the same at a glance and are not the same.
+    CorrelationResult result = plainResult();
+    result.points[4].clippedShare = 0.5f;
+    result.points[4].clippedShareMeasured = true;
+    QVERIFY(!anyLineWarns(pointReadout(result, 4)));
+
+    result.points[4].clippedShare = 0.04f;
+    const PointReadout light = pointReadout(result, 4);
+    QVERIFY(!anyLineWarns(light));
+    QVERIFY2(spoken(light).contains(QStringLiteral("4.0%")), qPrintable(spoken(light)));
+}
+
+void TestPointReadout::a_rejected_point_over_glare_says_how_much_of_it_was_clipped()
+{
+    // A hole over glare is explained by the glare: the share is stated where
+    // the displacement is not.
+    CorrelationResult result = plainResult();
+    CorrelationPoint &point = result.points[4];
+    point.converged = false;
+    point.zncc = -3.f;
+    point.failureReason = QStringLiteral("did not converge");
+    point.clippedShare = 0.97f;
+    point.clippedShareMeasured = true;
+
+    const PointReadout readout = pointReadout(result, 4);
+    QVERIFY(!readout.solved);
+    QVERIFY2(spoken(readout).contains(QStringLiteral("97%")), qPrintable(spoken(readout)));
+    QVERIFY(warningLabels(readout).contains(QStringLiteral("Clipped share of subset")));
 }
 
 QTEST_MAIN(TestPointReadout)

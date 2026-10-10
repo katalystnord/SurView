@@ -76,6 +76,7 @@ private slots:
     void the_recovered_channel_separates_a_repaired_point_from_a_first_solve_one();
     void a_flag_channel_is_not_drawn_or_described_like_a_measurement();
     void a_flag_channel_spans_both_states_whatever_the_run_found();
+    void a_clipped_share_is_drawn_in_per_cent_on_a_scale_of_the_whole_share();
     void the_noise_floor_is_put_against_the_movement_it_qualifies();
     void one_bad_point_does_not_set_the_number_that_speaks_for_the_field();
     void the_reported_spread_of_the_noise_floor_is_the_fields_not_its_worst_points();
@@ -484,6 +485,46 @@ void TestFieldLayout::a_flag_channel_spans_both_states_whatever_the_run_found()
                              lowest, highest));
     QCOMPARE(lowest, 0.0);
     QCOMPARE(highest, 1.0);
+}
+
+void TestFieldLayout::a_clipped_share_is_drawn_in_per_cent_on_a_scale_of_the_whole_share()
+{
+    // A clean specimen's worst subset is a few per cent clipped. Ranged over
+    // the data, those few per cent would take the whole ramp and the map would
+    // look like glare everywhere; on 0 to 100 they read as the near-nothing
+    // they are. Lopsided: two different shares, one point never given a share
+    // and one rejected, so a layout that wrote zeros or forgot the per cent
+    // reads differently.
+    CorrelationResult result;
+    result.gridColumns = 4;
+    result.gridRows = 1;
+    CorrelationPoint light = measured(0, 1.f, 0.f);
+    light.clippedShare = 0.03f;
+    light.clippedShareMeasured = true;
+    CorrelationPoint heavy = measured(1, 1.f, 0.f);
+    heavy.clippedShare = 0.875f;
+    heavy.clippedShareMeasured = true;
+    CorrelationPoint unknown = measured(2, 1.f, 0.f);
+    CorrelationPoint failed = rejected(3);
+    failed.clippedShare = 0.99f;
+    failed.clippedShareMeasured = true;
+    result.points << light << heavy << unknown << failed;
+
+    const QVector<float> values = layoutField(result, FieldChannel::ClippedShare);
+    QCOMPARE(values[0], 3.f);
+    QCOMPARE(values[1], 87.5f);
+    QVERIFY2(std::isnan(values[2]), "a share nobody established was drawn as a share");
+    // On the map, like every channel, only where a measurement was made; the
+    // readout and the exports state it for the rejected point too.
+    QVERIFY(std::isnan(values[3]));
+
+    double lowest = 0.0;
+    double highest = 0.0;
+    QVERIFY(fieldColourRange(result, FieldChannel::ClippedShare, lowest, highest));
+    QCOMPARE(lowest, 0.0);
+    QCOMPARE(highest, 100.0);
+    QCOMPARE(fieldChannelUnit(FieldChannel::ClippedShare), QStringLiteral("%"));
+    QVERIFY(fieldChannelIsReliability(FieldChannel::ClippedShare));
 }
 
 void TestFieldLayout::a_reliability_channel_reads_the_opposite_way_from_the_rest()

@@ -206,6 +206,7 @@ class TestFieldCsv : public QObject
 
 private slots:
     void every_attempted_point_gets_a_row();
+    void the_clipped_share_is_written_for_every_point_attempted();
     void the_columns_name_themselves_and_their_units();
     void a_measured_point_carries_its_measurement();
 
@@ -240,6 +241,34 @@ void TestFieldCsv::every_attempted_point_gets_a_row()
     // back. A difficult specimen must not export as a smaller one, which is the
     // same rule buildFieldMesh() keeps for the .vtu's cells.
     QCOMPARE(dataRows(contentsOf(path)).size(), 2);
+}
+
+void TestFieldCsv::the_clipped_share_is_written_for_every_point_attempted()
+{
+    // A property of the reference subset, so a rejected point has one too: a
+    // hole over glare is explained by it. One unestablished, so an empty cell
+    // and a zero cannot be confused.
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.csv"));
+    CorrelationResult result = plainResult();
+    result.points[0].clippedShare = 0.0625f;
+    result.points[0].clippedShareMeasured = true;
+    result.points[1].converged = false;
+    result.points[1].zncc = -3.f;
+    result.points[1].clippedShare = 0.96875f;
+    result.points[1].clippedShareMeasured = true;
+    result.converged = 1;
+    QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
+    QString text = contentsOf(path);
+    QCOMPARE(cell(text, 0, QStringLiteral("clipped_share")).toDouble(), 0.0625);
+    QCOMPARE(cell(text, 1, QStringLiteral("clipped_share")).toDouble(), 0.96875);
+    QVERIFY2(text.contains(QStringLiteral("clipped_share is the share")),
+             "the file does not say what clipped_share is");
+
+    result.points[0].clippedShareMeasured = false;
+    QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
+    text = contentsOf(path);
+    QCOMPARE(cell(text, 0, QStringLiteral("clipped_share")), QString());
 }
 
 void TestFieldCsv::the_columns_name_themselves_and_their_units()

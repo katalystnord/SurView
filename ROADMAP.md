@@ -478,16 +478,19 @@ a design pass first.
 Things that change a measurement, or that everything after them depends on.
 Understood well enough to start, large enough to need their own care.
 
-- **Glare on the specimen itself.** Left over from decision 4. A region keeps
-  the background out, but a shiny or wet specimen can clip inside the region,
-  and a subset there carries no pattern and can still be reported as solved,
-  presenting a number as more trustworthy than it is. Count each subset's
-  share of pixels at the image's own extremes and state it in the point
-  readout, the run report and the exports, as a property of the subset like
-  the noise floor. Whether a mostly clipped subset is then also refused, with
-  a reason of its own, is a second step: on the tension example the glare
-  subsets sit at 87 per cent clipped or more and the specimen's at 10 per cent
-  or less, so a share of one half separates them with room either side.
+- **Glare on the specimen itself.** Left over from decision 4. The first step
+  is DONE (2026-10-10): every point carries the share of its reference subset
+  at the darkest or brightest value the image holds (`core/Clipping.h`),
+  stated in the point readout (a warning above one half), counted among the
+  solved in the run report and on its own map, "Clipped share of subset",
+  drawn on a fixed 0 to 100 per cent scale so a clean specimen does not look
+  like glare everywhere, and written to the `.vtu` and the CSV.
+  ⚑ Judged against the image's OWN extremes, not the type's: the test
+  fixtures paint their glare at 250, so a rule judging against 255 finds none.
+  **Still open, and a decision for David:** whether a mostly clipped subset is
+  also REFUSED, with a reason of its own. On the glare fixtures five or six edge
+  points (depending on the iteration limit) are mostly glare and still solve; on the tension example the glare subsets
+  sit at 87 per cent or more and the specimen's at about 10 per cent or less.
 
 - **Learned from the rest of the field, 2026-09-03.** The reasoning and
   sources are in the screenshot pass above; this is the commitment to act on

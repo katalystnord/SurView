@@ -1288,6 +1288,22 @@ part3_body = """
     different specimens.
   </p>
 
+  <h2>And before either: did the camera record anything there?</h2>
+  <p>
+    Where the sensor ran out of range - glare off a shiny or wet surface,
+    a shadow crushed to black - every pixel holds the same value and the
+    speckle in it is gone. A subset made mostly of such pixels has
+    nothing to correlate, and it can still converge: flat matches flat,
+    with a high correlation and a displacement that means nothing in
+    particular. The <strong>clipped share of subset</strong> states, for
+    every point, how much of its reference subset sits at the darkest or
+    brightest value the image actually holds. A few per cent is ordinary;
+    more than half is a warning, said in the point readout and counted in
+    the run report. Drawing a region keeps glare off the background out of
+    the measurement; glare on the specimen itself it cannot, and this is
+    what shows where it is.
+  </p>
+
   <h2>Both read the opposite way from everything else</h2>
   <p>
     Every other quantity in a DIC result - displacement, strain
@@ -2029,6 +2045,11 @@ appendix_body = """
     <dt>Match conditioning (beta)</dt>
     <dd>How sharply the matching cost rises around the solution actually
     found for one point. Meaningful only within a single run.</dd>
+
+    <dt>Clipped share of subset</dt>
+    <dd>How much of a point's reference subset sits at the darkest or
+    brightest value the image holds, where the camera recorded no pattern.
+    More than half is reported as a warning.</dd>
 
     <dt>Virtual extensometer</dt>
     <dd>Two points placed on the measured field whose changing distance

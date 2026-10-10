@@ -142,6 +142,14 @@ struct CorrelationPoint
     bool  noiseFloorMeasured = false;
     float conditioning = 0.f;
     bool  conditioningMeasured = false;
+
+    // The share, 0 to 1, of this point's reference subset sitting at the
+    // darkest or brightest value the reference image holds: pixels where the
+    // camera recorded nothing, so a subset made mostly of them has no pattern
+    // to correlate. A property of the photograph, like the noise floor, and
+    // stated rather than used to refuse the point. See core/Clipping.h.
+    float clippedShare = 0.f;
+    bool  clippedShareMeasured = false;
 };
 
 struct CorrelationResult
@@ -195,6 +203,12 @@ struct CorrelationResult
     // the probe found the cost unusable, which is the strongest caution the
     // metric can give.
     int conditioningUnusable = 0;
+
+    // Converged points whose subset is more than kMostlyClipped at the
+    // reference image's extremes. Counted among the SOLVED because that is
+    // where it matters: a failed point already says it failed, and a mostly
+    // clipped one that converged reads as a measurement.
+    int mostlyClipped = 0;
 
     // The reference image's estimated noise, in grey levels, which scaled every
     // noise floor above. Reported with the result rather than with the image

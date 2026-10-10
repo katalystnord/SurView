@@ -2478,6 +2478,16 @@ void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
                "those points with caution.")
                 .arg(result.conditioningUnusable));
     }
+    if (result.mostlyClipped > 0) {
+        // Said among the solved, because that is where it misleads: these
+        // converged, and read as measurements.
+        log(tr("  %1 solved point(s) have more than half their subset at the "
+               "darkest or brightest value the reference image holds, where the "
+               "camera recorded nothing, so their answers rest on little or no "
+               "pattern. Show \"%2\" to see where they are.")
+                .arg(result.mostlyClipped)
+                .arg(fieldChannelName(FieldChannel::ClippedShare)));
+    }
 
     if (result.strainRequested) {
         log(tr("  Strain fitted at %1 of the %2 solved points (%3, %4 px "

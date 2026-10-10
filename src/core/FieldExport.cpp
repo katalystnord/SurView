@@ -163,6 +163,7 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
 
     auto noiseFloor = namedArray("displacement_noise_floor", 1, count);
     auto conditioning = namedArray("match_conditioning", 1, count);
+    auto clipped = namedArray("subset_clipped_share", 1, count);
 
     const bool withStrain = result.strainRequested;
     auto exx = namedArray("strain_exx", 1, count);
@@ -191,6 +192,9 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
         noiseFloor->SetTuple1(i, point.noiseFloorMeasured ? point.noiseFloor : nothing);
         conditioning->SetTuple1(i,
                                 point.conditioningMeasured ? point.conditioning : nothing);
+        // A property of the reference subset, so it is there for every point
+        // attempted, failed ones included: a hole over glare is explained by it.
+        clipped->SetTuple1(i, point.clippedShareMeasured ? point.clippedShare : nothing);
 
         if (withStrain) {
             const bool fitted = point.strainFitted;
@@ -207,6 +211,7 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     grid->GetPointData()->AddArray(recovered);
     grid->GetPointData()->AddArray(noiseFloor);
     grid->GetPointData()->AddArray(conditioning);
+    grid->GetPointData()->AddArray(clipped);
     grid->GetPointData()->SetVectors(displacement);
     grid->GetPointData()->SetScalars(magnitude);
 
@@ -290,11 +295,15 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
               "how sharply the correlation cost rises around the solution "
               "found, relative within this run only. Larger is worse in both. "
               "Established at %2 of %3 solved points; %4 solved point(s) had a "
-              "cost too flat to probe.")
+              "cost too flat to probe. subset_clipped_share is the share, 0 to "
+              "1, of each subset's reference pixels at the darkest or brightest "
+              "value the reference image holds, where the camera recorded "
+              "nothing; %5 solved point(s) are more than half clipped.")
               .arg(result.referenceNoise, 0, 'g', 4)
               .arg(result.noiseFloorMeasured)
               .arg(result.converged)
-              .arg(result.conditioningUnusable));
+              .arg(result.conditioningUnusable)
+              .arg(result.mostlyClipped));
 
     state(grid, "result",
           QObject::tr("%1 of %2 points solved in %3 s%4. Values that were not "
@@ -422,8 +431,13 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                              "match_conditioning is DIC's beta, dimensionless: "
                              "how sharply the correlation cost rises around the "
                              "solution found, comparable within this run only. "
-                             "Larger is worse in both.")
-                     .arg(result.referenceNoise, 0, 'g', 4));
+                             "Larger is worse in both. clipped_share is the "
+                             "share, 0 to 1, of each subset's reference pixels "
+                             "at the darkest or brightest value the reference "
+                             "image holds, where the camera recorded nothing; "
+                             "%2 solved point(s) are more than half clipped.")
+                     .arg(result.referenceNoise, 0, 'g', 4)
+                     .arg(result.mostlyClipped));
     csvNote(out, QObject::tr("%1 of %2 attempted points solved.")
                      .arg(result.converged)
                      .arg(result.total()));
@@ -439,7 +453,8 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                         QStringLiteral("recovered_on_second_pass"),
                         QStringLiteral("rejection"),
                         QStringLiteral("noise_floor_px"),
-                        QStringLiteral("match_conditioning")};
+                        QStringLiteral("match_conditioning"),
+                        QStringLiteral("clipped_share")};
     // Absent rather than present and empty when strain was never asked for. A
     // column of empty strain cells reads as a fit that failed everywhere, which
     // is a far more alarming statement than "not attempted" -- the same
@@ -475,7 +490,8 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
             // measurement, a perfectly sharp cost -- so an unestablished one is
             // empty like everything else nobody measured.
             << csvValue(point.noiseFloorMeasured, double(point.noiseFloor))
-            << csvValue(point.conditioningMeasured, double(point.conditioning));
+            << csvValue(point.conditioningMeasured, double(point.conditioning))
+            << csvValue(point.clippedShareMeasured, double(point.clippedShare));
 
         if (withStrain) {
             row << csvValue(point.strainFitted, double(point.exx))

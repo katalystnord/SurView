@@ -33,6 +33,12 @@ enum class FieldChannel
     NoiseFloor,
     MatchConditioning,
 
+    // What the photograph held under each subset: the share of it the camera
+    // recorded nothing in, at the image's own darkest or brightest value. Not
+    // a judgement of the match, which is why it is a map of its own -- the
+    // question it answers is WHERE the glare or the crushed shadow is.
+    ClippedShare,
+
     // Not a measurement at all, but provenance: whether this point was measured
     // on the first solve or repaired by the second pass. On the map rather than
     // only in the run report because the count answers "how many" and a reader's

@@ -1,5 +1,6 @@
 #include "core/PointReadout.h"
 
+#include "core/Clipping.h"
 #include "core/FieldLayout.h"
 
 #include <QObject>
@@ -54,6 +55,30 @@ int pointNearestTo(const CorrelationResult &result, float x, float y)
     return nearest;
 }
 
+namespace {
+
+// The clipped share as one readout line, warning when the subset is mostly
+// clipped: then the answer above it rests on little or no recorded pattern.
+ReadoutLine clippedShareLine(const CorrelationPoint &point)
+{
+    if (!point.clippedShareMeasured)
+        return {QObject::tr("Clipped share of subset"), QObject::tr("not measured"),
+                fieldChannelNote(FieldChannel::ClippedShare), false};
+
+    const double percent = 100.0 * double(point.clippedShare);
+    const bool mostly = double(point.clippedShare) > kMostlyClipped;
+    const QString value = QObject::tr("%1%").arg(percent, 0, 'f', percent < 10.0 ? 1 : 0);
+    const QString note =
+        mostly ? QObject::tr("More than half of this subset sits where the camera "
+                             "recorded nothing, so whatever it measured rests on "
+                             "little or no pattern. %1")
+                     .arg(fieldChannelNote(FieldChannel::ClippedShare))
+               : fieldChannelNote(FieldChannel::ClippedShare);
+    return {QObject::tr("Clipped share of subset"), value, note, mostly};
+}
+
+}  // namespace
+
 bool displacementIsBelowNoiseFloor(const CorrelationPoint &point)
 {
     // A point that did not converge has no displacement to compare. Its u and v
@@ -104,6 +129,10 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
                                   : QObject::tr("Rejected: %1.")
                                         .arg(point.failureReason),
                               true});
+        // Of a rejected point too, where it is often the reason: a hole over
+        // glare says why it is a hole.
+        if (point.clippedShareMeasured)
+            readout.lines.append(clippedShareLine(point));
         return readout;
     }
 
@@ -183,6 +212,8 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
                                           "caution about the match."),
                               true});
     }
+
+    readout.lines.append(clippedShareLine(point));
 
     // --- strain, which was fitted from the neighbours rather than measured ---
     // Absent when the run never asked for strain, rather than present and

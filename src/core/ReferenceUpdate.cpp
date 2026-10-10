@@ -1,5 +1,6 @@
 #include "core/ReferenceUpdate.h"
 
+#include "core/Clipping.h"
 #include "core/Correlation.h"
 
 float trackedX(const TrackedPoint &point)
@@ -128,6 +129,8 @@ CorrelationResult composeTotalField(const QVector<TrackedPoint> &tracked,
     CorrelationResult total = increment;
     total.points.clear();
     total.converged = 0;
+    // Recounted with the solved, since a lost point is no longer one of them.
+    total.mostlyClipped = 0;
 
     const int count = std::min(tracked.size(), increment.points.size());
     total.points.reserve(count);
@@ -150,10 +153,13 @@ CorrelationResult composeTotalField(const QVector<TrackedPoint> &tracked,
             point.strainFitted = false;
             point.noiseFloorMeasured = false;
             point.conditioningMeasured = false;
+            point.clippedShareMeasured = false;
         } else if (point.converged) {
             point.u += followed.bankedU;
             point.v += followed.bankedV;
             total.converged++;
+            if (point.clippedShareMeasured && double(point.clippedShare) > kMostlyClipped)
+                total.mostlyClipped++;
         }
 
         total.points.append(point);

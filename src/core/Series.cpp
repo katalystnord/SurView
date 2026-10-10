@@ -49,6 +49,8 @@ double channelValue(const CorrelationPoint &point, FieldChannel channel)
         return double(point.noiseFloor);
     case FieldChannel::MatchConditioning:
         return double(point.conditioning);
+    case FieldChannel::ClippedShare:
+        return 100.0 * double(point.clippedShare);
     case FieldChannel::RecoveredOnSecondPass:
         return point.recovered ? 1.0 : 0.0;
     }
@@ -68,6 +70,8 @@ bool pointHasChannel(const CorrelationPoint &point, FieldChannel channel)
         return point.noiseFloorMeasured;
     if (channel == FieldChannel::MatchConditioning)
         return point.conditioningMeasured;
+    if (channel == FieldChannel::ClippedShare)
+        return point.clippedShareMeasured;
     return true;
 }
 

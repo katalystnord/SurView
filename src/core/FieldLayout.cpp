@@ -42,6 +42,9 @@ float valueAt(const CorrelationPoint &point, FieldChannel channel)
         return point.noiseFloorMeasured ? point.noiseFloor : nothing;
     case FieldChannel::MatchConditioning:
         return point.conditioningMeasured ? point.conditioning : nothing;
+    case FieldChannel::ClippedShare:
+        // In per cent, which is how the scale and the prose state it.
+        return point.clippedShareMeasured ? 100.f * point.clippedShare : nothing;
     default:
         break;
     }
@@ -80,6 +83,7 @@ QVector<FieldChannelInfo> offeredFieldChannels()
                                  FieldChannel::StrainXY,
                                  FieldChannel::NoiseFloor,
                                  FieldChannel::MatchConditioning,
+                                 FieldChannel::ClippedShare,
                                  FieldChannel::RecoveredOnSecondPass}) {
         // Asked of the same functions everything else asks, so this list
         // cannot drift from how a channel actually behaves.
@@ -118,6 +122,8 @@ QString fieldChannelName(FieldChannel channel)
         return QObject::tr("Noise floor, sigma");
     case FieldChannel::MatchConditioning:
         return QObject::tr("Match conditioning, beta");
+    case FieldChannel::ClippedShare:
+        return QObject::tr("Clipped share of subset");
     case FieldChannel::RecoveredOnSecondPass:
         return QObject::tr("Measured on the second pass");
     }
@@ -131,6 +137,8 @@ QString fieldChannelUnit(FieldChannel channel)
     // two-colour scale means which.
     if (channel == FieldChannel::RecoveredOnSecondPass)
         return QObject::tr("0 = first solve, 1 = second pass");
+    if (channel == FieldChannel::ClippedShare)
+        return QObject::tr("%");
 
     // Strain is a ratio and conditioning is a reciprocal slope carrying
     // arbitrary per-axis factors; neither has a unit. Saying so beats leaving
@@ -158,7 +166,8 @@ bool fieldChannelIsFlag(FieldChannel channel)
 bool fieldChannelIsReliability(FieldChannel channel)
 {
     return channel == FieldChannel::NoiseFloor
-           || channel == FieldChannel::MatchConditioning;
+           || channel == FieldChannel::MatchConditioning
+           || channel == FieldChannel::ClippedShare;
 }
 
 QString fieldChannelNote(FieldChannel channel)
@@ -195,6 +204,14 @@ QString fieldChannelNote(FieldChannel channel)
             "particular match, but it is a relative score with no absolute "
             "meaning - compare points within one run, never across runs. "
             "Larger is worse.");
+    case FieldChannel::ClippedShare:
+        return QObject::tr(
+            "How much of each subset sits at the darkest or brightest value the "
+            "reference image holds, where the camera recorded nothing and the "
+            "speckle is gone - glare, or a shadow crushed to black. A subset "
+            "mostly clipped has nothing to correlate, and can still converge "
+            "and read as a measurement. Judged on the reference image only. "
+            "Larger is worse.");
     case FieldChannel::RecoveredOnSecondPass:
         return QObject::tr(
             "Which points the first solve could not measure well and the second "
@@ -218,6 +235,7 @@ bool fieldChannelIsStrain(FieldChannel channel)
     case FieldChannel::DisplacementY:
     case FieldChannel::NoiseFloor:
     case FieldChannel::MatchConditioning:
+    case FieldChannel::ClippedShare:
     case FieldChannel::RecoveredOnSecondPass:
         return false;
     }
@@ -394,6 +412,16 @@ bool fieldColourRange(const CorrelationResult &result, FieldChannel channel,
     if (fieldChannelIsFlag(channel)) {
         lowest = 0.0;
         highest = 1.0;
+        return true;
+    }
+
+    // ⚑ And a share spans the whole of what a share can be. Ranged over the
+    // data, a clean specimen whose worst subset is 3 per cent clipped would
+    // spend the full ramp on 0 to 3 and look, at a glance, exactly like glare
+    // everywhere; on 0 to 100 it reads as the near-nothing it is.
+    if (channel == FieldChannel::ClippedShare) {
+        lowest = 0.0;
+        highest = 100.0;
         return true;
     }
 

@@ -1873,6 +1873,14 @@ void ImageViewport::updateFieldBar()
             if (!context.isEmpty())
                 note += context + QLatin1Char(' ');
         }
+        if (m_fieldChannel == FieldChannel::ClippedShare) {
+            // The count where it misleads: among the solved, which read as
+            // measurements. Stated even when it is zero, because on this map
+            // "none" is the answer a reader came to check.
+            note += tr("%1 of the %2 solved points are more than half clipped. ")
+                        .arg(m_fieldResult.mostlyClipped)
+                        .arg(m_fieldResult.converged);
+        }
         if (m_fieldChannel == FieldChannel::MatchConditioning
             && m_fieldResult.conditioningUnusable > 0) {
             note += tr("The cost was too flat to probe at %1 solved point(s), "

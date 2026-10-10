@@ -1,4 +1,5 @@
 #include "core/Correlation.h"
+#include "core/Clipping.h"
 
 #include "core/PoiGrid.h"
 
@@ -558,6 +559,14 @@ void CorrelationRunner::run()
 
         const QString notReached = tr("not reached before the run was stopped");
 
+        // The extremes the reference image actually holds, against which each
+        // subset's clipped share is judged (core/Clipping.h).
+        const double darkest = double(ref_img.eg_mat.minCoeff());
+        const double brightest = double(ref_img.eg_mat.maxCoeff());
+        const auto referencePixel = [&ref_img](int x, int y) {
+            return double(ref_img.eg_mat(y, x));
+        };
+
         for (int i = 0; i < total; i++) {
             const POI2D &poi = queue[size_t(i)];
             CorrelationPoint point;
@@ -567,6 +576,17 @@ void CorrelationRunner::run()
             point.u    = poi.deformation.u;
             point.v    = poi.deformation.v;
             point.zncc = poi.result.zncc;
+
+            // Of every point attempted, failed ones included: a hole in the
+            // field over glare is explained by it as well.
+            const double share = clippedShare(referencePixel, ref_img.width,
+                                              ref_img.height, qRound(poi.x),
+                                              qRound(poi.y), radius, darkest,
+                                              brightest);
+            if (share >= 0.0) {
+                point.clippedShare = float(share);
+                point.clippedShareMeasured = true;
+            }
 
             if (i >= solvedUpTo) {
                 // Stopped before the solver reached this point. Counted and
@@ -584,6 +604,9 @@ void CorrelationRunner::run()
                 point.converged = !isFailureStatus(poi.result.zncc);
                 if (point.converged) {
                     result.converged++;
+                    if (point.clippedShareMeasured
+                        && double(point.clippedShare) > kMostlyClipped)
+                        result.mostlyClipped++;
                     // Solved, but too poorly correlated to be trusted as input
                     // to a neighbour's strain fit. Counted so a sparse strain
                     // field over a dense displacement field has a stated

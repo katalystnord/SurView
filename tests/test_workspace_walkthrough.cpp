@@ -372,6 +372,7 @@ private slots:
     void the_field_explanation_does_not_cover_the_field_it_explains();
     void the_colour_scale_is_clear_of_the_legend_the_bar_and_the_field();
     void the_field_bar_fits_a_narrow_viewport_and_names_the_channel_in_full();
+    void glare_in_the_photographs_can_be_seen_and_is_counted_where_it_misleads();
     void the_whole_image_can_be_brought_back_into_view_from_the_menu();
     void the_strain_channels_say_why_they_are_unavailable();
     void exporting_is_refused_with_a_reason_until_there_is_a_field();
@@ -1376,6 +1377,50 @@ void TestWorkspaceWalkthrough::the_field_bar_fits_a_narrow_viewport_and_names_th
              qPrintable(QStringLiteral("elided with room to spare: %1 px for a name "
                                        "%2 px long, in a %3 px viewport")
                             .arg(field.width()).arg(name).arg(viewport->width())));
+}
+
+void TestWorkspaceWalkthrough::glare_in_the_photographs_can_be_seen_and_is_counted_where_it_misleads()
+{
+    // The glare fixtures carry the same 250 block in both photographs, as
+    // glare from the lighting does while the specimen moves under it. Six
+    // points at its edge are mostly glare and still solve. The run report
+    // counts them and names the map that shows where they are; the map is
+    // offered, and when shown it states the count beside the field.
+    //
+    // Written red first (2026-10-10), on the bar not stating the count. The
+    // report line and the offered channel were built before this case and
+    // are covered by its first two assertions; with each removed in turn it
+    // fails on "does not count" and "is not offered".
+    MainWindow window;
+    window.resize(1600, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference_glare.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target_glare.tif"))});
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    const int mostly = window.lastResult().mostlyClipped;
+    QVERIFY2(mostly > 0, "the glare fixture produced no mostly clipped solved point");
+    const QString log = logView(&window)->toPlainText();
+    const QString name = fieldChannelName(FieldChannel::ClippedShare);
+    QVERIFY2(log.contains(QStringLiteral("%1 solved point(s) have more than half").arg(mostly)),
+             "the run report does not count the mostly clipped solved points");
+    QVERIFY2(log.contains(name), "the run report does not name the map that shows them");
+
+    auto *choice = fieldExplanationBar(viewport)->findChild<QComboBox *>();
+    const int index = choice->findText(name);
+    QVERIFY2(index >= 0, "the clipped share is not offered as a map");
+    choice->setCurrentIndex(index);
+    QVERIFY2(somethingOnScreenSays(viewport, QStringLiteral("%1 of the %2 solved points are "
+                                                            "more than half clipped")
+                                                 .arg(mostly)
+                                                 .arg(window.lastResult().converged)),
+             qPrintable(QStringLiteral("the bar does not state the count: ")
+                        + visibleText(fieldExplanationBar(viewport))));
 }
 
 void TestWorkspaceWalkthrough::the_whole_image_can_be_brought_back_into_view_from_the_menu()

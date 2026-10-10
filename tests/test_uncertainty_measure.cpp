@@ -74,10 +74,10 @@ CorrelationSettings baseSettings()
     return settings;
 }
 
-CorrelationResult runOn(const CorrelationSettings &settings, const QString &target)
+CorrelationResult runOn(const CorrelationSettings &settings, const QString &target,
+                        const QString &reference = QStringLiteral("shift_reference.tif"))
 {
-    CorrelationRunner runner(settings, RegionOfInterest(),
-                             fixture(QStringLiteral("shift_reference.tif")),
+    CorrelationRunner runner(settings, RegionOfInterest(), fixture(reference),
                              fixture(target));
 
     CorrelationResult result;
@@ -118,6 +118,8 @@ private slots:
     void conditioning_that_could_not_be_established_is_counted_not_hidden();
     void the_run_reports_the_image_noise_that_scaled_every_noise_floor();
     void neither_metric_is_reported_as_a_measurement_of_zero();
+    void a_subset_over_glare_in_the_reference_reports_how_much_of_it_was_clipped();
+    void glare_that_stays_put_while_the_specimen_moves_is_counted_among_the_solved();
 };
 
 void TestUncertaintyMeasure::every_solved_point_is_told_how_far_it_can_be_trusted()
@@ -278,6 +280,75 @@ void TestUncertaintyMeasure::neither_metric_is_reported_as_a_measurement_of_zero
             QVERIFY2(value > 0.f, "a noise floor was laid out as zero");
     }
     QVERIFY2(blanks > 0, "no point was left unmeasured, so nothing was checked");
+}
+
+void TestUncertaintyMeasure::a_subset_over_glare_in_the_reference_reports_how_much_of_it_was_clipped()
+{
+    // shift_reference_glare.tif is shift_reference.tif with x 150..199, y
+    // 40..79 painted 250: above the 245 the original reaches, so the brightest
+    // value the image holds, and deliberately NOT the 8-bit limit, so a rule
+    // judging against 255 finds no glare at all. Every other byte is the
+    // original's (checked when it was made, 2026-10-10). The block is wider
+    // than it is tall, so x and y swapped reads a different share.
+    const CorrelationResult result =
+        runOn(baseSettings(), QStringLiteral("shift_target.tif"),
+              QStringLiteral("shift_reference_glare.tif"));
+    QVERIFY(!result.points.isEmpty());
+
+    const CorrelationPoint *inGlare = nullptr;
+    const CorrelationPoint *farAway = nullptr;
+    for (const CorrelationPoint &point : result.points) {
+        // Of every point attempted, failed ones included.
+        QVERIFY2(point.clippedShareMeasured, "an attempted point has no clipped share");
+        if (qRound(point.x) == 174 && qRound(point.y) == 54)
+            inGlare = &point;
+        if (qRound(point.x) == 30 && qRound(point.y) == 138)
+            farAway = &point;
+    }
+    QVERIFY2(inGlare && farAway, "the grid no longer has points at (174, 54) and "
+                                 "(30, 138); choose two that sit in and far from "
+                                 "the block");
+
+    // (174, 54) with a radius of 16 covers x 158..190 and y 38..70: every
+    // column inside the block, and 31 of its 33 rows. Up to a row's worth more
+    // is allowed for original pixels at the image's darkest value.
+    const double expected = 31.0 / 33.0;
+    QVERIFY2(inGlare->clippedShare >= expected - 1e-6
+                 && inGlare->clippedShare <= expected + 33.0 / 1089.0,
+             qPrintable(QStringLiteral("clipped share in the glare was %1, expected "
+                                       "about %2").arg(inGlare->clippedShare).arg(expected)));
+    QVERIFY2(farAway->clippedShare < 0.05,
+             qPrintable(QStringLiteral("clipped share far from the glare was %1")
+                            .arg(farAway->clippedShare)));
+
+    // And the run's count is the count of SOLVED points more than half clipped.
+    int mostly = 0;
+    for (const CorrelationPoint &point : result.points)
+        if (point.converged && point.clippedShare > 0.5f)
+            mostly++;
+    QCOMPARE(result.mostlyClipped, mostly);
+}
+
+void TestUncertaintyMeasure::glare_that_stays_put_while_the_specimen_moves_is_counted_among_the_solved()
+{
+    // Glare belongs to the lighting, not the specimen, so it sits in the same
+    // place in both photographs while the pattern under it moves: here the
+    // shift target with the same block painted 250. Subsets at the block's
+    // edge keep enough pattern to converge while being mostly glare, which is
+    // the case that reads as a measurement, and the run counts them.
+    const CorrelationResult result =
+        runOn(baseSettings(), QStringLiteral("shift_target_glare.tif"),
+              QStringLiteral("shift_reference_glare.tif"));
+    // Six such points solved when this was written (2026-10-10), and five
+    // more failed; only the solved are counted.
+    int mostly = 0;
+    for (const CorrelationPoint &point : result.points) {
+        if (point.converged && point.clippedShare > 0.5f)
+            mostly++;
+    }
+    QVERIFY2(mostly > 0, "no solved point was mostly clipped, so this case cannot "
+                         "tell a count from no count");
+    QCOMPARE(result.mostlyClipped, mostly);
 }
 
 QTEST_MAIN(TestUncertaintyMeasure)

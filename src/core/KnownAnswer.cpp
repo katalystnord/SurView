@@ -105,7 +105,7 @@ KnownAnswer knownAnswerFromFile(const QString &groundTruthPath,
 bool knownAnswerCoversChannel(FieldChannel channel)
 {
     // A deformation says everything about what moved and nothing about how well
-    // it could be measured or by which pass, so the two reliability channels and
+    // it could be measured or by which pass, so the reliability channels and
     // the repair flag are outside what it can speak to.
     return !fieldChannelIsReliability(channel) && !fieldChannelIsFlag(channel);
 }
@@ -143,6 +143,7 @@ double statedValue(const KnownAnswer &answer, FieldChannel channel,
 
     case FieldChannel::NoiseFloor:
     case FieldChannel::MatchConditioning:
+    case FieldChannel::ClippedShare:
     case FieldChannel::RecoveredOnSecondPass:
         break;
     }

@@ -30,6 +30,7 @@ set(SURVIEW_UNIT_TESTS
     test_sequence_runner
     test_strain_fit
     test_spatial_resolution
+    test_clipping
     test_view_fit
     test_displacement_arrows
     test_grid_margin
