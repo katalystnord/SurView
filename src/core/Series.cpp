@@ -1,5 +1,7 @@
 #include "core/Series.h"
 
+#include <QTextStream>
+
 #include "core/Correlation.h"
 
 #include <QCoreApplication>
@@ -334,4 +336,118 @@ QVector<FieldSeriesChoice> offeredFieldSeries()
             fieldSeriesName(entry.first, entry.second), entry.first, entry.second});
     }
     return choices;
+}
+
+bool LineProbe::isValid() const
+{
+    return length() > 0.0;
+}
+
+double LineProbe::length() const
+{
+    return std::hypot(bx - ax, by - ay);
+}
+
+bool sampleChannelAt(const CorrelationResult &field, FieldChannel channel,
+                     double x, double y, double &value)
+{
+    if (fieldChannelIsFlag(channel))
+        return false;
+    if (field.step <= 0 || field.gridColumns <= 0 || field.gridRows <= 0)
+        return false;
+
+    const double cx = (x - double(field.originX)) / double(field.step);
+    const double cy = (y - double(field.originY)) / double(field.step);
+    if (cx < 0.0 || cy < 0.0
+        || cx > double(field.gridColumns - 1) || cy > double(field.gridRows - 1)) {
+        return false;
+    }
+
+    // As in sampleFieldAt(): a position on the far edge belongs to the last cell.
+    int column = int(std::floor(cx));
+    int row = int(std::floor(cy));
+    column = std::min(column, field.gridColumns - 2 >= 0 ? field.gridColumns - 2 : 0);
+    row = std::min(row, field.gridRows - 2 >= 0 ? field.gridRows - 2 : 0);
+
+    const CorrelationPoint *corner[4] = {
+        measuredAtCell(field, column, row), measuredAtCell(field, column + 1, row),
+        measuredAtCell(field, column, row + 1), measuredAtCell(field, column + 1, row + 1)};
+    for (const CorrelationPoint *point : corner) {
+        // ⚑ All four, and each carrying THIS channel. See the header.
+        if (!point || !pointHasChannel(*point, channel))
+            return false;
+    }
+
+    const double fx = cx - double(column);
+    const double fy = cy - double(row);
+    value = channelValue(*corner[0], channel) * (1.0 - fx) * (1.0 - fy)
+            + channelValue(*corner[1], channel) * fx * (1.0 - fy)
+            + channelValue(*corner[2], channel) * (1.0 - fx) * fy
+            + channelValue(*corner[3], channel) * fx * fy;
+    return true;
+}
+
+Series probeProfile(const LineProbe &probe, const CorrelationResult &field,
+                    FieldChannel channel, int frame)
+{
+    Series series;
+    series.axis = SeriesAxis::Distance;
+    series.quantity = fieldChannelName(channel);
+    series.unit = fieldChannelUnit(channel);
+    series.name = QObject::tr("%1 along %2, frame %3")
+                      .arg(series.quantity, probe.name)
+                      .arg(frame);
+
+    if (!probe.isValid() || fieldChannelIsFlag(channel) || field.step <= 0)
+        return series;
+
+    const double length = probe.length();
+    const QVector<QPointF> at = probeSamplePositions(probe, field.step);
+    series.points.reserve(at.size());
+    for (int i = 0; i < at.size(); i++) {
+        SeriesPoint point;
+        point.frame = frame;
+        point.distance = length * double(i) / double(at.size() - 1);
+        point.measured = sampleChannelAt(field, channel, at[i].x(), at[i].y(), point.value);
+        series.points.append(point);
+    }
+    return series;
+}
+
+QString seriesCsv(const Series &series)
+{
+    QString text;
+    QTextStream out(&text);
+    const bool along = series.axis == SeriesAxis::Distance;
+    out << "# " << series.name << '\n';
+    out << "# unit: " << series.unit << '\n';
+    out << (along ? "# a blank value is a place on the line the field could not be read, not a zero\n"
+                  : "# a blank value is a frame that could not be read, not a zero\n");
+    out << (along ? "distance_px,value\n" : "frame,value\n");
+    for (const SeriesPoint &point : series.points) {
+        if (along)
+            out << QString::number(point.distance, 'g', 9);
+        else
+            out << point.frame;
+        out << ',';
+        if (point.measured)
+            out << QString::number(point.value, 'g', 9);
+        out << '\n';
+    }
+    return text;
+}
+
+QVector<QPointF> probeSamplePositions(const LineProbe &probe, int step)
+{
+    QVector<QPointF> at;
+    if (!probe.isValid() || step <= 0)
+        return at;
+    const int intervals = std::max(1, int(std::ceil(probe.length() / double(step))));
+    at.reserve(intervals + 1);
+    for (int i = 0; i <= intervals; i++) {
+        const double t = double(i) / double(intervals);
+        at.append(QPointF(probe.ax + t * (probe.bx - probe.ax),
+                          probe.ay + t * (probe.by - probe.ay)));
+    }
+    return at;
 }

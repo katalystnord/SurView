@@ -162,6 +162,11 @@ private slots:
     // out. Both are the window's business rather than the viewport's or the
     // plot's, for the same reason every other export is.
     void onExtensometerPlaced(double ax, double ay, double bx, double by);
+    void onProbePlaced(double ax, double ay, double bx, double by);
+    // The frame and the map on screen, handed to the plot so the profile is
+    // always of the picture being looked at, and the probe redrawn for the
+    // grid it is sampled on.
+    void updateProfileContext();
     void exportPlotData();
     void clearExtensometers();
 
@@ -372,6 +377,7 @@ private:
     // that draws them or the panel that plots them, because they are part of
     // the session.
     QVector<Extensometer> m_gauges;
+    LineProbe m_probe;
     PlotPanel *m_plot = nullptr;
 
     // How each planned frame will be attributed, captured when the run starts
@@ -400,6 +406,7 @@ private:
     QAction *m_actStop = nullptr;
     QAction *m_actAddHole = nullptr;
     QAction *m_actExtensometer = nullptr;
+    QAction *m_actProbe = nullptr;
     QAction *m_actDefineRoi = nullptr;
     QAction *m_actAutoRoi = nullptr;
     QAction *m_actClearRoi = nullptr;

@@ -108,6 +108,14 @@ public:
     void cancelExtensometerPlacement();
     bool isPlacingExtensometer() const { return m_gaugePlacing; }
 
+    // A line probe is placed with the same two clicks. While placing, the bar
+    // asks for the line's ends rather than a gauge's anchors.
+    void beginProbePlacement();
+    // Draw the probe, with a tick at each place it is sampled for a grid of
+    // `step`. An invalid probe draws nothing.
+    void showProbe(const LineProbe &probe, int step);
+    int probeSamplesShown() const { return m_probeSamples.size(); }
+
     // Draw the gauges that exist, so a placed extensometer stays visible on
     // the picture it measures rather than only in the plot's legend.
     void showExtensometers(const QVector<Extensometer> &gauges);
@@ -229,6 +237,8 @@ signals:
     // draws it; the project owns it and gives it a name.
     void extensometerPlaced(double ax, double ay, double bx, double by);
     void extensometerPlacingChanged(bool placing);
+    // Both ends of a line probe have been placed, in image pixels.
+    void probePlaced(double ax, double ay, double bx, double by);
 
 protected:
     void showEvent(QShowEvent *event) override;
@@ -442,4 +452,11 @@ private:
     QPoint m_gaugeCursor;
     bool m_gaugeCursorValid = false;
     QVector<Extensometer> m_gaugesShown;
+    bool m_placingProbe = false;     // the two clicks are a probe, not a gauge
+    LineProbe m_probeShown;
+    QVector<QPointF> m_probeSamples;
+    vtkNew<vtkPolyData> m_probeGeometry;
+    vtkNew<vtkPolyDataMapper> m_probeMapper;
+    vtkNew<vtkActor> m_probeActor;
+    bool m_probeActorAdded = false;
 };

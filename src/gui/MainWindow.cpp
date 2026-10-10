@@ -186,6 +186,9 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_viewport, &ImageViewport::holeDrawn, this, &MainWindow::onHoleDrawn);
     connect(m_viewport, &ImageViewport::extensometerPlaced, this,
             &MainWindow::onExtensometerPlaced);
+    connect(m_viewport, &ImageViewport::probePlaced, this, &MainWindow::onProbePlaced);
+    connect(m_viewport, &ImageViewport::fieldChannelChanged, this,
+            [this](FieldChannel) { updateProfileContext(); });
     connect(m_viewport, &ImageViewport::extensometerPlacingChanged, this,
             [this](bool) { updateActionStates(); });
     connect(m_viewport, &ImageViewport::openExampleRequested, this, [this] {
@@ -295,6 +298,32 @@ void MainWindow::createActions()
            "is plotted against frame"));
     connect(m_actExtensometer, &QAction::triggered, this,
             [this] { m_viewport->beginExtensometerPlacement(); });
+
+    // A line with a tick at each sample, which is what is drawn on the image.
+    QPixmap probeIcon(20, 20);
+    probeIcon.fill(Qt::transparent);
+    {
+        QPainter paint(&probeIcon);
+        paint.setRenderHint(QPainter::Antialiasing);
+        const QColor ink = palette().color(QPalette::WindowText);
+        paint.setPen(QPen(ink, 1.6));
+        paint.drawLine(3, 15, 17, 5);
+        paint.setPen(QPen(ink, 1.2));
+        for (int i = 0; i <= 3; i++) {
+            const double x = 3.0 + 14.0 * i / 3.0;
+            const double y = 15.0 - 10.0 * i / 3.0;
+            paint.drawLine(QPointF(x - 1.7, y - 2.4), QPointF(x + 1.7, y + 2.4));
+        }
+    }
+
+    m_actProbe = new QAction(QIcon(probeIcon), tr("Line Probe"), this);
+    m_actProbe->setStatusTip(
+        tr("Draw a line on the specimen and plot the map on screen along it"));
+    m_actProbe->setToolTip(
+        tr("Line probe: two clicks draw a line, and the Plot panel shows the map "
+           "on screen along it, for the frame on screen"));
+    connect(m_actProbe, &QAction::triggered, this,
+            [this] { m_viewport->beginProbePlacement(); });
 
     m_actDefineRoi = new QAction(
         style()->standardIcon(QStyle::SP_FileDialogDetailedView), tr("Define ROI"), this);
@@ -449,6 +478,7 @@ void MainWindow::createToolBar()
     toolbar->addAction(m_actStop);
     toolbar->addSeparator();
     toolbar->addAction(m_actExtensometer);
+    toolbar->addAction(m_actProbe);
     toolbar->addAction(m_actCompare);
 }
 
@@ -508,6 +538,7 @@ Project MainWindow::currentProject() const
     project.settings = currentSettings();
     project.referenceUpdate = currentReferencePolicy();
     project.extensometers = m_gauges;
+    project.probe = m_probe;
     return project;
 }
 
@@ -558,6 +589,8 @@ void MainWindow::newProject()
     m_frames.clear();
     m_plannedFrames.clear();
     m_gauges.clear();
+    m_probe = LineProbe();
+    m_viewport->showProbe(m_probe, 0);
     m_displayedFrame = -1;
     m_result = CorrelationResult();
     m_hasResult = false;
@@ -608,6 +641,8 @@ bool MainWindow::openProjectFrom(const QString &path)
     applySettings(loaded.project.settings, loaded.project.referenceUpdate);
     m_gauges = loaded.project.extensometers;
     m_viewport->showExtensometers(m_gauges);
+    m_probe = loaded.project.probe;
+    m_plot->setProbe(m_probe);
     updatePlot();
     if (!loaded.project.referencePath.isEmpty())
         openReferenceImage(loaded.project.referencePath);
@@ -1399,6 +1434,50 @@ void MainWindow::onExtensometerPlaced(double ax, double ay, double bx, double by
     }
 }
 
+void MainWindow::onProbePlaced(double ax, double ay, double bx, double by)
+{
+    LineProbe probe;
+    // One probe at a time, named so the plot and the log can refer to it.
+    // Placing another replaces it: a profile is read, compared, and redrawn,
+    // where gauges are kept and plotted side by side.
+    probe.name = tr("P");
+    probe.ax = ax;
+    probe.ay = ay;
+    probe.bx = bx;
+    probe.by = by;
+    if (!probe.isValid()) {
+        log(tr("A line probe needs two different points; that one had no length "
+               "and was discarded."));
+        return;
+    }
+
+    m_probe = probe;
+    m_plot->setProbe(m_probe);
+    updateProfileContext();
+    m_plot->showProfile();
+
+    const int step = m_hasResult ? m_result.step : m_gridStep->value();
+    log(tr("Placed line probe %1: (%2, %3) to (%4, %5), %6 px long, read every "
+           "%7 px or closer.")
+            .arg(probe.name)
+            .arg(ax, 0, 'f', 0)
+            .arg(ay, 0, 'f', 0)
+            .arg(bx, 0, 'f', 0)
+            .arg(by, 0, 'f', 0)
+            .arg(probe.length(), 0, 'f', 1)
+            .arg(step));
+    if (!m_hasResult)
+        log(tr("  It will read once a field has been measured."));
+}
+
+void MainWindow::updateProfileContext()
+{
+    const int step = m_hasResult ? m_result.step : m_gridStep->value();
+    m_viewport->showProbe(m_probe, step);
+    if (m_plot)
+        m_plot->setProfileContext(std::max(0, m_displayedFrame), m_viewport->fieldChannel());
+}
+
 void MainWindow::onHoleDrawn(const QVector<QPoint> &ring)
 {
     if (!m_roi.isValid() || ring.size() < 3)
@@ -1459,21 +1538,9 @@ void MainWindow::exportPlotData()
     }
 
     QTextStream out(&file);
-    out << "# " << series.name << '\n';
-    out << "# unit: " << series.unit << '\n';
-    // ⚑ Every frame gets a row, including the ones with no reading, whose value
-    // cell is EMPTY rather than zero. A curve exported with its gaps closed up
-    // is a curve whose missing frames become invisible the moment it leaves
-    // this application, and a zero on a loading curve reads as the specimen
-    // springing back.
-    out << "# a blank value is a frame that could not be read, not a zero\n";
-    out << "frame,value\n";
-    for (const SeriesPoint &point : series.points) {
-        out << point.frame << ',';
-        if (point.measured)
-            out << QString::number(point.value, 'g', 9);
-        out << '\n';
-    }
+    // ⚑ Every reading gets a row, including the ones that do not exist, whose
+    // value cell is EMPTY rather than zero; see seriesCsv().
+    out << seriesCsv(series);
     out.flush();
     if (file.error() != QFileDevice::NoError) {
         QMessageBox::warning(this, tr("Could not finish writing"),
@@ -1482,7 +1549,9 @@ void MainWindow::exportPlotData()
     }
     file.close();
 
-    log(tr("Wrote %1 to %2 (%3 of %4 frames readable).")
+    log((series.axis == SeriesAxis::Distance
+             ? tr("Wrote %1 to %2 (%3 of %4 samples readable).")
+             : tr("Wrote %1 to %2 (%3 of %4 frames readable)."))
             .arg(series.name, path)
             .arg(series.measuredCount())
             .arg(series.points.size()));
@@ -1946,6 +2015,7 @@ void MainWindow::displayFrame(int frame)
     m_displayedFrame = frame;
     m_result = m_frames.at(frame).result;
     m_hasResult = m_result.converged > 0;
+    updateProfileContext();
 
     if (m_hasResult)
         m_viewport->showField(m_result);

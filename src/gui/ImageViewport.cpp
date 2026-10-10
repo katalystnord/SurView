@@ -737,15 +737,35 @@ void ImageViewport::updateGaugeBar()
         return;
 
     m_gaugeUndo->setEnabled(!m_gaugeAnchors.isEmpty());
-    m_gaugeBarText->setText(
-        m_gaugeAnchors.isEmpty()
-            ? tr("Virtual extensometer: click the FIRST point on the specimen. "
-                 "It measures how the distance between two points changes over "
-                 "the sequence, which is how a loading curve is read.")
-            : tr("Now click the SECOND point. Put both on well-correlated "
-                 "speckle: a gauge reads nothing on a frame where the field has "
-                 "a gap under either anchor."));
+    if (m_placingProbe) {
+        m_gaugeBarText->setText(
+            m_gaugeAnchors.isEmpty()
+                ? tr("Line probe: click the START of the line on the specimen. "
+                     "The map on screen is plotted along it, in the Plot panel, "
+                     "for the frame on screen.")
+                : tr("Now click the END of the line. Where the field has a gap "
+                     "under it, the profile has a gap too."));
+    } else {
+        m_gaugeBarText->setText(
+            m_gaugeAnchors.isEmpty()
+                ? tr("Virtual extensometer: click the FIRST point on the specimen. "
+                     "It measures how the distance between two points changes over "
+                     "the sequence, which is how a loading curve is read.")
+                : tr("Now click the SECOND point. Put both on well-correlated "
+                     "speckle: a gauge reads nothing on a frame where the field has "
+                     "a gap under either anchor."));
+    }
     positionGaugeBar();
+}
+
+void ImageViewport::beginProbePlacement()
+{
+    if (!m_hasImage || m_gaugePlacing)
+        return;
+    // The same two-click gesture as a gauge, told apart only by what the
+    // second click hands over and what the bar asks for.
+    m_placingProbe = true;
+    beginExtensometerPlacement();
 }
 
 void ImageViewport::beginExtensometerPlacement()
@@ -774,6 +794,7 @@ void ImageViewport::cancelExtensometerPlacement()
     if (!m_gaugePlacing)
         return;
     m_gaugePlacing = false;
+    m_placingProbe = false;
     m_gaugeAnchors.clear();
     m_gaugeCursorValid = false;
     if (m_gaugeBar)
@@ -1134,19 +1155,27 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
                 if (a == b) {
                     m_gaugeAnchors.removeLast();
                     m_gaugeBarText->setText(
-                        tr("Both anchors landed on the same pixel, so the gauge "
-                           "would have no length. Click a second point further "
-                           "away."));
+                        m_placingProbe
+                            ? tr("Both ends landed on the same pixel, so the line "
+                                 "would have no length. Click the end further away.")
+                            : tr("Both anchors landed on the same pixel, so the gauge "
+                                 "would have no length. Click a second point further "
+                                 "away."));
                     refreshGaugeGeometry();
                     event->accept();
                     return;
                 }
+                const bool probe = m_placingProbe;
                 m_gaugePlacing = false;
+                m_placingProbe = false;
                 m_gaugeAnchors.clear();
                 m_gaugeCursorValid = false;
                 m_gaugeBar->hide();
                 unsetCursor();
-                emit extensometerPlaced(a.x(), a.y(), b.x(), b.y());
+                if (probe)
+                    emit probePlaced(a.x(), a.y(), b.x(), b.y());
+                else
+                    emit extensometerPlaced(a.x(), a.y(), b.x(), b.y());
                 emit extensometerPlacingChanged(false);
                 event->accept();
                 return;
@@ -2404,6 +2433,62 @@ void ImageViewport::refreshCautions()
         m_renderer->AddActor(m_cautionHalo);
         m_renderer->AddActor(m_cautionActor);
         m_cautionActorAdded = true;
+    }
+    m_renderWindow->Render();
+}
+
+void ImageViewport::showProbe(const LineProbe &probe, int step)
+{
+    m_probeShown = probe;
+    m_probeSamples = probeSamplePositions(probe, step);
+
+    if (!probe.isValid()) {
+        if (m_probeActorAdded) {
+            m_renderer->RemoveActor(m_probeActor);
+            m_probeActorAdded = false;
+        }
+        m_renderWindow->Render();
+        return;
+    }
+
+    // With the gauges, nearer the camera than the region.
+    constexpr double kDepth = -0.25;
+    vtkNew<vtkPoints> points;
+    vtkNew<vtkCellArray> lines;
+    auto segment = [&](double x0, double y0, double x1, double y1) {
+        const vtkIdType ends[2] = {points->InsertNextPoint(x0, y0, kDepth),
+                                   points->InsertNextPoint(x1, y1, kDepth)};
+        lines->InsertNextCell(2, ends);
+    };
+    segment(probe.ax, probe.ay, probe.bx, probe.by);
+
+    // A tick across the line at every sample, so the sampling a profile is made
+    // of is on the picture rather than only in the plot's note. Sized to the
+    // grid, the spacing it follows.
+    const double length = probe.length();
+    const double nx = -(probe.by - probe.ay) / length;
+    const double ny = (probe.bx - probe.ax) / length;
+    const double half = 0.3 * std::max(1, step);
+    for (const QPointF &at : m_probeSamples)
+        segment(at.x() - half * nx, at.y() - half * ny, at.x() + half * nx, at.y() + half * ny);
+    // And a longer one at the start, so which way the profile runs is visible.
+    segment(probe.ax - 2.0 * half * nx, probe.ay - 2.0 * half * ny,
+            probe.ax + 2.0 * half * nx, probe.ay + 2.0 * half * ny);
+
+    m_probeGeometry->SetPoints(points);
+    m_probeGeometry->SetLines(lines);
+    m_probeGeometry->Modified();
+    m_probeMapper->SetInputData(m_probeGeometry);
+    m_probeMapper->ScalarVisibilityOff();
+    m_probeActor->SetMapper(m_probeMapper);
+    // Magenta: not the region's green, the gauges' cyan or the amber of
+    // anything still being placed.
+    m_probeActor->GetProperty()->SetColor(1.0, 0.42, 0.86);
+    m_probeActor->GetProperty()->SetLineWidth(2.0);
+    m_probeActor->GetProperty()->SetLighting(false);
+    if (!m_probeActorAdded) {
+        m_renderer->AddActor(m_probeActor);
+        m_probeActorAdded = true;
     }
     m_renderWindow->Render();
 }

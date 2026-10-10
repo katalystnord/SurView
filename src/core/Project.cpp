@@ -151,6 +151,16 @@ QString saveProject(const QString &path, const Project &project)
     }
     root[QStringLiteral("extensometers")] = gauges;
 
+    if (project.probe.isValid()) {
+        QJsonObject probe;
+        probe[QStringLiteral("name")] = project.probe.name;
+        probe[QStringLiteral("ax")] = project.probe.ax;
+        probe[QStringLiteral("ay")] = project.probe.ay;
+        probe[QStringLiteral("bx")] = project.probe.bx;
+        probe[QStringLiteral("by")] = project.probe.by;
+        root[QStringLiteral("lineProbe")] = probe;
+    }
+
     QFile file(path);
     if (!file.open(QIODevice::WriteOnly | QIODevice::Text)) {
         return QObject::tr("Could not write %1: %2.").arg(name, file.errorString());
@@ -279,6 +289,21 @@ ProjectLoad loadProject(const QString &path)
             out.project.extensometers.append(gauge);
     }
     p.percentile = policy[QStringLiteral("percentile")].toDouble(p.percentile);
+
+    // Absent from a file written before probes existed, which then opens with
+    // none; and a probe of no length, which only an edited file can hold, costs
+    // the probe rather than the session.
+    const QJsonObject probe = root[QStringLiteral("lineProbe")].toObject();
+    if (!probe.isEmpty()) {
+        LineProbe read;
+        read.name = probe[QStringLiteral("name")].toString();
+        read.ax = probe[QStringLiteral("ax")].toDouble();
+        read.ay = probe[QStringLiteral("ay")].toDouble();
+        read.bx = probe[QStringLiteral("bx")].toDouble();
+        read.by = probe[QStringLiteral("by")].toDouble();
+        if (read.isValid())
+            out.project.probe = read;
+    }
 
     return out;
 }

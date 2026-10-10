@@ -107,6 +107,30 @@ void takeOutPointAt(CorrelationResult &field, float x, float y)
     }
 }
 
+// A field that varies differently along x and y, in u and in v, so a profile
+// that swapped axes, components or the direction of travel reads different
+// numbers: u = 0.1 x + 0.02 y, v = -0.03 x.
+CorrelationResult slopedField()
+{
+    CorrelationResult result = uniformField(4, 3, 10, 0.f, 0.f);
+    for (CorrelationPoint &point : result.points) {
+        point.u = 0.1f * point.x + 0.02f * point.y;
+        point.v = -0.03f * point.x;
+    }
+    return result;
+}
+
+LineProbe probeFrom(double ax, double ay, double bx, double by)
+{
+    LineProbe probe;
+    probe.name = QStringLiteral("P");
+    probe.ax = ax;
+    probe.ay = ay;
+    probe.bx = bx;
+    probe.by = by;
+    return probe;
+}
+
 }  // namespace
 
 class TestSeries : public QObject
@@ -120,6 +144,16 @@ private slots:
     void a_reading_with_any_of_its_four_corners_unmeasured_is_no_reading();
     void a_reading_outside_the_measured_grid_is_no_reading();
     void each_of_a_cells_four_corners_is_required_on_its_own();
+
+    // the line probe
+    void a_profile_reads_the_field_where_the_line_runs();
+    void a_profile_along_a_diagonal_is_spaced_along_its_own_length();
+    void a_hole_under_the_line_is_a_gap_not_a_zero();
+    void every_corner_of_a_cell_is_required_for_any_channel();
+    void a_strain_profile_reads_only_where_strain_was_fitted();
+    void a_flag_is_not_read_along_a_line();
+    void a_probe_of_no_length_is_refused();
+    void a_series_leaves_as_a_table_with_its_gaps_and_its_own_axis();
 
     // the extensometer
     void an_extensometer_on_an_undeformed_field_reads_no_strain();
@@ -878,6 +912,152 @@ void TestSeries::each_of_a_cells_four_corners_is_required_on_its_own()
         // reads perfectly well, so the rule costs only what it must.
         QVERIFY2(sampleFieldAt(field, 45.0, 45.0).measured, corner.corner);
     }
+}
+
+// The line probe. NEGATIVE CHECKS (2026-10-10), each red: corners judged on
+// convergence alone, so strain read where it was never fitted; three corners
+// checked instead of four (red only once every corner was taken out in turn);
+// x and y swapped along the line; samples sparser than a grid step; the far
+// end dropped; a gap dropped rather than kept; a flag interpolated.
+void TestSeries::a_profile_reads_the_field_where_the_line_runs()
+{
+    // Along y = 5 from x 0 to 30: one sample per grid step, both ends included.
+    const Series profile = probeProfile(probeFrom(0, 5, 30, 5), slopedField(),
+                                        FieldChannel::DisplacementX, 2);
+    QCOMPARE(profile.axis, SeriesAxis::Distance);
+    QCOMPARE(profile.points.size(), 4);
+    const double expected[] = {0.1, 1.1, 2.1, 3.1};
+    for (int i = 0; i < 4; i++) {
+        QVERIFY(profile.points[i].measured);
+        QCOMPARE(profile.points[i].distance, 10.0 * i);
+        QVERIFY2(std::abs(profile.points[i].value - expected[i]) < 1e-5,
+                 qPrintable(QStringLiteral("at %1 px read %2, expected %3")
+                                .arg(10 * i).arg(profile.points[i].value).arg(expected[i])));
+    }
+    QCOMPARE(profile.name, QStringLiteral("Displacement u (x) along P, frame 2"));
+    QCOMPARE(profile.unit, QStringLiteral("px"));
+}
+
+void TestSeries::a_profile_along_a_diagonal_is_spaced_along_its_own_length()
+{
+    // (0, 0) to (30, 20): 36.06 px long, so five samples 9.01 px apart -- never
+    // further apart than a grid step, and the last exactly at the far end.
+    const Series profile = probeFrom(0, 0, 30, 20).isValid()
+                               ? probeProfile(probeFrom(0, 0, 30, 20), slopedField(),
+                                              FieldChannel::DisplacementY, 1)
+                               : Series();
+    const double length = std::hypot(30.0, 20.0);
+    QCOMPARE(profile.points.size(), 5);
+    for (int i = 0; i < 5; i++) {
+        const double along = length * i / 4.0;
+        QVERIFY(std::abs(profile.points[i].distance - along) < 1e-9);
+        // v = -0.03 x, and x runs from 0 to 30 along the line.
+        const double x = 30.0 * i / 4.0;
+        QVERIFY2(std::abs(profile.points[i].value - (-0.03 * x)) < 1e-5,
+                 qPrintable(QStringLiteral("sample %1 read %2").arg(i).arg(profile.points[i].value)));
+    }
+}
+
+void TestSeries::a_hole_under_the_line_is_a_gap_not_a_zero()
+{
+    // The point at (10, 0) is gone, so the two cells beside it along y = 5 have
+    // no reading; the samples at x 0, 10 and 20 sit in or on those cells.
+    CorrelationResult field = slopedField();
+    takeOutPointAt(field, 10.f, 0.f);
+    const Series profile = probeProfile(probeFrom(0, 5, 30, 5), field,
+                                        FieldChannel::DisplacementX, 1);
+    QCOMPARE(profile.points.size(), 4);
+    QVERIFY(!profile.points[0].measured);
+    QVERIFY(!profile.points[1].measured);
+    QVERIFY2(profile.points[2].measured && profile.points[3].measured,
+             "a sample clear of the hole lost its reading");
+    QCOMPARE(profile.measuredCount(), 2);
+}
+
+void TestSeries::every_corner_of_a_cell_is_required_for_any_channel()
+{
+    // The cell from (10, 0) to (20, 10), read at its middle. Each of its four
+    // corners taken out in turn must cost the reading, for a strain channel as
+    // much as for displacement -- a rule that checked three would pass a hole
+    // in the fourth.
+    for (const QPointF corner : {QPointF(10, 0), QPointF(20, 0), QPointF(10, 10),
+                                 QPointF(20, 10)}) {
+        CorrelationResult field = slopedField();
+        for (CorrelationPoint &point : field.points) {
+            point.strainFitted = true;
+            if (qFuzzyCompare(point.x, float(corner.x()))
+                && qFuzzyCompare(point.y + 1.f, float(corner.y()) + 1.f))
+                point.strainFitted = false;
+        }
+        double value = 0.0;
+        QVERIFY2(!sampleChannelAt(field, FieldChannel::StrainXX, 15.0, 5.0, value),
+                 qPrintable(QStringLiteral("strain read with its corner at (%1, %2) unfitted")
+                                .arg(corner.x()).arg(corner.y())));
+        QVERIFY(sampleChannelAt(field, FieldChannel::DisplacementX, 15.0, 5.0, value));
+    }
+}
+
+void TestSeries::a_strain_profile_reads_only_where_strain_was_fitted()
+{
+    // Strain is fitted separately and declines on its own terms: a point whose
+    // displacement was measured but whose strain was not breaks the strain
+    // profile and leaves the displacement profile whole.
+    CorrelationResult field = slopedField();
+    for (CorrelationPoint &point : field.points) {
+        point.exx = 0.005f;
+        point.strainFitted = true;
+    }
+    for (CorrelationPoint &point : field.points)
+        if (qFuzzyCompare(point.x, 30.f) && qFuzzyIsNull(point.y))
+            point.strainFitted = false;
+
+    const LineProbe probe = probeFrom(0, 5, 30, 5);
+    const Series strain = probeProfile(probe, field, FieldChannel::StrainXX, 1);
+    const Series moved = probeProfile(probe, field, FieldChannel::DisplacementX, 1);
+    QVERIFY(strain.points[0].measured);
+    QVERIFY(std::abs(strain.points[0].value - 0.005) < 1e-7);   // stored as a float
+    QVERIFY2(!strain.points[3].measured, "strain read where it was never fitted");
+    QVERIFY(moved.points[3].measured);
+}
+
+void TestSeries::a_flag_is_not_read_along_a_line()
+{
+    // Halfway between a repaired point and a first-solve one is not "half
+    // repaired". A two-state channel has nothing to interpolate.
+    const Series profile = probeProfile(probeFrom(0, 5, 30, 5), slopedField(),
+                                        FieldChannel::RecoveredOnSecondPass, 1);
+    QVERIFY(profile.points.isEmpty());
+}
+
+void TestSeries::a_probe_of_no_length_is_refused()
+{
+    QVERIFY(!probeFrom(12, 7, 12, 7).isValid());
+    QVERIFY(probeProfile(probeFrom(12, 7, 12, 7), slopedField(),
+                         FieldChannel::DisplacementX, 1).points.isEmpty());
+}
+
+void TestSeries::a_series_leaves_as_a_table_with_its_gaps_and_its_own_axis()
+{
+    // A profile is written against distance, a series against frame; and a
+    // sample with no reading is an empty cell, never a zero.
+    CorrelationResult field = slopedField();
+    takeOutPointAt(field, 10.f, 0.f);
+    const QString profile = seriesCsv(probeProfile(probeFrom(0, 5, 30, 5), field,
+                                                   FieldChannel::DisplacementX, 1));
+    const QStringList lines = profile.split(QLatin1Char('\n'), Qt::SkipEmptyParts);
+    QVERIFY2(lines.contains(QStringLiteral("distance_px,value")), qPrintable(profile));
+    QVERIFY2(lines.contains(QStringLiteral("0,")), qPrintable(profile));
+    // The last row is the far end, 30 px along, reading u = 3.1 (as a float).
+    QVERIFY2(lines.last().startsWith(QStringLiteral("30,3.")), qPrintable(profile));
+    QVERIFY2(std::abs(lines.last().section(QLatin1Char(','), 1).toDouble() - 3.1) < 1e-5,
+             qPrintable(profile));
+
+    Extensometer gauge;
+    gauge.name = QStringLiteral("E1");
+    gauge.bx = 20.0;
+    const QString series = seriesCsv(extensometerSeries(gauge, {uniformField(4, 3, 10, 0.f, 0.f)},
+                                                        ExtensometerQuantity::Strain));
+    QVERIFY2(series.contains(QStringLiteral("frame,value")), qPrintable(series));
 }
 
 QTEST_MAIN(TestSeries)

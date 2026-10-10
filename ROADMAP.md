@@ -43,8 +43,7 @@ the idiom of the field, and these are what we do not have yet:
   .dmg needs signing and notarisation).
 - **Stereo and 3D.** VIC-3D, GOM and MatchID measure out-of-plane. The engine
   can; the application has no path to it.
-- **A line probe.** We plot against frame and have virtual extensometers;
-  reading a quantity along a line at one frame is still missing.
+- ~~**A line probe.**~~ Built 2026-10-10: Line Probe on the toolbar.
 - **Image acquisition.** iCorrVision has a frame grabber and drives the
   camera. Out of scope for now, noted because it is a real difference.
 - **Export styling.** pyALDIC has a preview tab for colour map, fonts and
@@ -454,6 +453,11 @@ a design pass first.
      every line now.
 
 
+- **The plot's axis titles are clipped in a short Plot panel.** Seen
+  2026-10-10 at a 1300 x 900 window: the y title reads "placement magnitu"
+  and the x title is cut through its middle. The chart's borders are fixed
+  pixels (`SetBorders(66, 44, ...)`); they want sizing from the fonts, or the
+  titles shortening when the panel is short.
 - ~~**The axes legend covers the lowest labels of the colour scale**~~ DONE
   2026-10-10. The scale stood at fixed fractions of the viewport, the corner
   the legend owns, and the image fit knew about neither. `placeScaleBar()` in
@@ -706,11 +710,17 @@ Understood well enough to start, large enough to need their own care.
   careful to keep visible everywhere else, so the flat map has to stay one
   gesture away rather than being replaced.
 
-- **A line probe.** Plots over the sequence and virtual extensometers exist now;
-  what is still missing is reading a quantity ALONG a line at one frame, which
-  is the other half of what commercial tools offer. The sampling it needs is
-  already built (`sampleFieldAt()` in `core/Series.h`), so this is a chart and a
-  placement mode rather than new arithmetic.
+- ~~**A line probe.**~~ DONE 2026-10-10. Line Probe on the toolbar: two clicks
+  draw a line, and the Plot panel shows the map on screen along it, for the
+  frame on screen, following either when it changes (`probeProfile()` in
+  `core/Series.h`). Sampled one grid step apart or closer, both ends included,
+  each sample interpolated from the four grid points around it; the line carries
+  a tick at every sample, from the same function the profile uses. ⚑ Any of
+  the four not carrying the CHANNEL -- not merely unconverged: strain the fit
+  declined, a noise floor never established -- makes a gap, not a value, and a
+  two-state map has nothing between its states to read. Saved with the session;
+  "Save plot data" writes it against `distance_px`. One probe at a time:
+  placing another replaces it.
 
 - **Registering a second image of the same specimen through its own speckle.**
   A general capability, arrived at from a specific case: reading a colour

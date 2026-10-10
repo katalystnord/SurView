@@ -2,6 +2,7 @@
 
 #include "core/FieldLayout.h"
 
+#include <QPointF>
 #include <QString>
 #include <QVector>
 
@@ -101,9 +102,20 @@ enum class ExtensometerQuantity
 QString extensometerQuantityName(ExtensometerQuantity quantity);
 QString extensometerQuantityUnit(ExtensometerQuantity quantity);
 
+// What a series runs along: frames of a sequence, or distance along a line.
+enum class SeriesAxis
+{
+    Frame,
+    Distance,
+};
+
 // One reading, on one frame.
 struct SeriesPoint
 {
+    // Along a line probe, how far from its start, in reference-image pixels.
+    // Meaningless on a series over frames.
+    double distance = 0.0;
+
     // ⚑ ONE-BASED, because that is what the project tree and the run log call
     // the same frame. Left as the zero-based index it comes from, a chart would
     // put the first target at "frame 0" while every other part of the window
@@ -133,6 +145,7 @@ struct Series
     QString quantity;
 
     QString unit;
+    SeriesAxis axis = SeriesAxis::Frame;
     QVector<SeriesPoint> points;
 
     // How many frames actually produced a reading. Reported rather than left to
@@ -141,6 +154,55 @@ struct Series
     int measuredCount() const;
     bool isEmpty() const { return points.isEmpty(); }
 };
+
+// A line on the specimen along which the map on screen is read, in
+// reference-image pixels: the other half of what a loading curve gives, a
+// quantity ALONG the specimen at one frame rather than at one place over all
+// of them.
+struct LineProbe
+{
+    QString name;
+    double ax = 0.0;
+    double ay = 0.0;
+    double bx = 0.0;
+    double by = 0.0;
+
+    // A line of no length has nowhere to read along.
+    bool isValid() const;
+    double length() const;
+};
+
+// Any channel at a place the grid does not have a point, interpolated
+// bilinearly from the four grid points around it. ⚑ All four must CARRY the
+// channel, which for strain means the fit succeeded there and for the noise
+// floor that it was established, not merely that the point converged: the
+// same all-or-nothing rule sampleFieldAt() keeps, for the same reasons.
+// False, with `value` untouched, where there is no reading; always false for a
+// flag, which has two states and nothing between them to interpolate.
+bool sampleChannelAt(const CorrelationResult &field, FieldChannel channel,
+                     double x, double y, double &value);
+
+// The channel along the probe, on one field. Sampled evenly from end to end,
+// both ends included, never further apart than one grid step: the field holds
+// one measurement per grid step, so denser sampling would only draw the
+// interpolation more finely, and sparser would step over measurements.
+//
+// ⚑ A HOLE IS A GAP. A sample with no reading is kept, unmeasured, so the
+// profile breaks where the field does rather than bridging the hole with a
+// straight line nobody measured. `frame` is one-based, for the name only.
+Series probeProfile(const LineProbe &probe, const CorrelationResult &field,
+                    FieldChannel channel, int frame);
+
+// The series as a table: comment lines naming it and its unit, then a header
+// and one row per reading, against frame or against distance along the line as
+// the series runs. ⚑ A reading that does not exist is an EMPTY cell, never a
+// zero: a curve exported with its gaps closed up loses them the moment it
+// leaves this application, and a zero reads as a measurement.
+QString seriesCsv(const Series &series);
+
+// Where along the probe those samples are taken, in image pixels, for a grid of
+// `step`: one source, so the ticks drawn on the line are the samples plotted.
+QVector<QPointF> probeSamplePositions(const LineProbe &probe, int step);
 
 Series extensometerSeries(const Extensometer &gauge,
                           const QVector<CorrelationResult> &frames,

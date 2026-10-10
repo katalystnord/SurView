@@ -1628,6 +1628,20 @@ part4_body = """
     </figcaption>
   </figure>
 
+  <h2>A profile along a line</h2>
+  <p>
+    The extensometer reads one place across every frame. The
+    <strong>line probe</strong> reads the other way: one frame, along a
+    line. Two clicks draw it, and the Plot panel shows whichever map is on
+    screen along it, for the frame on screen - switch the map or the frame
+    and the profile follows. The line carries a tick at every sample, one
+    per grid step or closer, because that is how densely the field was
+    measured: each sample is interpolated from the four grid points around
+    it, and where any of those four was not measured the profile has a gap,
+    not a value. A map with two states, such as the second-pass map, has
+    nothing between its states to read, and the panel says so.
+  </p>
+
   <h1 id="leaving-the-application">13. The field leaving the application</h1>
   <p class="lede">
     A result rarely stays where it was produced. It gets opened in
@@ -2095,6 +2109,7 @@ appendix_body = """
       <tr><td>See which measured points carry a caution, and how many</td><td>Field bar over the image: <strong>Cautions</strong></td></tr>
       <tr><td>Bring the whole image back after zooming</td><td>View menu: <strong>Fit Image to Window</strong> (Ctrl+0)</td></tr>
       <tr><td>Place a virtual extensometer</td><td>Toolbar: <strong>Extensometer</strong>, then two clicks on the specimen</td></tr>
+      <tr><td>Plot the map on screen along a line</td><td>Toolbar: <strong>Line Probe</strong>, then two clicks on the specimen</td></tr>
       <tr><td>Plot a quantity against frame</td><td><strong>Plot</strong> panel</td></tr>
       <tr><td>See provenance for an imported image</td><td><strong>Record</strong> panel</td></tr>
       <tr><td>Export a field</td><td>File menu: <code>.vtu</code> for ParaView and FreeCAD, or <code>.csv</code></td></tr>

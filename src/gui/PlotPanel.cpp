@@ -35,6 +35,7 @@ struct PlotChoice
 {
     int fieldIndex = -1;       // into offeredFieldSeries(), or -1
     int gaugeIndex = -1;       // into the gauge list, or -1
+    bool profile = false;      // the line probe's profile
     ExtensometerQuantity quantity = ExtensometerQuantity::Strain;
 };
 
@@ -113,12 +114,51 @@ void PlotPanel::setExtensometers(const QVector<Extensometer> &gauges)
     updateNote();
 }
 
+void PlotPanel::setProbe(const LineProbe &probe)
+{
+    m_probe = probe;
+    rebuildChoices();
+    redraw();
+    updateNote();
+}
+
+void PlotPanel::setProfileContext(int frameIndex, FieldChannel channel)
+{
+    m_profileFrame = frameIndex;
+    m_profileChannel = channel;
+    redraw();
+    updateNote();
+}
+
+void PlotPanel::showProfile()
+{
+    for (int i = 0; i < m_choice->count(); i++) {
+        if (m_choice->itemData(i).value<PlotChoice>().profile) {
+            m_choice->setCurrentIndex(i);
+            break;
+        }
+    }
+    redraw();
+    updateNote();
+}
+
 void PlotPanel::rebuildChoices()
 {
     const QVariant kept = m_choice->currentData();
+    const bool keptProfile = kept.isValid() && kept.value<PlotChoice>().profile;
 
     QSignalBlocker blocked(m_choice);
     m_choice->clear();
+
+    // The probe first when there is one: it was placed to be looked at. Named
+    // for what it follows rather than for a channel, because it changes with
+    // the map on screen.
+    if (m_probe.isValid()) {
+        PlotChoice choice;
+        choice.profile = true;
+        m_choice->addItem(tr("Profile along %1 (the map on screen)").arg(m_probe.name),
+                          QVariant::fromValue(choice));
+    }
 
     // Gauges first: a user who has gone to the trouble of placing one wants to
     // see it, and it is what the panel is for.
@@ -147,6 +187,10 @@ void PlotPanel::rebuildChoices()
 
     // Keep whatever was being looked at, so adding a gauge does not throw the
     // reader back to the first entry.
+    if (keptProfile && m_probe.isValid()) {
+        m_choice->setCurrentIndex(0);
+        return;
+    }
     for (int i = 0; i < m_choice->count(); i++) {
         if (m_choice->itemData(i) == kept) {
             m_choice->setCurrentIndex(i);
@@ -166,7 +210,11 @@ void PlotPanel::redraw()
     }
 
     const PlotChoice choice = m_choice->currentData().value<PlotChoice>();
-    if (choice.gaugeIndex >= 0 && choice.gaugeIndex < m_gauges.size()) {
+    if (choice.profile) {
+        if (m_probe.isValid() && m_profileFrame >= 0 && m_profileFrame < m_frames.size())
+            m_series = probeProfile(m_probe, m_frames.at(m_profileFrame), m_profileChannel,
+                                    m_profileFrame + 1);
+    } else if (choice.gaugeIndex >= 0 && choice.gaugeIndex < m_gauges.size()) {
         m_series = extensometerSeries(m_gauges.at(choice.gaugeIndex), m_frames,
                                       choice.quantity);
     } else {
@@ -201,7 +249,7 @@ void PlotPanel::redraw()
 
         vtkNew<vtkTable> table;
         vtkNew<vtkDoubleArray> frameColumn;
-        frameColumn->SetName("Frame");
+        frameColumn->SetName(m_series.axis == SeriesAxis::Distance ? "Distance" : "Frame");
         table->AddColumn(frameColumn);
         vtkNew<vtkDoubleArray> valueColumn;
         valueColumn->SetName(qPrintable(m_series.name));
@@ -209,7 +257,9 @@ void PlotPanel::redraw()
         table->SetNumberOfRows(run.size());
 
         for (int i = 0; i < run.size(); i++) {
-            table->SetValue(i, 0, run.at(i).frame);
+            table->SetValue(i, 0, m_series.axis == SeriesAxis::Distance
+                                      ? run.at(i).distance
+                                      : double(run.at(i).frame));
             table->SetValue(i, 1, run.at(i).value);
         }
 
@@ -241,10 +291,18 @@ void PlotPanel::redraw()
     // offering readings the data cannot produce, which is the same fault as a
     // five-tick scale over a two-state flag.
     vtkAxis *bottom = m_chart->GetAxis(vtkAxis::BOTTOM);
-    bottom->SetTitle(qPrintable(tr("Frame")));
     bottom->SetNotation(vtkAxis::FIXED_NOTATION);
     bottom->SetPrecision(0);
-    if (!m_series.points.isEmpty()) {
+    if (m_series.axis == SeriesAxis::Distance) {
+        // Distance is continuous, so the axis may choose its own ticks; it
+        // runs over the whole line, so where the profile has gaps at its ends
+        // they show as gaps rather than as a shorter line.
+        bottom->SetTitle(qPrintable(tr("Distance along %1 (px)").arg(m_probe.name)));
+        bottom->SetCustomTickPositions(nullptr);
+        bottom->SetBehavior(vtkAxis::FIXED);
+        bottom->SetRange(0.0, m_probe.length());
+    } else if (!m_series.points.isEmpty()) {
+        bottom->SetTitle(qPrintable(tr("Frame")));
         const int frames = m_series.points.size();
         bottom->SetBehavior(vtkAxis::FIXED);
         bottom->SetRange(0.5, frames + 0.5);
@@ -305,6 +363,31 @@ void PlotPanel::updateNote()
 
     const int measured = m_series.measuredCount();
     const int total = m_series.points.size();
+
+    if (m_series.axis == SeriesAxis::Distance) {
+        if (fieldChannelIsFlag(m_profileChannel)) {
+            m_note->setText(tr("The map on screen has two states and nothing between "
+                               "them, so it cannot be read along a line. Show another "
+                               "map to see the profile along %1.")
+                                .arg(m_probe.name));
+            return;
+        }
+        // What the samples are, said where the curve is: one per grid step,
+        // interpolated from the four grid points around each.
+        const double spacing = total > 1 ? m_probe.length() / (total - 1) : 0.0;
+        QString text = tr("%1: %2 of %3 samples read, one every %4 px along the line, "
+                          "each interpolated from the four grid points around it.")
+                           .arg(m_series.name)
+                           .arg(measured)
+                           .arg(total)
+                           .arg(spacing, 0, 'f', 1);
+        if (measured < total)
+            text += QLatin1Char(' ')
+                    + tr("The breaks are gaps in the field under the line, not "
+                         "smoothing.");
+        m_note->setText(text);
+        return;
+    }
 
     if (measured == total) {
         // Spelled out rather than left as "frame(s)". Qt's %n plural needs a

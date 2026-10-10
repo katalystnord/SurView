@@ -411,6 +411,7 @@ private slots:
     void the_viewport_says_which_way_its_axes_run();
     void the_plot_panel_says_what_it_is_for_before_a_sequence_exists();
     void an_extensometer_is_placed_by_clicking_and_plotted_over_the_sequence();
+    void a_line_probe_plots_the_map_on_screen_along_the_line_it_was_drawn();
     void exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension();
 
     void the_comparison_with_a_known_answer_says_why_it_is_unavailable_before_a_run();
@@ -1927,18 +1928,25 @@ void TestWorkspaceWalkthrough::a_frame_can_be_picked_from_the_project_and_shows_
     QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() == 2; }, 180000));
 
     // Find the frame entries under Results and click the first one, the way a
-    // user picks a frame.
+    // user picks a frame. ⚑ Waited for, not looked for once: the entries are
+    // written when the sequence ends, a moment after the second frame is
+    // counted, and on a loaded machine (2026-10-10, during a mutation run) the
+    // single look found none.
     QTreeWidgetItem *firstFrame = nullptr;
-    for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
-        for (int i = 0; i < tree->topLevelItemCount(); i++) {
-            QTreeWidgetItem *top = tree->topLevelItem(i);
-            if (top->childCount() > 0 && top->text(0).contains(QStringLiteral("frame"),
-                                                               Qt::CaseInsensitive)) {
-                firstFrame = top->child(0);
+    const auto findFirstFrame = [&window, &firstFrame] {
+        for (QTreeWidget *tree : window.findChildren<QTreeWidget *>()) {
+            for (int i = 0; i < tree->topLevelItemCount(); i++) {
+                QTreeWidgetItem *top = tree->topLevelItem(i);
+                if (top->childCount() > 0 && top->text(0).contains(QStringLiteral("frame"),
+                                                                   Qt::CaseInsensitive)) {
+                    firstFrame = top->child(0);
+                }
             }
         }
-    }
-    QVERIFY2(firstFrame, "no frame of the sequence can be picked from the project");
+        return firstFrame != nullptr;
+    };
+    QVERIFY2(QTest::qWaitFor(findFirstFrame, 10000),
+             "no frame of the sequence can be picked from the project");
 
     firstFrame->treeWidget()->setCurrentItem(firstFrame);
 
@@ -2336,6 +2344,76 @@ void TestWorkspaceWalkthrough::a_measured_field_can_also_leave_as_a_table_anythi
     auto *log = window.findChild<QPlainTextEdit *>();
     QVERIFY2(log->toPlainText().contains(QStringLiteral("walkthrough.csv")),
              "nothing on screen says where the table went");
+}
+
+void TestWorkspaceWalkthrough::a_line_probe_plots_the_map_on_screen_along_the_line_it_was_drawn()
+{
+    // The other half of what a loading curve gives: a quantity ALONG the
+    // specimen at one frame. Driven only by what the screen offers -- the
+    // toolbar action, the bar it raises, two clicks -- and checked against the
+    // fixture's own answer: the target is the reference shifted +3 px in x and
+    // 0 in y, so the profile reads 3 px of magnitude everywhere it reads, and
+    // nothing in y.
+    //
+    // Written red first (2026-10-10): there was no such action.
+    MainWindow window;
+    window.resize(1300, 900);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"))->setValue(12);
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    QAction *probe = actionLabelled(&window, QStringLiteral("Line Probe"));
+    QVERIFY2(probe, "there is no visible action for a line probe");
+    QVERIFY2(!probe->toolTip().isEmpty(), "the action does not say what it does");
+    probe->trigger();
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("START of the line")),
+             "placing a probe does not say what to click");
+
+    // Diagonal, so a profile that measured distance along one axis reads short.
+    const QVector<QPointF> ends{QPointF(30, 40), QPointF(190, 120)};
+    for (const QPointF &end : ends) {
+        QPointF at;
+        QVERIFY(viewport->widgetPositionForImagePixel(end, at));
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier, at.toPoint());
+    }
+    QVERIFY2(!viewport->isPlacingExtensometer(), "the second click did not finish the probe");
+
+    auto *plot = window.findChild<PlotPanel *>();
+    const Series profile = plot->currentSeries();
+    QCOMPARE(profile.axis, SeriesAxis::Distance);
+    QVERIFY2(profile.name.contains(QStringLiteral("along P")), qPrintable(profile.name));
+    QVERIFY2(profile.name.contains(fieldChannelName(FieldChannel::DisplacementMagnitude)),
+             qPrintable(QStringLiteral("the profile is not of the map on screen: ") + profile.name));
+    QVERIFY2(profile.measuredCount() >= 10, qPrintable(QString::number(profile.measuredCount())));
+    QVERIFY(std::abs(profile.points.last().distance - std::hypot(160.0, 80.0)) < 1e-6);
+    for (const SeriesPoint &point : profile.points) {
+        if (point.measured)
+            QVERIFY2(std::abs(point.value - 3.0) < 0.05,
+                     qPrintable(QStringLiteral("read %1 px at %2 px along").arg(point.value)
+                                    .arg(point.distance)));
+    }
+    QVERIFY2(somethingOnScreenSays(plot, QStringLiteral("along P")),
+             "the plot does not say what it is showing");
+
+    // The ticks on the line are the samples plotted.
+    QCOMPARE(viewport->probeSamplesShown(), int(profile.points.size()));
+
+    // It follows the map: switch to v, and the profile is of v.
+    auto *choice = fieldExplanationBar(viewport)->findChild<QComboBox *>();
+    choice->setCurrentIndex(choice->findText(fieldChannelName(FieldChannel::DisplacementY)));
+    const Series moved = plot->currentSeries();
+    QVERIFY2(moved.name.contains(fieldChannelName(FieldChannel::DisplacementY)),
+             qPrintable(QStringLiteral("the profile did not follow the map: ") + moved.name));
+    for (const SeriesPoint &point : moved.points) {
+        if (point.measured)
+            QVERIFY2(std::abs(point.value) < 0.05, qPrintable(QString::number(point.value)));
+    }
 }
 
 void TestWorkspaceWalkthrough::exporting_a_sequence_as_tables_numbers_them_and_keeps_the_extension()

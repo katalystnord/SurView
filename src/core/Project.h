@@ -38,6 +38,9 @@ struct Project
     // session, not of a run: placing one takes careful clicking, and a session
     // that reopened without them would have lost work.
     QVector<Extensometer> extensometers;
+
+    // The line probe, if one is placed (invalid otherwise), for the same reason.
+    LineProbe probe;
 };
 
 // What opening a project produced, and what was wrong with it.

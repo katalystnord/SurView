@@ -43,6 +43,14 @@ public:
     void setFrames(const QVector<CorrelationResult> &frames);
     void setExtensometers(const QVector<Extensometer> &gauges);
 
+    // The line probe, and what it reads: the frame and the map on screen, so
+    // the profile is always of the picture the reader is looking at. An
+    // invalid probe takes the profile off the selector.
+    void setProbe(const LineProbe &probe);
+    void setProfileContext(int frameIndex, FieldChannel channel);
+    // Puts the profile on the chart, as placing a probe should.
+    void showProfile();
+
     // What is currently plotted, so the window can name it when exporting.
     Series currentSeries() const { return m_series; }
 
@@ -58,6 +66,9 @@ private:
 
     QVector<CorrelationResult> m_frames;
     QVector<Extensometer> m_gauges;
+    LineProbe m_probe;
+    int m_profileFrame = 0;
+    FieldChannel m_profileChannel = FieldChannel::DisplacementMagnitude;
     Series m_series;
 
     QComboBox *m_choice = nullptr;

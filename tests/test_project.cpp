@@ -86,6 +86,13 @@ Project sampleProject(const QString &dir)
     gauge.by = 61.5;
     project.extensometers.append(gauge);
 
+    // The line probe too, for the same reason. Lopsided in all four numbers.
+    project.probe.name = QStringLiteral("P");
+    project.probe.ax = 12.5;
+    project.probe.ay = 80.0;
+    project.probe.bx = 190.0;
+    project.probe.by = 33.25;
+
     // A hole, because a region that reopened without one would measure across
     // exactly the place the user went to the trouble of excluding.
     project.roi.holes.append({QPoint(40, 40), QPoint(60, 40), QPoint(60, 60), QPoint(40, 60)});
@@ -203,6 +210,13 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
              saved.extensometers.first().bx);
     QCOMPARE(loaded.project.extensometers.first().by,
              saved.extensometers.first().by);
+
+    QVERIFY2(loaded.project.probe.isValid(), "the line probe did not come back");
+    QCOMPARE(loaded.project.probe.name, saved.probe.name);
+    QCOMPARE(loaded.project.probe.ax, saved.probe.ax);
+    QCOMPARE(loaded.project.probe.ay, saved.probe.ay);
+    QCOMPARE(loaded.project.probe.bx, saved.probe.bx);
+    QCOMPARE(loaded.project.probe.by, saved.probe.by);
 
     QCOMPARE(loaded.project.roi.holes.size(), saved.roi.holes.size());
     QVERIFY(loaded.project.roi.hasHoles());
