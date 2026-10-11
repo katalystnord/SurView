@@ -16,6 +16,7 @@
 #include <QVector>
 
 class QAction;
+class SettingsWindow;
 class QMenu;
 class QCheckBox;
 class QComboBox;
@@ -87,6 +88,7 @@ private slots:
     void importReferenceImage();
     void openExample();
     void newProject();
+    void openSettings();
     void openProject();
     void saveProjectAs();
     void importTargetImages();
@@ -208,6 +210,13 @@ private:
     // currentSettings(), and deliberately beside it: a field added to one and
     // forgotten in the other is a session that opens looking right and measures
     // something else.
+    // Empties the session: images, region, gauges, results. Leaves the settings.
+    void clearSession();
+
+    // Puts the saved defaults (core/Defaults.h) on the Analysis panel, or
+    // SurView's own, and says in the log when they differ or could not be read.
+    void startFromDefaults();
+
     void applySettings(const CorrelationSettings &settings,
                        const ReferenceUpdatePolicy &policy);
 
@@ -426,4 +435,5 @@ private:
     // Built on first use and kept, so a reader who closes it and opens it again
     // gets the same window rather than a second one.
     ComparisonWindow *m_comparison = nullptr;
+    SettingsWindow *m_settingsWindow = nullptr;
 };

@@ -32,6 +32,7 @@ set(SURVIEW_UNIT_TESTS
     test_spatial_resolution
     test_clipping
     test_cautions
+    test_defaults
     test_view_fit
     test_displacement_arrows
     test_grid_margin

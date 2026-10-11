@@ -74,6 +74,10 @@ struct SolverChoice
 // Display name for a solver, as the panel shows it.
 QString solverDisplayName(CorrelationSettings::Solver solver);
 
+// "First order (affine)" or "Second order (quadratic)": the panel's choice and
+// the Settings window's line, in one wording.
+QString shapeOrderName(int shapeOrder);
+
 // Every solver and shape order combination the application offers, which is
 // every pair the engine actually implements.
 QVector<SolverChoice> offeredSolverChoices();

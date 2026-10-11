@@ -1,5 +1,7 @@
 #include "core/Project.h"
 
+#include "core/Defaults.h"
+
 #include "core/ImageRecord.h"
 
 #include <QCryptographicHash>
@@ -119,30 +121,8 @@ QString saveProject(const QString &path, const Project &project)
         roi[QStringLiteral("limitation")] = project.roi.limitation;
     root[QStringLiteral("region")] = roi;
 
-    const CorrelationSettings &s = project.settings;
-    QJsonObject settings;
-    settings[QStringLiteral("solver")] = int(s.solver);
-    settings[QStringLiteral("shapeOrder")] = s.shapeOrder;
-    settings[QStringLiteral("subsetRadius")] = s.subsetRadius;
-    settings[QStringLiteral("gridStep")] = s.gridStep;
-    settings[QStringLiteral("maxIterations")] = s.maxIterations;
-    settings[QStringLiteral("convergence")] = s.convergence;
-    settings[QStringLiteral("strainEnabled")] = s.strainEnabled;
-    settings[QStringLiteral("strainRadius")] = s.strainRadius;
-    settings[QStringLiteral("strainMinPoints")] = s.strainMinPoints;
-    settings[QStringLiteral("strainMeasure")] = int(s.strainMeasure);
-    settings[QStringLiteral("recoveryEnabled")] = s.recovery.enabled;
-    settings[QStringLiteral("recoveryRetryBelow")] = s.recovery.retryBelowZncc;
-    settings[QStringLiteral("recoveryReliable")] = s.recovery.reliableZncc;
-    settings[QStringLiteral("recoveryMaxRounds")] = s.recovery.maxRounds;
-    root[QStringLiteral("settings")] = settings;
-
-    const ReferenceUpdatePolicy &p = project.referenceUpdate;
-    QJsonObject policy;
-    policy[QStringLiteral("enabled")] = p.enabled;
-    policy[QStringLiteral("znccThreshold")] = p.znccThreshold;
-    policy[QStringLiteral("percentile")] = p.percentile;
-    root[QStringLiteral("referenceUpdate")] = policy;
+    root[QStringLiteral("settings")] = correlationSettingsToJson(project.settings);
+    root[QStringLiteral("referenceUpdate")] = referencePolicyToJson(project.referenceUpdate);
 
     QJsonArray gauges;
     for (const Extensometer &gauge : project.extensometers) {
@@ -276,33 +256,10 @@ ProjectLoad loadProject(const QString &path)
     out.project.roi.origin =
         RegionOfInterest::Origin(roi[QStringLiteral("origin")].toInt());
 
-    const QJsonObject settings = root[QStringLiteral("settings")].toObject();
-    CorrelationSettings &s = out.project.settings;
-    s.solver = CorrelationSettings::Solver(settings[QStringLiteral("solver")].toInt());
-    s.shapeOrder = settings[QStringLiteral("shapeOrder")].toInt(s.shapeOrder);
-    s.subsetRadius = settings[QStringLiteral("subsetRadius")].toInt(s.subsetRadius);
-    s.gridStep = settings[QStringLiteral("gridStep")].toInt(s.gridStep);
-    s.maxIterations = settings[QStringLiteral("maxIterations")].toInt(s.maxIterations);
-    s.convergence = settings[QStringLiteral("convergence")].toDouble(s.convergence);
-    s.strainEnabled = settings[QStringLiteral("strainEnabled")].toBool(s.strainEnabled);
-    s.strainRadius = settings[QStringLiteral("strainRadius")].toDouble(s.strainRadius);
-    s.strainMinPoints =
-        settings[QStringLiteral("strainMinPoints")].toInt(s.strainMinPoints);
-    s.strainMeasure =
-        StrainMeasure(settings[QStringLiteral("strainMeasure")].toInt(int(s.strainMeasure)));
-    s.recovery.enabled =
-        settings[QStringLiteral("recoveryEnabled")].toBool(s.recovery.enabled);
-    s.recovery.retryBelowZncc =
-        settings[QStringLiteral("recoveryRetryBelow")].toDouble(s.recovery.retryBelowZncc);
-    s.recovery.reliableZncc =
-        settings[QStringLiteral("recoveryReliable")].toDouble(s.recovery.reliableZncc);
-    s.recovery.maxRounds =
-        settings[QStringLiteral("recoveryMaxRounds")].toInt(s.recovery.maxRounds);
-
-    const QJsonObject policy = root[QStringLiteral("referenceUpdate")].toObject();
-    ReferenceUpdatePolicy &p = out.project.referenceUpdate;
-    p.enabled = policy[QStringLiteral("enabled")].toBool(p.enabled);
-    p.znccThreshold = policy[QStringLiteral("znccThreshold")].toDouble(p.znccThreshold);
+    out.project.settings =
+        correlationSettingsFromJson(root[QStringLiteral("settings")].toObject());
+    out.project.referenceUpdate =
+        referencePolicyFromJson(root[QStringLiteral("referenceUpdate")].toObject());
 
     const QJsonArray gauges = root[QStringLiteral("extensometers")].toArray();
     for (const QJsonValue &value : gauges) {
@@ -319,7 +276,6 @@ ProjectLoad loadProject(const QString &path)
         if (gauge.isValid())
             out.project.extensometers.append(gauge);
     }
-    p.percentile = policy[QStringLiteral("percentile")].toDouble(p.percentile);
 
     // Absent from a file written before probes existed, which then opens with
     // none; and a probe of no length, which only an edited file can hold, costs

@@ -7,6 +7,8 @@
 #include "PlotPanel.h"
 #include "PointPanel.h"
 #include "RecordPanel.h"
+#include "SettingsWindow.h"
+#include "core/Defaults.h"
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
 #include "core/FieldLayout.h"
@@ -225,6 +227,7 @@ MainWindow::MainWindow(QWidget *parent)
 
     updateActionStates();
     log(tr("SurView DIC ready. Import a reference image to begin."));
+    startFromDefaults();
 }
 
 // ---------------------------------------------------------------------------
@@ -434,6 +437,14 @@ void MainWindow::createMenus()
     connect(actSave, &QAction::triggered, this, &MainWindow::saveProjectAs);
 
     fileMenu->addSeparator();
+    // What a new project starts from. Beside the project entries because that is
+    // what it governs; the role puts it in the application menu on macOS.
+    QAction *actSettings = fileMenu->addAction(tr("Se&ttings…"));
+    actSettings->setMenuRole(QAction::PreferencesRole);
+    actSettings->setToolTip(tr("The settings a new project starts from"));
+    connect(actSettings, &QAction::triggered, this, &MainWindow::openSettings);
+
+    fileMenu->addSeparator();
 
     QAction *importRef = fileMenu->addAction(
         style()->standardIcon(QStyle::SP_FileDialogStart),
@@ -629,6 +640,52 @@ void MainWindow::applySettings(const CorrelationSettings &settings,
 
 void MainWindow::newProject()
 {
+    clearSession();
+    log(tr("New project."));
+    startFromDefaults();
+}
+
+void MainWindow::startFromDefaults()
+{
+    const DefaultsLoad loaded = loadDefaults(defaultsPath());
+    applySettings(loaded.defaults.settings, loaded.defaults.referenceUpdate);
+    if (!loaded.problem.isEmpty()) {
+        log(loaded.problem);
+        return;
+    }
+    QStringList differing;
+    for (const SettingLine &line : settingLines(loaded.defaults)) {
+        if (line.differs())
+            differing << tr("%1 %2 (SurView's own %3)").arg(line.label, line.value, line.builtIn);
+    }
+    if (!differing.isEmpty()) {
+        log(tr("Settings start from your saved defaults: %1. File > Settings shows them.")
+                .arg(differing.join(QStringLiteral("; "))));
+    }
+}
+
+void MainWindow::openSettings()
+{
+    if (!m_settingsWindow) {
+        m_settingsWindow = new SettingsWindow(
+            [this] {
+                RunDefaults current;
+                current.settings = currentSettings();
+                current.referenceUpdate = currentReferencePolicy();
+                return current;
+            },
+            this);
+        connect(m_settingsWindow, &SettingsWindow::defaultsChanged, this,
+                [this](const QString &what) { log(what); });
+    }
+    m_settingsWindow->refresh();
+    m_settingsWindow->show();
+    m_settingsWindow->raise();
+    m_settingsWindow->activateWindow();
+}
+
+void MainWindow::clearSession()
+{
     m_projectPath.clear();
     m_referenceRecord = ImageRecord();
     // The prepared speckle belongs to the image that has just gone.
@@ -662,7 +719,6 @@ void MainWindow::newProject()
     showRoiInProject();
     updateSpeckleQuality();
     updateActionStates();
-    log(tr("New project."));
 }
 
 void MainWindow::openProject()
@@ -685,7 +741,7 @@ bool MainWindow::openProjectFrom(const QString &path)
         return false;
     }
 
-    newProject();
+    clearSession();
     m_projectPath = path;
 
     applySettings(loaded.project.settings, loaded.project.referenceUpdate);
@@ -918,8 +974,8 @@ QWidget *MainWindow::createAnalysisPanel()
     form->addRow(tr("Solver"), m_solver);
 
     m_shape = new QComboBox;
-    m_shape->addItem(tr("First order (affine)"), 1);
-    m_shape->addItem(tr("Second order (quadratic)"), 2);
+    m_shape->addItem(shapeOrderName(1), 1);
+    m_shape->addItem(shapeOrderName(2), 2);
     form->addRow(tr("Shape function"), m_shape);
 
     m_subsetRadius = new QSpinBox;

@@ -895,6 +895,32 @@ rather than silently measuring the whole image.
   keeps the diagonally opposite corner fixed. Polygons alone take inserted and
   removed corners.
 
+### The Settings window holds where a project starts, never how it measures (2026-10-11)
+
+`core/Defaults.h`, `gui/SettingsWindow`. File > Settings shows the settings a
+new project starts from, each beside SurView's own, and offers two actions:
+keep the Analysis panel's current settings as the defaults, or forget them.
+David chose the split: a setting that changes a measurement is a RUN setting,
+edited on the Analysis panel and saved with the project; the Settings window
+holds only its starting value, and later application-wide preferences.
+
+- ⚑ **An opened project keeps the settings it was saved with.** Defaults apply
+  at startup and on New Project, never over a project, or one person's defaults
+  would silently change another person's measurement.
+- ⚑ **The window shows and does not edit.** Every setting keeps its one control
+  on the Analysis panel; a second control for the same value would be two
+  places to look for one number. The lines use the panel's own labels, and the
+  walkthrough holds every label to a control that exists.
+- ⚑ **Defaults that differ from SurView's own are never silent.** A window
+  starting from a 20 px subset chosen weeks ago reads exactly like one starting
+  from 16 px, so the log names each differing setting with both values, and a
+  damaged or newer defaults file is reported rather than used.
+- **One serialisation.** The project file and the defaults file share
+  `correlationSettingsToJson()`, and a case requires one line per stored key, so
+  a setting cannot be added to a project and stay invisible here.
+- **Tests never touch the real file.** `setDefaultsPathForTesting()`; the
+  walkthrough empties its own file before every case.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

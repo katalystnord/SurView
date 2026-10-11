@@ -545,6 +545,22 @@ Understood well enough to start, large enough to need their own care.
      repair. A point measured on half a subset is not as good as a point
      measured on a whole one, and it should not claim to be.
 
+     **Scoped 2026-10-11** with a prototype in the fork, measured against the
+     exact answers. Beside a 40 px hole, unmasked points within 4 px of its
+     edge are wrong by 0.69 px on average while correlating above 0.9; masked
+     with the edge pulled in 2 px, by 0.008 px, the same as far from the hole.
+     About six to nine sessions, mostly in the fork's ICGN paths, the
+     reliability figures and a masked starting guess. David's decisions so
+     far: mask **at cuts only** for now (the outer boundary keeps today's
+     behaviour, and the screen says so); **on** by default, as a run setting
+     on the Analysis panel whose default the Settings window shows; edge
+     pulled in **2 px**. Still open: the fewest valid pixels a point may keep.
+     Measured on 432 runs (six synthetic sets, nine kinds of cut, two subset
+     sizes) plus the perforated real example: the error grows steadily as
+     the share falls, with no cliff above about 15 per cent, and a 50 per
+     cent floor would refuse the row of points nearest every ordinary hole,
+     which measure at about three times the far-field error.
+
   2. ~~⚑ **Report SPATIAL resolution, not only displacement resolution.**~~
      DONE 2026-10-07, `core/SpatialResolution.h`. The Analysis panel and the
      run report state the length a displacement is averaged over (the subset,
@@ -1495,6 +1511,15 @@ as a backlog with everything in it.
   the region can resolve, live, at the radius currently chosen - as a
   displacement in pixels rather than a score, because a score would need a
   threshold and any threshold for "good speckle" has to be invented.
+
+- **No Settings window.** Every run setting started from SurView's own value
+  in every session. File > Settings now shows what a new project starts from,
+  each setting beside SurView's own, and keeps the Analysis panel's current
+  settings as the defaults or forgets them. It shows rather than edits: each
+  setting keeps its one control, on the Analysis panel. ⚑ An opened project
+  keeps the settings it was saved with, so one person's defaults never change
+  another person's measurement, and a window starting from defaults that
+  differ from SurView's own says which in the log.
 
 - **A menu that promised what it did not do.** New, Open and Save Project sat
   on the File menu from the first window and reported themselves unimplemented.

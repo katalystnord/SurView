@@ -14,6 +14,7 @@
 
 #include "core/DisplacementArrows.h"
 #include "core/Cautions.h"
+#include "core/Defaults.h"
 #include "core/Correlation.h"
 #include "core/FieldLayout.h"
 #include "core/PointReadout.h"
@@ -40,6 +41,7 @@
 #include <QCheckBox>
 #include <QWheelEvent>
 #include <QComboBox>
+#include <QDialog>
 #include <QStyle>
 #include <QStyleOptionComboBox>
 #include <QIcon>
@@ -111,7 +113,10 @@ QAction *menuActionLabelled(QMainWindow *window, const QString &text)
         if (!menu)
             continue;
         for (QAction *action : menu->actions()) {
-            if (action->text().contains(text, Qt::CaseInsensitive))
+            // As drawn: the mnemonic marker is not part of what a reader sees.
+            QString visible = action->text();
+            visible.remove(QLatin1Char('&'));
+            if (visible.contains(text, Qt::CaseInsensitive))
                 return action;
         }
     }
@@ -359,6 +364,7 @@ class TestWorkspaceWalkthrough : public QObject
 
 private slots:
     void initTestCase();
+    void init();
 
     void the_pipeline_controls_say_what_they_do_before_anything_is_loaded();
     void a_region_cannot_be_started_before_there_is_an_image_to_draw_on();
@@ -445,11 +451,31 @@ private slots:
     void the_empty_workspace_offers_the_examples_it_ships_with();
     void a_panel_section_folds_away_and_says_what_it_still_holds();
     void a_folded_section_still_governs_the_run();
+
+    void the_settings_window_is_on_the_file_menu_and_names_every_default();
+    void a_new_project_starts_from_the_defaults_saved_in_settings();
+    void a_project_that_is_opened_keeps_its_own_settings_whatever_the_defaults();
+    void restoring_surview_s_own_defaults_is_offered_and_takes_effect();
+    void a_window_that_starts_from_saved_defaults_says_which_differ();
+    void a_damaged_defaults_file_is_reported_rather_than_used();
+
+private:
+    // ⚑ The defaults live in the user's own configuration folder, and a test that
+    // read or wrote them there would both depend on and damage the developer's
+    // own settings. Every case runs against a file of its own, emptied first.
+    QTemporaryDir m_defaultsDir;
 };
 
 void TestWorkspaceWalkthrough::initTestCase()
 {
     QVERIFY2(qApp, "the walkthrough needs a QApplication");
+    QVERIFY(m_defaultsDir.isValid());
+    setDefaultsPathForTesting(m_defaultsDir.filePath(QStringLiteral("defaults.json")));
+}
+
+void TestWorkspaceWalkthrough::init()
+{
+    QCOMPARE(forgetDefaults(defaultsPath()), QString());
 }
 
 void TestWorkspaceWalkthrough::the_pipeline_controls_say_what_they_do_before_anything_is_loaded()
@@ -4379,6 +4405,214 @@ void TestWorkspaceWalkthrough::the_speckle_estimate_describes_the_image_and_radi
                                        "before it:\n%1").arg(flat)));
     QVERIFY2(flat.contains(QStringLiteral("speckle"), Qt::CaseInsensitive),
              qPrintable(flat));
+}
+
+
+namespace {
+
+// Opens File > Settings the way a reader would, and returns the window it opened.
+QDialog *openSettings(MainWindow *window)
+{
+    QAction *action = menuActionLabelled(window, QStringLiteral("Settings"));
+    if (!action)
+        return nullptr;
+    action->trigger();
+    for (QDialog *dialog : window->findChildren<QDialog *>()) {
+        if (dialog->isVisible() && dialog->windowTitle().contains(QStringLiteral("Settings")))
+            return dialog;
+    }
+    return nullptr;
+}
+
+// The Settings window's row for one setting: its label, the value a new project
+// starts at, and SurView's own. Empty when there is no such row.
+QStringList settingsRow(QDialog *dialog, const QString &label)
+{
+    for (QTreeWidget *tree : dialog->findChildren<QTreeWidget *>()) {
+        for (QTreeWidgetItemIterator it(tree); *it; ++it) {
+            if ((*it)->text(0) == label)
+                return {(*it)->text(0), (*it)->text(1), (*it)->text(2)};
+        }
+    }
+    return {};
+}
+
+QAction *newProjectAction(MainWindow *window)
+{
+    return menuActionLabelled(window, QStringLiteral("New Project"));
+}
+
+} // namespace
+
+void TestWorkspaceWalkthrough::the_settings_window_is_on_the_file_menu_and_names_every_default()
+{
+    // There was no Settings window at all. It holds what a NEW project starts
+    // from; every run setting is still edited in the Analysis panel and saved
+    // with the project, so the window names, for each line, the panel section and
+    // control a reader would change.
+    //
+    // Written red first with the five cases after it (2026-10-11). NEGATIVE
+    // CHECKS across them: New Project ignoring the defaults (new project, and
+    // restoring); the window ignoring them at startup (opened project, starts
+    // from, damaged); defaults applied over an opened project (opened project);
+    // a damaged file neither logged nor shown (damaged); differences not logged
+    // (starts from); Restore offered with nothing to restore (restoring); the
+    // window not redrawn after keeping, and SurView's own column showing the
+    // saved value (new project). This case found that the menu helper matched
+    // the text with its mnemonic marker in it, which no reader sees.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    QDialog *settings = openSettings(&window);
+    QVERIFY2(settings, "there is no Settings window on the menus");
+    QVERIFY(somethingOnScreenSays(settings, QStringLiteral("new project")));
+    QVERIFY2(somethingOnScreenSays(settings, QStringLiteral("keeps the settings it was saved with")),
+             "the window does not say that an opened project keeps its own settings");
+    QVERIFY2(somethingOnScreenSays(settings, QStringLiteral("Analysis panel")),
+             "the window does not say where a setting is changed");
+
+    const QVector<SettingLine> lines = settingLines(RunDefaults());
+    for (const SettingLine &line : lines) {
+        const QStringList row = settingsRow(settings, line.label);
+        QVERIFY2(!row.isEmpty(), qPrintable(QStringLiteral("no row for ") + line.label));
+        QCOMPARE(row[1], line.value);
+
+        // Each label is the panel's own, so the line names a control that exists,
+        // and the value reads as that control shows it. The screenshot pass found
+        // "10" here beside "10 iterations" on the panel, for one number; written
+        // after it, this went red on three correlation thresholds missing their
+        // "zncc" prefix, which the screenshot had not reached.
+        QWidget *control = controlLabelled<QWidget>(&window, line.label);
+        QCheckBox *box = byVisibleText<QCheckBox>(&window, line.label);
+        QVERIFY2(control || box, qPrintable(QStringLiteral("the Analysis panel has no control called ")
+                                            + line.label));
+        QString shown;
+        if (auto *spin = qobject_cast<QAbstractSpinBox *>(control))
+            shown = spin->text();
+        else if (auto *combo = qobject_cast<QComboBox *>(control))
+            shown = combo->currentText();
+        else if (box)
+            shown = box->isChecked() ? QStringLiteral("on") : QStringLiteral("off");
+        QCOMPARE(row[1], shown);
+        bool sectionExists = false;
+        for (QToolButton *header : window.findChildren<QToolButton *>())
+            sectionExists |= header->text().startsWith(line.section);
+        QVERIFY2(sectionExists, qPrintable(QStringLiteral("no panel section called ") + line.section));
+    }
+    QVERIFY2(somethingOnScreenSays(settings, QStringLiteral("SurView's own")),
+             "with nothing saved, the window does not say SurView's own defaults apply");
+}
+
+void TestWorkspaceWalkthrough::a_new_project_starts_from_the_defaults_saved_in_settings()
+{
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    auto *step = controlLabelled<QSpinBox>(&window, QStringLiteral("Grid step"));
+    QVERIFY(radius && step);
+    radius->setValue(23);
+    step->setValue(9);
+
+    QDialog *settings = openSettings(&window);
+    QVERIFY(settings);
+    QPushButton *use = byVisibleText<QPushButton>(settings, QStringLiteral("Use the current"));
+    QVERIFY2(use, "the window offers no way to keep the current settings as the defaults");
+    use->click();
+
+    // The window shows both values, so a changed default is never silent.
+    QCOMPARE(settingsRow(settings, QStringLiteral("Subset radius")),
+             QStringList({QStringLiteral("Subset radius"), QStringLiteral("23 px"),
+                          QStringLiteral("16 px")}));
+    QVERIFY2(somethingOnScreenSays(settings, QStringLiteral("2 settings differ")),
+             "the window does not count the defaults that differ from SurView's own");
+
+    radius->setValue(30);
+    step->setValue(4);
+    newProjectAction(&window)->trigger();
+    QCOMPARE(radius->value(), 23);
+    QCOMPARE(step->value(), 9);
+}
+
+void TestWorkspaceWalkthrough::a_project_that_is_opened_keeps_its_own_settings_whatever_the_defaults()
+{
+    // One person's defaults must never change another person's measurement.
+    MainWindow window;
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->setValue(19);
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("session.svproj"));
+    QVERIFY(window.saveProjectTo(path));
+
+    RunDefaults defaults;
+    defaults.settings.subsetRadius = 27;
+    QCOMPARE(saveDefaults(defaultsPath(), defaults), QString());
+
+    MainWindow other;
+    QCOMPARE(controlLabelled<QSpinBox>(&other, QStringLiteral("Subset radius"))->value(), 27);
+    QVERIFY(other.openProjectFrom(path));
+    QCOMPARE(controlLabelled<QSpinBox>(&other, QStringLiteral("Subset radius"))->value(), 19);
+}
+
+void TestWorkspaceWalkthrough::restoring_surview_s_own_defaults_is_offered_and_takes_effect()
+{
+    RunDefaults defaults;
+    defaults.settings.subsetRadius = 27;
+    QCOMPARE(saveDefaults(defaultsPath(), defaults), QString());
+
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QDialog *settings = openSettings(&window);
+    QVERIFY(settings);
+    QPushButton *restore = byVisibleText<QPushButton>(settings, QStringLiteral("Restore SurView's own"));
+    QVERIFY2(restore && restore->isEnabled(), "there is no way back to SurView's own defaults");
+    restore->click();
+
+    QCOMPARE(settingsRow(settings, QStringLiteral("Subset radius"))[1], QStringLiteral("16 px"));
+    QVERIFY2(!restore->isEnabled(), "restoring is still offered with nothing to restore");
+    newProjectAction(&window)->trigger();
+    QCOMPARE(controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->value(), 16);
+}
+
+void TestWorkspaceWalkthrough::a_window_that_starts_from_saved_defaults_says_which_differ()
+{
+    // A window that starts with a 27 px subset because of a choice made weeks ago
+    // reads exactly like one starting with SurView's own, unless it says so.
+    RunDefaults defaults;
+    defaults.settings.subsetRadius = 27;
+    QCOMPARE(saveDefaults(defaultsPath(), defaults), QString());
+
+    MainWindow window;
+    const QString log = logView(&window)->toPlainText();
+    QVERIFY2(log.contains(QStringLiteral("Subset radius 27 px (SurView's own 16 px)")),
+             qPrintable(log));
+    QVERIFY2(log.contains(QStringLiteral("File > Settings")), qPrintable(log));
+}
+
+void TestWorkspaceWalkthrough::a_damaged_defaults_file_is_reported_rather_than_used()
+{
+    {
+        QFile file(defaultsPath());
+        QVERIFY(file.open(QIODevice::WriteOnly));
+        file.write("{ not json");
+    }
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    QCOMPARE(controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"))->value(), 16);
+    QVERIFY2(logView(&window)->toPlainText().contains(QStringLiteral("does not hold SurView defaults")),
+             "a damaged defaults file was passed over in silence");
+    QDialog *settings = openSettings(&window);
+    QVERIFY(settings);
+    QVERIFY2(somethingOnScreenSays(settings, QStringLiteral("does not hold SurView defaults")),
+             "the Settings window does not say its file could not be used");
 }
 
 QTEST_MAIN(TestWorkspaceWalkthrough)

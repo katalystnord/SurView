@@ -58,6 +58,8 @@ add_library(surview_core STATIC
     core/Clipping.h
     core/Cautions.cpp
     core/Cautions.h
+    core/Defaults.cpp
+    core/Defaults.h
     core/DisplacementArrows.cpp
     core/DisplacementArrows.h
     core/ViewFit.cpp
@@ -96,6 +98,8 @@ add_library(surview_gui STATIC
     gui/PlotPanel.cpp
     gui/PlotPanel.h
     gui/PointPanel.cpp
+    gui/SettingsWindow.cpp
+    gui/SettingsWindow.h
     gui/PointPanel.h
     gui/RecordPanel.cpp
     gui/RecordPanel.h

@@ -80,6 +80,12 @@ QString CorrelationSettings::unavailableReason() const
     return QString();
 }
 
+QString shapeOrderName(int shapeOrder)
+{
+    return shapeOrder == 2 ? QObject::tr("Second order (quadratic)")
+                           : QObject::tr("First order (affine)");
+}
+
 QString solverDisplayName(CorrelationSettings::Solver solver)
 {
     switch (solver) {
