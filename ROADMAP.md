@@ -554,12 +554,17 @@ Understood well enough to start, large enough to need their own care.
      far: mask **at cuts only** for now (the outer boundary keeps today's
      behaviour, and the screen says so); **on** by default, as a run setting
      on the Analysis panel whose default the Settings window shows; edge
-     pulled in **2 px**. Still open: the fewest valid pixels a point may keep.
-     Measured on 432 runs (six synthetic sets, nine kinds of cut, two subset
-     sizes) plus the perforated real example: the error grows steadily as
-     the share falls, with no cliff above about 15 per cent, and a 50 per
-     cent floor would refuse the row of points nearest every ordinary hole,
-     which measure at about three times the far-field error.
+     pulled in **2 px**; a point is refused below **25 per cent** of its
+     subset still valid, with every point's share in the readout, the exports
+     and the run report. The floor was measured before it was chosen, on 432
+     runs (six synthetic sets, nine kinds of cut, two subset sizes) plus the
+     perforated real example: the error grows steadily as the share falls,
+     with no cliff above about 15 per cent, and a 50 per cent floor would
+     refuse the row of points nearest every ordinary hole, which measure at
+     about three times the far-field error. Because there is no cliff the
+     floor is a trade, so it is adjustable: a run setting on the Analysis
+     panel beside the masking switch, its default shown in the Settings
+     window like every other.
 
   2. ~~⚑ **Report SPATIAL resolution, not only displacement resolution.**~~
      DONE 2026-10-07, `core/SpatialResolution.h`. The Analysis panel and the
