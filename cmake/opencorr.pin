@@ -16,7 +16,7 @@
 # changed while hiding what.
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
-SURVIEW_OPENCORR_BRANCH=masked-subsets
+SURVIEW_OPENCORR_BRANCH=surview-dev
 SURVIEW_OPENCORR_PIN=ef192e32a4e79c974c9d677b5a4867fc38a31f0d
 
 # What the pinned commit is, in words, so a reader knows what they are on
