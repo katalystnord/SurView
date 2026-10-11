@@ -62,6 +62,7 @@ private slots:
     void re_anchoring_does_not_change_the_answer_when_it_did_not_need_to();
     void a_re_anchor_is_announced_rather_than_done_quietly();
     void a_re_anchor_announces_what_it_lost_rather_than_what_was_lost_before();
+    void after_a_re_anchor_the_cuts_are_not_masked_and_the_frame_says_why();
 };
 
 void TestSequenceRunner::every_frame_arrives_identified_and_in_the_order_it_was_given()
@@ -474,6 +475,47 @@ void TestSequenceRunner::a_re_anchor_announces_what_it_lost_rather_than_what_was
                                 .arg(announced.at(frame))
                                 .arg(lostAfterEachFrame.at(frame))));
     }
+}
+
+
+void TestSequenceRunner::after_a_re_anchor_the_cuts_are_not_masked_and_the_frame_says_why()
+{
+    // The cuts are drawn on the ORIGINAL reference. Once the run re-anchors to a
+    // later frame the hole has moved with the specimen, and a mask left where it
+    // was drawn would leave out the wrong pixels while claiming the right ones.
+    // Forced on every frame, as above.
+    ReferenceUpdatePolicy always;
+    always.enabled = true;
+    always.znccThreshold = 1.1;
+    always.percentile = 1.0;
+
+    RegionOfInterest roi;
+    RegionShape specimen;
+    specimen.kind = RegionShape::Rectangle;
+    specimen.points = {QPoint(6, 9), QPoint(232, 188)};
+    RegionShape hole;
+    hole.kind = RegionShape::Ellipse;
+    hole.subtract = true;
+    hole.points = {QPoint(100, 80), QPoint(140, 120)};
+    roi.shapes << specimen << hole;
+
+    CorrelationSettings settings = coarseSettings();
+    settings.strainEnabled = false;
+    const QStringList targets = {fixture(QStringLiteral("hole_target.tif")),
+                                 fixture(QStringLiteral("hole_target.tif"))};
+    SequenceRunner runner(settings, roi, fixture(QStringLiteral("hole_reference.tif")),
+                          targets, always);
+
+    QVector<CorrelationResult> frames;
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&frames](int, const CorrelationResult &r) { frames.append(r); });
+    runner.run();
+
+    QCOMPARE(frames.size(), 2);
+    QVERIFY2(frames.at(0).maskingApplied, "the first frame, against the original, was not masked");
+    QVERIFY2(!frames.at(1).maskingApplied, "a re-anchored frame was masked where the cuts were drawn");
+    QVERIFY2(frames.at(1).maskingNote.contains(QStringLiteral("re-anchored")),
+             qPrintable(frames.at(1).maskingNote));
 }
 
 QTEST_MAIN(TestSequenceRunner)

@@ -21,6 +21,7 @@
 #include "core/StrainFit.h"
 #include "core/SubsetOverlay.h"
 #include "core/Sequence.h"
+#include "core/Masking.h"
 #include "core/Roi.h"
 #include "core/ViewFit.h"
 #include "gui/ImageViewport.h"
@@ -418,6 +419,7 @@ private slots:
     void a_corner_can_be_added_to_an_edge_and_taken_out_again_on_the_image();
     void a_refusal_to_remove_a_corner_does_not_take_the_picture_with_it();
     void a_region_moves_bodily_while_a_click_inside_it_still_pins_a_reading();
+    void a_click_beside_a_corner_that_moves_nothing_keeps_the_measured_field();
     void the_speckle_estimate_describes_the_image_and_radius_in_force();
     void the_second_pass_is_on_screen_and_says_what_it_does_and_costs();
     void scrolling_the_analysis_panel_does_not_change_what_will_be_measured();
@@ -451,6 +453,8 @@ private slots:
     void the_empty_workspace_offers_the_examples_it_ships_with();
     void a_panel_section_folds_away_and_says_what_it_still_holds();
     void a_folded_section_still_governs_the_run();
+    void subsets_beside_a_cut_are_left_out_and_the_screen_says_so();
+    void the_masking_settings_are_saved_with_the_project_and_come_back_with_it();
 
     void the_settings_window_is_on_the_file_menu_and_names_every_default();
     void a_new_project_starts_from_the_defaults_saved_in_settings();
@@ -4035,6 +4039,139 @@ void TestWorkspaceWalkthrough::a_panel_section_folds_away_and_says_what_it_still
                             .arg(said)));
 }
 
+void TestWorkspaceWalkthrough::subsets_beside_a_cut_are_left_out_and_the_screen_says_so()
+{
+    // The fixture moves by exactly (+2.4, -1.3) px with a hole through it that
+    // moves too, and a background behind the hole that does not
+    // (tools/make-hole-fixture.py). On by default, so the screen has to say so
+    // before a run, in the summary of a folded section, after the run and at
+    // the point -- and say that the region's outer edge is not masked.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("hole_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("hole_target.tif"))});
+    auto *viewport = window.findChild<ImageViewport *>();
+
+    auto *maskSwitch = byVisibleText<QCheckBox>(&window, maskAtCutsLabel());
+    QVERIFY2(maskSwitch, "nothing on the Analysis panel says cuts are left out of subsets");
+    QVERIFY2(maskSwitch->isChecked(), "masking at cuts is not on by default");
+    QVERIFY2(controlLabelled<QSpinBox>(&window, minValidShareLabel()),
+             "the least share a point is measured on is not on the panel");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("The region has no cuts")),
+             "before any cut, the panel does not say masking has nothing to do");
+
+    // The region a person would draw: the specimen, then the hole cut out.
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
+    for (const QPoint &pixel : {QPoint(10, 12), QPoint(228, 12), QPoint(228, 186),
+                                QPoint(10, 186)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    actionLabelled(&window, QStringLiteral("Cut Polygon"))->trigger();
+    for (const QPoint &pixel : {QPoint(98, 91), QPoint(111, 78), QPoint(129, 78),
+                                QPoint(142, 91), QPoint(142, 109), QPoint(129, 122),
+                                QPoint(111, 122), QPoint(98, 109)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    QVERIFY(window.roi().hasCuts());
+
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("outer edge is not masked")),
+             "with a cut drawn, the panel does not say the outer edge follows another rule");
+
+    // Folded, the section still says which way it is set.
+    CollapsibleSection *correlation = sectionTitled(&window, QStringLiteral("Correlation"));
+    QVERIFY(correlation);
+    auto *header = correlation->findChild<QToolButton *>();
+    header->click();
+    QVERIFY(correlation->isCollapsed());
+    QVERIFY2(visibleText(correlation).contains(QStringLiteral("cuts left out")),
+             qPrintable(visibleText(correlation)));
+    header->click();
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    run->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+
+    const CorrelationResult result = window.lastResult();
+    QVERIFY(result.maskingApplied);
+    QVERIFY2(logView(&window)->toPlainText().contains(QStringLiteral("measured on the ground clear of it")),
+             "the run report does not say points beside the cut were masked");
+
+    // At the point: pick the solved point beside the cut with the least ground,
+    // and pin it as a reader would, by clicking on it.
+    int pick = -1;
+    for (int i = 0; i < result.points.size(); i++) {
+        const CorrelationPoint &p = result.points.at(i);
+        if (p.masked && p.converged
+            && (pick < 0 || p.validShare < result.points.at(pick).validShare))
+            pick = i;
+    }
+    QVERIFY2(pick >= 0, "no point beside the cut was measured");
+    const CorrelationPoint &point = result.points.at(pick);
+    // The field appears as soon as the frame lands; the rest follows.
+    QTest::qWait(300);
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, point.x, point.y));
+    QTest::qWait(50);
+    const QString readout = pointPanelText(&window);
+    QVERIFY2(readout.contains(QStringLiteral("Share of subset measured"), Qt::CaseInsensitive)
+                 && readout.contains(QStringLiteral("%1 %").arg(qRound(100.0 * point.validShare))),
+             qPrintable(readout));
+    // and it measured the movement, not the background
+    QVERIFY2(std::hypot(point.u - 2.4, point.v + 1.3) < 0.05,
+             qPrintable(QStringLiteral("%1, %2").arg(point.u).arg(point.v)));
+
+    // Off: said in the panel, in the summary, and in the report, which counts
+    // the points and names the control that would leave the cut out.
+    maskSwitch->click();
+    QVERIFY(somethingOnScreenSays(&window, QStringLiteral("Off: a subset beside a cut")));
+    header->click();
+    QVERIFY(visibleText(correlation).contains(QStringLiteral("cuts kept in")));
+    header->click();
+    QVERIFY2(!controlLabelled<QSpinBox>(&window, minValidShareLabel())->isEnabled(),
+             "the floor still looks adjustable with masking off");
+    run->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return !window.lastResult().maskingApplied
+                                                && window.lastResult().subsetsReachingAHole > 0; },
+                            120000));
+    QVERIFY2(logView(&window)->toPlainText().contains(maskAtCutsLabel()),
+             "with masking off, the report does not name the control that would mask");
+}
+
+void TestWorkspaceWalkthrough::the_masking_settings_are_saved_with_the_project_and_come_back_with_it()
+{
+    // Both are run settings, so they belong to the project. Lopsided: the
+    // switch OFF and the floor at 40, neither of them its default, so a
+    // control read or restored as its default cannot pass.
+    MainWindow window;
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    auto *maskSwitch = byVisibleText<QCheckBox>(&window, maskAtCutsLabel());
+    auto *floor = controlLabelled<QSpinBox>(&window, minValidShareLabel());
+    QVERIFY(maskSwitch && floor);
+    floor->setValue(40);
+    maskSwitch->setChecked(false);
+
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("session.svproj"));
+    QVERIFY(window.saveProjectTo(path));
+
+    MainWindow other;
+    auto *otherSwitch = byVisibleText<QCheckBox>(&other, maskAtCutsLabel());
+    auto *otherFloor = controlLabelled<QSpinBox>(&other, minValidShareLabel());
+    QVERIFY(otherSwitch->isChecked());
+    QCOMPARE(otherFloor->value(), 25);
+    QVERIFY(other.openProjectFrom(path));
+    QVERIFY2(!otherSwitch->isChecked(), "the project reopened with masking back on");
+    QCOMPARE(otherFloor->value(), 40);
+}
+
 void TestWorkspaceWalkthrough::a_folded_section_still_governs_the_run()
 {
     // ⚑ THE CASE THAT MAKES FOLDING SAFE. Hiding a control does not change it,
@@ -4250,6 +4387,49 @@ void TestWorkspaceWalkthrough::a_refusal_to_remove_a_corner_does_not_take_the_pi
     QVERIFY2(log->toPlainText().contains(QStringLiteral("three corners"),
                                          Qt::CaseInsensitive),
              qPrintable(log->toPlainText()));
+}
+
+void TestWorkspaceWalkthrough::a_click_beside_a_corner_that_moves_nothing_keeps_the_measured_field()
+{
+    // Found by the masking walkthrough, 2026-10-11: a click to pin the reading
+    // beside a cut -- exactly where a reader looks once cuts are masked -- fell
+    // within reach of the cut's corner, started a corner drag, and on release
+    // announced the region as adjusted although no corner had moved. The
+    // measured field was then discarded as "measured over a different region".
+    // A click that moves nothing is a click, as it already is for moving the
+    // whole region.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("shift_reference.tif")));
+    window.addTargetImages({fixture(QStringLiteral("shift_target.tif"))});
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    actionLabelled(&window, QStringLiteral("Add Polygon"))->trigger();
+    for (const QPoint &pixel : {QPoint(40, 40), QPoint(180, 40),
+                                QPoint(180, 120), QPoint(40, 120)}) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, pixel.x(), pixel.y()));
+    }
+    byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
+    const RegionOfInterest before = window.roi();
+
+    actionLabelled(&window, QStringLiteral("Run Correlation"))->trigger();
+    QVERIFY(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000));
+    QTest::qWait(300);
+    const QString logBefore = logView(&window)->toPlainText();
+
+    // On the corner itself, without moving.
+    QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                      widgetPointForPixel(viewport, 40, 40));
+    QTest::qWait(50);
+
+    QCOMPARE(outlineOf(window.roi()), outlineOf(before));
+    QVERIFY2(viewport->hasField(), "a click that moved nothing discarded the measured field");
+    QVERIFY2(!logView(&window)->toPlainText().mid(logBefore.size())
+                  .contains(QStringLiteral("adjusted")),
+             "a click that moved nothing was logged as a region adjustment");
 }
 
 void TestWorkspaceWalkthrough::a_region_moves_bodily_while_a_click_inside_it_still_pins_a_reading()

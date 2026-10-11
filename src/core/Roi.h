@@ -136,11 +136,9 @@ bool regionContains(const RegionOfInterest &roi, int x, int y);
 // ⚑ Excluding a point whose CENTRE was cut does not stop a point just outside
 // the cut from correlating over a subset that reaches in, and those pixels are
 // usually background seen through a hole: they drag the answer toward no
-// movement, which is a plausible number and so the dangerous kind. Such points
-// are COUNTED rather than excluded, because exactly the same is already true and
-// accepted at the outer boundary, and quietly applying a stricter rule to one
-// edge of a region than to another would be a difference nobody could see or
-// account for. The run states the count and the reader decides.
+// movement, which is a plausible number and so the dangerous kind. A run masks
+// those pixels out by default (CorrelationSettings::maskAtCuts); this is the
+// engine-free count of the points affected, reported either way.
 bool subsetReachesACut(const RegionOfInterest &roi, int x, int y, int subsetRadius);
 
 // --- editing ---------------------------------------------------------------

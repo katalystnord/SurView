@@ -42,6 +42,23 @@ struct CorrelationSettings
     int    strainMinPoints   = 5;      // fewest points the fit will accept
     StrainMeasure strainMeasure = StrainMeasure::Cauchy;
 
+    // --- subsets beside a cut -------------------------------------------------
+    // Where a point's subset reaches ground a cut removed, correlate only the
+    // pixels outside the cut. What shows through a hole is background that does
+    // not move with the specimen, and correlated it pulls the answer toward no
+    // movement while the point still reports a good correlation. On by default
+    // (David, 2026-10-11). Cuts only: the region's outer boundary keeps the
+    // whole subset, as it always has. See kMaskPullIn for how far from a cut.
+    bool   maskAtCuts    = true;
+
+    // The smallest share of a subset that must lie outside the cuts for the
+    // point to be measured at all; below it the point is refused, saying so.
+    // 25 per cent, measured: the error grows steadily as the share falls with
+    // no cliff, and the row of points beside an ordinary hole sits at 40 to 50
+    // per cent. Every point's own share is reported, so a stricter reading can
+    // be applied afterwards.
+    double minValidShare = 0.25;
+
     // --- the second pass at points that failed ------------------------------
     // How forgiving the run is about repairing points the first solve could not
     // measure well. On by default; see core/Recovery.h for why, and for why
@@ -57,6 +74,13 @@ struct CorrelationSettings
     bool isAvailable() const;
     QString unavailableReason() const;
 };
+
+// How far, in pixels, the ground a masked subset uses is pulled back from every
+// cut. The engine's gradient stencil reaches 2 px across an edge, and its
+// interpolation further, so the pixels right at a cut still carry what is
+// behind it. Measured beside a hole: masked to the edge, 0.063 px of error;
+// pulled back 2 px, 0.008 px, the same as far from any cut.
+inline constexpr int kMaskPullIn = 2;
 
 // One solver and shape order the application offers.
 //
@@ -154,6 +178,13 @@ struct CorrelationPoint
     // stated rather than used to refuse the point. See core/Clipping.h.
     float clippedShare = 0.f;
     bool  clippedShareMeasured = false;
+
+    // The share, 0 to 1, of this point's subset it was measured on. 1 for a
+    // subset no cut reaches. Where masking at cuts was applied and the subset
+    // reached one, `masked` is set and this is the share outside the cut, less
+    // the pull-in: what took part in the correlation.
+    float validShare = 1.f;
+    bool  masked = false;
 };
 
 struct CorrelationResult
@@ -175,18 +206,27 @@ struct CorrelationResult
     bool restrictedToRoi = false;
     RegionOfInterest roi;
 
-    // Measured points whose subset reaches into a hole.
-    //
-    // ⚑ Counted, not excluded. Excluding a point whose CENTRE is in a hole does
-    // not stop a point just outside one correlating over a subset that reaches
-    // in, and those pixels are background that does not move with the specimen:
-    // they drag the answer toward no movement, which is plausible and therefore
-    // dangerous. They are not excluded because exactly the same is already true
-    // and accepted at the outer boundary, and applying a stricter rule to one
-    // boundary of a region than to the other would be a difference nobody could
-    // see or account for. Stated instead, so a reader can widen the hole or
-    // accept it knowingly.
+    // Measured points whose subset reaches ground a cut removed, by the
+    // region's own rule and without the pull-in: counted whether or not
+    // masking was on. With masking OFF this is the number of points whose
+    // answer was pulled toward whatever shows through the cut, and the run
+    // report says so and names the control that would leave the cut out. With
+    // it on, maskedPoints below is the account of what was done about them.
     int subsetsReachingAHole = 0;
+
+    // Whether subsets beside a cut were correlated on the ground outside it,
+    // and with what pull-in and floor. Off whenever there was no cut to mask,
+    // or masking was not asked for.
+    bool   maskingApplied = false;
+    int    maskPullIn = 0;
+    double minValidShare = 0.0;
+
+    // Points measured on part of their subset, counted among the solved.
+    int maskedPoints = 0;
+
+    // Why masking was asked for and not applied, in a reader's words; empty
+    // when it was applied or not asked for.
+    QString maskingNote;
 
     // Failures counted by the engine's own reason, never lumped into one
     // number: "did not converge" and "subset out of bounds" call for different
@@ -334,6 +374,11 @@ public:
     // Must be set before run(). A value below one is ignored.
     void setChunkPoints(int points) { if (points >= 1) m_chunkPoints = points; }
 
+    // False when the reference is not the image the region was drawn on: a
+    // sequence that has re-anchored measures against a later frame, where every
+    // cut has moved with the specimen. Must be set before run().
+    void setReferenceIsTheOriginal(bool original) { m_referenceIsTheOriginal = original; }
+
 public slots:
     void run();
     void cancel();
@@ -350,5 +395,6 @@ private:
     QString m_targetPath;
     PoiSeeding m_seeding;
     int m_chunkPoints = kDefaultChunkPoints;
+    bool m_referenceIsTheOriginal = true;
     std::atomic<bool> m_cancelled{false};
 };

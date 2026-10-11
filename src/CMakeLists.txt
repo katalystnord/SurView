@@ -56,6 +56,8 @@ add_library(surview_core STATIC
     core/SpatialResolution.h
     core/Clipping.cpp
     core/Clipping.h
+    core/Masking.cpp
+    core/Masking.h
     core/Cautions.cpp
     core/Cautions.h
     core/Defaults.cpp

@@ -17,6 +17,7 @@
 
 class QAction;
 class SettingsWindow;
+class NoteLabel;
 class QMenu;
 class QCheckBox;
 class QComboBox;
@@ -152,6 +153,9 @@ private slots:
     // Restate what each folded section of the Analysis panel is holding. One
     // place, called from every control that changes any of it.
     void updateSectionSummaries();
+    // The note under the masking controls follows the switch, the floor, the
+    // solver and the region's cuts (core/Masking.h).
+    void updateMaskingNote();
 
     // Keeps the strain warning on screen honest about the numbers currently in
     // the panel. Live, not on Run: the settings that make the fit impossible
@@ -335,6 +339,9 @@ private:
     QSpinBox *m_gridStep = nullptr;
     QSpinBox *m_maxIterations = nullptr;
     QDoubleSpinBox *m_convergence = nullptr;
+    QCheckBox *m_maskAtCuts = nullptr;
+    QSpinBox *m_minValidShare = nullptr;
+    NoteLabel *m_maskingNote = nullptr;
 
     QCheckBox *m_strainEnabled = nullptr;
     QDoubleSpinBox *m_strainRadius = nullptr;

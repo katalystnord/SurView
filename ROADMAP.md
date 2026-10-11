@@ -566,6 +566,11 @@ Understood well enough to start, large enough to need their own care.
      panel beside the masking switch, its default shown in the Settings
      window like every other.
 
+     **DONE 2026-10-11** on the `masked-subsets` branches of SurView and the
+     fork (fork issue #19). Still to do: warp the cuts with the banked
+     displacement so a re-anchored frame can be masked too (today it is not,
+     and says so), and mask ICLM, NR and Simplex rather than refusing.
+
   2. ~~⚑ **Report SPATIAL resolution, not only displacement resolution.**~~
      DONE 2026-10-07, `core/SpatialResolution.h`. The Analysis panel and the
      run report state the length a displacement is averaged over (the subset,

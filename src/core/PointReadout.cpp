@@ -27,6 +27,18 @@ QString notMeasured()
     return QObject::tr("not measured");
 }
 
+// The share of the subset a point was measured on, for a point beside a cut.
+ReadoutLine measuredShareLine(const CorrelationPoint &point)
+{
+    return {QObject::tr("Share of subset measured"),
+            QObject::tr("%1 %").arg(qRound(100.0 * double(point.validShare))),
+            QObject::tr("Its subset reaches a cut, so it was correlated only on the "
+                        "ground clear of the cut, pulled back %1 px. Fewer pixels "
+                        "resolve less, which the noise floor below accounts for.")
+                .arg(kMaskPullIn),
+            false};
+}
+
 }  // namespace
 
 float pointPickRadius(const CorrelationResult &result)
@@ -133,6 +145,9 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
         // glare says why it is a hole.
         if (point.clippedShareMeasured)
             readout.lines.append(clippedShareLine(point));
+        // and the share, which is the reason when the floor refused it
+        if (point.masked)
+            readout.lines.append(measuredShareLine(point));
         return readout;
     }
 
@@ -172,6 +187,9 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
                                          0, 'g', 2)
                               : QString(),
                           false});
+
+    if (point.masked)
+        readout.lines.append(measuredShareLine(point));
 
     // --- how far this one point can be trusted ------------------------------
     if (point.noiseFloorMeasured) {

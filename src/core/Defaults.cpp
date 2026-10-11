@@ -1,5 +1,6 @@
 #include "core/Defaults.h"
 
+#include "core/Masking.h"
 #include "core/StrainFit.h"
 
 #include <QCoreApplication>
@@ -146,6 +147,10 @@ QVector<SettingLine> settingLines(const RunDefaults &defaults)
          count(o.maxIterations, QObject::tr("iteration"), QObject::tr("iterations"))},
         {correlation, QObject::tr("Convergence"), convergence(s.convergence),
          convergence(o.convergence)},
+        {correlation, maskAtCutsLabel(), onOff(s.maskAtCuts), onOff(o.maskAtCuts)},
+        {correlation, minValidShareLabel(),
+         QObject::tr("%1 %").arg(qRound(s.minValidShare * 100.0)),
+         QObject::tr("%1 %").arg(qRound(o.minValidShare * 100.0))},
         {strain, QObject::tr("Fit strain from the displacement field"),
          onOff(s.strainEnabled), onOff(o.strainEnabled)},
         {strain, QObject::tr("Subregion radius"),
@@ -187,6 +192,8 @@ QJsonObject correlationSettingsToJson(const CorrelationSettings &s)
     settings[QStringLiteral("gridStep")] = s.gridStep;
     settings[QStringLiteral("maxIterations")] = s.maxIterations;
     settings[QStringLiteral("convergence")] = s.convergence;
+    settings[QStringLiteral("maskAtCuts")] = s.maskAtCuts;
+    settings[QStringLiteral("minValidShare")] = s.minValidShare;
     settings[QStringLiteral("strainEnabled")] = s.strainEnabled;
     settings[QStringLiteral("strainRadius")] = s.strainRadius;
     settings[QStringLiteral("strainMinPoints")] = s.strainMinPoints;
@@ -209,6 +216,8 @@ CorrelationSettings correlationSettingsFromJson(const QJsonObject &settings)
     s.gridStep = settings[QStringLiteral("gridStep")].toInt(s.gridStep);
     s.maxIterations = settings[QStringLiteral("maxIterations")].toInt(s.maxIterations);
     s.convergence = settings[QStringLiteral("convergence")].toDouble(s.convergence);
+    s.maskAtCuts = settings[QStringLiteral("maskAtCuts")].toBool(s.maskAtCuts);
+    s.minValidShare = settings[QStringLiteral("minValidShare")].toDouble(s.minValidShare);
     s.strainEnabled = settings[QStringLiteral("strainEnabled")].toBool(s.strainEnabled);
     s.strainRadius = settings[QStringLiteral("strainRadius")].toDouble(s.strainRadius);
     s.strainMinPoints = settings[QStringLiteral("strainMinPoints")].toInt(s.strainMinPoints);

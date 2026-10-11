@@ -153,6 +153,7 @@ class TestFieldExport : public QObject
 private slots:
     void a_written_field_reads_back_as_the_points_and_cells_it_was_made_of();
     void the_clipped_share_travels_with_the_field();
+    void the_share_each_point_was_measured_on_travels_with_the_field();
     void the_points_land_where_they_were_measured();
     void a_point_the_solver_rejected_exports_as_nothing_not_as_zero();
     void a_strain_the_fit_declined_exports_as_nothing_not_as_zero();
@@ -435,6 +436,35 @@ void TestFieldExport::the_clipped_share_travels_with_the_field()
     QCOMPARE(float(clipped->GetComponent(3, 0)), 0.5f);
     QVERIFY2(allFieldText(grid).contains(QStringLiteral("subset_clipped_share is the share")),
              "the file does not say what subset_clipped_share is");
+}
+
+void TestFieldExport::the_share_each_point_was_measured_on_travels_with_the_field()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.vtu"));
+    CorrelationResult result = twoByTwo();
+    result.maskingApplied = true;
+    result.maskPullIn = 2;
+    result.minValidShare = 0.3;
+    result.points[0].validShare = 0.625f;
+    result.points[0].masked = true;
+    result.points[1].converged = false;      // refused, and its share says why
+    result.points[1].validShare = 0.125f;
+    result.points[1].masked = true;
+    result.maskedPoints = 1;
+
+    QCOMPARE(writeFieldVtu(path, result, provenanceFor()), QString());
+    auto grid = readBack(path);
+    auto *share = grid->GetPointData()->GetArray("measured_share");
+    QVERIFY2(share, "the file carries no measured share");
+    QCOMPARE(float(share->GetComponent(0, 0)), 0.625f);
+    QCOMPARE(float(share->GetComponent(1, 0)), 0.125f);
+    QCOMPARE(float(share->GetComponent(2, 0)), 1.f);
+    const QString text = allFieldText(grid);
+    QVERIFY2(text.contains(QStringLiteral("pulled back 2 px"))
+                 && text.contains(QStringLiteral("30 %"))
+                 && text.contains(QStringLiteral("outer edge was not masked")),
+             qPrintable(text));
 }
 
 QTEST_MAIN(TestFieldExport)

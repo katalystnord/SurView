@@ -100,7 +100,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     github.com/katalystnord/SurView
   </div>
 </div>
-<div class="contents"><h2>Contents</h2><div class="part">Part I. What DIC measures</div><ol><li><span class="pg">3</span><a href="#the-idea">1. Two photographs and a question</a></li><li><span class="pg">6</span><a href="#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li><li><span class="pg">9</span><a href="#absence-not-zero">3. A rejected point is not a zero</a></li><li><span class="pg">11</span><a href="#coordinate-frame">4. One coordinate frame</a></li></ol><div class="part">Part II. Running a measurement</div><ol><li><span class="pg">13</span><a href="#region-and-holes">5. The region, and what a hole means</a></li><li><span class="pg">16</span><a href="#sequences">6. Sequences: order matters, reference matters</a></li><li><span class="pg">17</span><a href="#reference-updating">7. When the reference goes stale</a></li><li><span class="pg">19</span><a href="#recovery">8. Points that fail, and the pass that repairs them</a></li></ol><div class="part">Part III. How much to trust it</div><ol><li><span class="pg">22</span><a href="#two-questions">9. Two questions, never one score</a></li><li><span class="pg">25</span><a href="#reading-critically">10. Reading a field critically</a></li><li><span class="pg">27</span><a href="#known-answer">11. Checking against a known answer</a></li></ol><div class="part">Part IV. Beyond one field</div><ol><li><span class="pg">29</span><a href="#sequence-as-curve">12. Reading a sequence as a curve</a></li><li><span class="pg">32</span><a href="#leaving-the-application">13. The field leaving the application</a></li></ol><div class="part">Part V. Practice</div><ol><li><span class="pg">34</span><a href="#speckling">14. Speckling a specimen</a></li><li><span class="pg">36</span><a href="#subset-and-step">15. Choosing subset radius and grid step</a></li><li><span class="pg">38</span><a href="#lighting-and-imaging">16. Lighting and imaging</a></li></ol><div class="part">Reference</div><ol><li><span class="pg">40</span><a href="#glossary">Glossary</a></li><li><span class="pg">42</span><a href="#on-screen">Where to find it on screen</a></li><li><span class="pg">43</span><a href="#not-yet">What is not in this manual yet</a></li></ol></div>
+<div class="contents"><h2>Contents</h2><div class="part">Part I. What DIC measures</div><ol><li><span class="pg">3</span><a href="#the-idea">1. Two photographs and a question</a></li><li><span class="pg">6</span><a href="#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li><li><span class="pg">9</span><a href="#absence-not-zero">3. A rejected point is not a zero</a></li><li><span class="pg">11</span><a href="#coordinate-frame">4. One coordinate frame</a></li></ol><div class="part">Part II. Running a measurement</div><ol><li><span class="pg">13</span><a href="#region-and-holes">5. The region, and what a hole means</a></li><li><span class="pg">17</span><a href="#sequences">6. Sequences: order matters, reference matters</a></li><li><span class="pg">18</span><a href="#reference-updating">7. When the reference goes stale</a></li><li><span class="pg">20</span><a href="#recovery">8. Points that fail, and the pass that repairs them</a></li></ol><div class="part">Part III. How much to trust it</div><ol><li><span class="pg">23</span><a href="#two-questions">9. Two questions, never one score</a></li><li><span class="pg">26</span><a href="#reading-critically">10. Reading a field critically</a></li><li><span class="pg">28</span><a href="#known-answer">11. Checking against a known answer</a></li></ol><div class="part">Part IV. Beyond one field</div><ol><li><span class="pg">30</span><a href="#sequence-as-curve">12. Reading a sequence as a curve</a></li><li><span class="pg">33</span><a href="#leaving-the-application">13. The field leaving the application</a></li></ol><div class="part">Part V. Practice</div><ol><li><span class="pg">35</span><a href="#speckling">14. Speckling a specimen</a></li><li><span class="pg">37</span><a href="#subset-and-step">15. Choosing subset radius and grid step</a></li><li><span class="pg">39</span><a href="#lighting-and-imaging">16. Lighting and imaging</a></li></ol><div class="part">Reference</div><ol><li><span class="pg">41</span><a href="#glossary">Glossary</a></li><li><span class="pg">43</span><a href="#on-screen">Where to find it on screen</a></li><li><span class="pg">45</span><a href="#not-yet">What is not in this manual yet</a></li></ol></div>
 
 <div class="part-body">
   <p class="kicker">Part I &middot; What DIC measures</p>
@@ -664,13 +664,46 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     hole would be, just to a lesser degree.
   </p>
   <p>
-    The honest response is not to pretend this cannot happen by excluding
-    every point anywhere near a hole - that would apply a stricter
-    rule at a hole's edge than the same result already accepts at the
-    outer boundary, for no principled reason. It is to <strong>count and
-    report</strong> how many measured points have a subset reaching into a
-    hole, so a reader can widen the exclusion or simply read those points
-    knowing what they are.
+    Measured on images with an exact answer and a 40 px hole through them,
+    the points within 4 px of the hole's edge were wrong by about 0.7 px
+    while correlating above 0.9, so nothing about them looked wrong. So by
+    default SurView <strong>leaves the cut out</strong>: a subset beside a
+    cut is correlated only on the ground clear of it. The same points then
+    measure to within 0.01 px, the same as points far from any hole.
+  </p>
+  <p>
+    Three details matter when reading the result:
+  </p>
+  <ul>
+    <li>
+      <strong>The ground is pulled back 2 px from every cut.</strong> The
+      engine's gradient and interpolation reach about 2 px across an edge,
+      so the pixels right at a cut still carry what is behind it. Pulled
+      back, the error at the edge falls from 0.06 px to the far-field level.
+    </li>
+    <li>
+      <strong>Only cuts are masked, not the region's outer edge.</strong> A
+      subset reaching past the outer boundary keeps every pixel, as it
+      always has. The Analysis panel says so beside the switch.
+    </li>
+    <li>
+      <strong>A point measured on part of its subset says how much.</strong>
+      Its readout shows the share, and both exported files carry it for every
+      point as <code>measured_share</code>. Fewer pixels resolve less, and
+      the noise floor at that point accounts for it. A point with less than
+      25 per cent of its subset clear of the cuts is refused, saying so. The
+      error grows steadily as the share falls, with no sharp limit, so the
+      floor is a setting: <strong>Least of a subset clear of the
+      cuts</strong>, beside the switch.
+    </li>
+  </ul>
+  <p>
+    Masking needs the ICGN solver; with IC-LM or Newton-Raphson a point
+    whose subset reaches a cut is refused with that reason. In a sequence
+    that re-anchors, frames measured against a later reference are not
+    masked, because the cuts were drawn on the original and the hole has
+    since moved; the run report says so. With the switch off, the run
+    report counts the points whose subset reached a cut instead.
   </p>
 
   <h1 id="sequences">6. Sequences: order matters, reference matters</h1>
@@ -1809,6 +1842,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
       <tr><td>Turn reference updating on and see its cost</td><td><strong>Analysis</strong> panel, "Reference" group</td></tr>
       <tr><td>Turn the recovery pass on and adjust it</td><td><strong>Analysis</strong> panel, "Points that failed" group</td></tr>
       <tr><td>Choose the settings a new project starts from</td><td>File menu: <strong>Settings</strong></td></tr>
+      <tr><td>Leave cuts out of the subsets beside them, and the least share kept</td><td>Analysis panel, <strong>Correlation</strong> section</td></tr>
       <tr><td>Start or stop measuring</td><td>Toolbar: <strong>Run Correlation</strong>, <strong>Stop</strong></td></tr>
       <tr><td>Read a value at one point of the field</td><td><strong>Point</strong> panel; hover the field, click to pin</td></tr>
       <tr><td>Switch between displacement, strain, and reliability channels</td><td>The "Showing" selector above the field</td></tr>

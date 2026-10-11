@@ -418,6 +418,10 @@ private:
     // could only be redrawn from scratch before this: one corner slightly wrong
     // meant placing all of them again.
     CornerRef m_draggingCorner;
+    // Where a corner drag began, and the region then: a drag that ends with the
+    // region unchanged was a click, and is answered as one.
+    QVector<RegionShape> m_shapesBeforeCornerDrag;
+    QPoint m_cornerPressPixel;
 
     // ⚑ Moving the WHOLE region shares its gesture with pinning a point
     // reading, and the two are told apart by whether the hand actually moved.

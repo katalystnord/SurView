@@ -235,16 +235,10 @@ SpeckleQuality speckleQualityIn(const QString &imagePath,
     return speckleQualityIn(prepareSpeckleField(imagePath, subsetRadius), roi);
 }
 
-std::function<bool(int x, int y)> regionInsideTest(const RegionOfInterest &roi)
+std::shared_ptr<opencorr::OrderedRegion2D> engineRegion(const RegionOfInterest &roi,
+                                                        const QSize &wholeImage)
 {
     using namespace opencorr;
-
-    struct Applied
-    {
-        std::unique_ptr<Shape2D> shape;
-        bool subtract = false;
-    };
-    auto applied = std::make_shared<std::vector<Applied>>();
 
     const auto polygon = [](const QVector<QPoint> &corners) {
         std::vector<int> vertex_x;
@@ -258,17 +252,23 @@ std::function<bool(int x, int y)> regionInsideTest(const RegionOfInterest &roi)
         return std::make_unique<Polygon2D>(vertex_x, vertex_y);
     };
 
+    auto region = std::make_shared<OrderedRegion2D>();
+    if (wholeImage.isValid()) {
+        region->add(polygon({QPoint(0, 0), QPoint(wholeImage.width() - 1, 0),
+                             QPoint(wholeImage.width() - 1, wholeImage.height() - 1),
+                             QPoint(0, wholeImage.height() - 1)}));
+    }
+
     if (roi.isValid()) {
         for (const RegionShape &shape : roi.shapes) {
             if (!shape.isValid())
                 continue;   // encloses nothing, so it adds and removes nothing
-            Applied entry;
-            entry.subtract = shape.subtract;
+            std::unique_ptr<Shape2D> engineShape;
             if (shape.kind == RegionShape::Ellipse) {
                 // Inscribed in the box, its edge pixels on the boundary: the
                 // same centre and semi-axes shapeContains() mirrors.
                 const QRect box = shape.bounds();
-                entry.shape = std::make_unique<Ellipse2D>(
+                engineShape = std::make_unique<Ellipse2D>(
                     0.5f * float(box.left() + box.right()),
                     0.5f * float(box.top() + box.bottom()),
                     0.5f * float(box.right() - box.left()),
@@ -276,18 +276,21 @@ std::function<bool(int x, int y)> regionInsideTest(const RegionOfInterest &roi)
             } else {
                 // A rectangle is the engine's polygon of its four corners, whose
                 // boundary-inclusive rule covers the box's edge pixels.
-                entry.shape = polygon(shape.handles());
+                engineShape = polygon(shape.handles());
             }
-            applied->push_back(std::move(entry));
+            if (shape.subtract)
+                region->cut(std::move(engineShape));
+            else
+                region->add(std::move(engineShape));
         }
     }
+    return region;
+}
 
-    // The last shape containing the pixel decides, as core/Roi.h states.
-    return [applied](int x, int y) {
-        for (auto it = applied->rbegin(); it != applied->rend(); ++it) {
-            if (it->shape->contains(x, y))
-                return !it->subtract;
-        }
-        return false;
-    };
+std::function<bool(int x, int y)> regionInsideTest(const RegionOfInterest &roi)
+{
+    // The last shape containing the pixel decides, as core/Roi.h states, which
+    // is the engine's OrderedRegion2D rule.
+    const std::shared_ptr<opencorr::OrderedRegion2D> region = engineRegion(roi);
+    return [region](int x, int y) { return region->contains(x, y); };
 }

@@ -2,9 +2,15 @@
 
 #include "core/Roi.h"
 
+#include <QSize>
 #include <QString>
 
 #include <functional>
+#include <memory>
+
+namespace opencorr {
+class OrderedRegion2D;
+}
 
 // Proposing a region of interest by segmenting the speckled part of an image.
 //
@@ -42,3 +48,12 @@ RoiDetection detectSpeckleRegion(const QString &imagePath);
 // else; it lives here so that no third file has to name an OpenCorr type. A
 // region that is not valid contains nothing.
 std::function<bool(int x, int y)> regionInsideTest(const RegionOfInterest &roi);
+
+// The region as the engine's own ordered shape, built from the same shapes
+// regionInsideTest() asks. With `wholeImage` given, the image itself is added
+// first, so a pixel no shape covers counts as inside: that is the ground a
+// masked subset may use, where only a CUT removes anything (core/Correlation.h,
+// maskAtCuts). Declared with the engine type named but not defined, so that
+// including this header does not bring the engine with it.
+std::shared_ptr<opencorr::OrderedRegion2D> engineRegion(const RegionOfInterest &roi,
+                                                        const QSize &wholeImage = QSize());

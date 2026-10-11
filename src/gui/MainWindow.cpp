@@ -10,6 +10,7 @@
 #include "SettingsWindow.h"
 #include "core/Defaults.h"
 #include "core/Correlation.h"
+#include "core/Masking.h"
 #include "core/FieldExport.h"
 #include "core/FieldLayout.h"
 #include "core/ImageDecode.h"
@@ -618,6 +619,8 @@ void MainWindow::applySettings(const CorrelationSettings &settings,
     m_gridStep->setValue(settings.gridStep);
     m_maxIterations->setValue(settings.maxIterations);
     m_convergence->setValue(settings.convergence);
+    m_maskAtCuts->setChecked(settings.maskAtCuts);
+    m_minValidShare->setValue(qRound(settings.minValidShare * 100.0));
 
     m_strainEnabled->setChecked(settings.strainEnabled);
     m_strainRadius->setValue(settings.strainRadius);
@@ -1044,6 +1047,37 @@ QWidget *MainWindow::createAnalysisPanel()
            "B-spline and offer no alternative."));
     form->addRow(tr("Interpolation"), interpolation);
 
+    // ⚑ On by default, and so stated beside the switch rather than left to be
+    // found: it changes the field beside every cut. The note says what it does
+    // for the region and solver as they stand, including why it would do
+    // nothing, and that the region's outer edge follows a different rule.
+    m_maskAtCuts = new QCheckBox(maskAtCutsLabel());
+    m_maskAtCuts->setChecked(CorrelationSettings().maskAtCuts);
+    m_maskAtCuts->setToolTip(
+        tr("A subset beside a cut is correlated only on the ground clear of the "
+           "cut. What shows through a hole does not move with the specimen, and "
+           "correlated it pulls the point toward no movement."));
+    form->addRow(QString(), m_maskAtCuts);
+
+    m_minValidShare = new QSpinBox;
+    m_minValidShare->setRange(1, 100);
+    m_minValidShare->setValue(qRound(CorrelationSettings().minValidShare * 100.0));
+    m_minValidShare->setSuffix(tr(" %"));
+    m_minValidShare->setToolTip(
+        tr("A point with less of its subset clear of the cuts than this is refused "
+           "rather than measured. The error grows steadily as the share falls; "
+           "every point's own share is in its readout and the exported files."));
+    form->addRow(minValidShareLabel(), m_minValidShare);
+
+    m_maskingNote = new NoteLabel;
+    m_maskingNote->setStyleSheet(QStringLiteral("color: #55616d; font-size: 11px;"));
+    form->addRow(QString(), m_maskingNote);
+
+    connect(m_maskAtCuts, &QCheckBox::toggled, this, &MainWindow::updateMaskingNote);
+    connect(m_maskAtCuts, &QCheckBox::toggled, this, &MainWindow::updateSectionSummaries);
+    connect(m_minValidShare, &QSpinBox::valueChanged, this, &MainWindow::updateMaskingNote);
+    connect(m_solver, &QComboBox::currentIndexChanged, this, &MainWindow::updateMaskingNote);
+
     // --- strain --------------------------------------------------------------
     // Its own group, because it is a second measurement rather than another
     // correlation parameter: it runs after the solve, over the solve's own
@@ -1310,6 +1344,7 @@ QWidget *MainWindow::createAnalysisPanel()
     // Found in a screenshot of the empty workspace, which is the one state the
     // walkthrough suite never looked at.
     updateSpeckleQuality();
+    updateMaskingNote();
     updateSectionSummaries();
     return panel;
 }
@@ -1423,6 +1458,15 @@ void MainWindow::updateSettingsPreview()
     m_strainResolution->setVisible(settings.strainEnabled);
 }
 
+void MainWindow::updateMaskingNote()
+{
+    if (!m_maskingNote || !m_maskAtCuts || !m_minValidShare)
+        return;
+    m_maskingNote->setText(maskingPanelNote(currentSettings(), m_roi));
+    // The floor means nothing with masking off, and says so by being greyed.
+    m_minValidShare->setEnabled(m_maskAtCuts->isChecked());
+}
+
 void MainWindow::updateSectionSummaries()
 {
     if (!m_correlationSection)
@@ -1430,12 +1474,15 @@ void MainWindow::updateSectionSummaries()
 
     const CorrelationSettings settings = currentSettings();
 
+    // Folded, the section still governs the run, and leaving cuts out changes
+    // the field beside every one, so the summary says which way it is set.
     m_correlationSection->setSummary(
-        tr("%1, %2 order, %3 px subset, %4 px step")
+        tr("%1, %2 order, %3 px subset, %4 px step, %5")
             .arg(solverDisplayName(settings.solver))
             .arg(settings.shapeOrder == 1 ? tr("first") : tr("second"))
             .arg(settings.subsetRadius)
-            .arg(settings.gridStep));
+            .arg(settings.gridStep)
+            .arg(settings.maskAtCuts ? tr("cuts left out") : tr("cuts kept in")));
 
     m_strainSection->setSummary(
         settings.strainEnabled
@@ -1708,6 +1755,8 @@ CorrelationSettings MainWindow::currentSettings() const
     settings.gridStep = m_gridStep->value();
     settings.maxIterations = m_maxIterations->value();
     settings.convergence = m_convergence->value();
+    settings.maskAtCuts = m_maskAtCuts->isChecked();
+    settings.minValidShare = m_minValidShare->value() / 100.0;
 
     settings.strainEnabled = m_strainEnabled->isChecked();
     settings.strainRadius = m_strainRadius->value();
@@ -2239,8 +2288,10 @@ void MainWindow::showRoiInProject()
 {
     // Every route that changes the region passes through here, so the estimate
     // follows the region without each of those routes having to remember to
-    // refresh it.
+    // refresh it. The masking note too: whether there are cuts to mask is a
+    // property of the region.
     updateSpeckleQuality();
+    updateMaskingNote();
 
     if (!m_roi.isValid()) {
         m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
@@ -2660,13 +2711,10 @@ void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
         log(tr("  %1 point(s): %2").arg(it.value()).arg(it.key()));
     }
 
-    if (result.subsetsReachingAHole > 0) {
-        log(tr("  %1 measured point(s) have a subset reaching into a hole. Those "
-               "subsets include pixels that do not move with the specimen, which "
-               "pulls their answer toward no movement. Widen the hole to exclude "
-               "them, or read them knowing it.")
-                .arg(result.subsetsReachingAHole));
-    }
+    // Whether subsets beside a cut were left out, and what that cost; or, with
+    // masking off, how many points correlated over a cut (core/Masking.h).
+    for (const QString &line : maskingReport(result))
+        log(QStringLiteral("  ") + line);
 
     // What the second pass repaired. Stated whenever it ran, including when it
     // repaired nothing: a run with the pass off and a run with the pass on that

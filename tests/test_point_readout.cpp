@@ -143,6 +143,8 @@ private slots:
     void a_mostly_clipped_subset_is_the_row_that_warns();
     void a_subset_clipped_exactly_half_or_less_is_stated_without_a_warning();
     void a_rejected_point_over_glare_says_how_much_of_it_was_clipped();
+    void a_point_beside_a_cut_says_how_much_of_its_subset_it_was_measured_on();
+    void a_point_refused_beside_a_cut_says_how_little_was_clear();
 
     // --- strain, which is fitted rather than measured ----------------------
     void strain_is_absent_when_the_run_never_asked_for_it();
@@ -697,6 +699,40 @@ void TestPointReadout::a_rejected_point_over_glare_says_how_much_of_it_was_clipp
     QVERIFY(!readout.solved);
     QVERIFY2(spoken(readout).contains(QStringLiteral("97%")), qPrintable(spoken(readout)));
     QVERIFY(warningLabels(readout).contains(QStringLiteral("Clipped share of subset")));
+}
+
+void TestPointReadout::a_point_beside_a_cut_says_how_much_of_its_subset_it_was_measured_on()
+{
+    CorrelationResult result = plainResult();
+    result.points[4].validShare = 0.64f;
+    result.points[4].masked = true;
+
+    const PointReadout readout = pointReadout(result, 4);
+    QVERIFY(readout.solved);
+    QVERIFY2(spoken(readout).contains(QStringLiteral("Share of subset measured"))
+                 && spoken(readout).contains(QStringLiteral("64 %"))
+                 && spoken(readout).contains(QStringLiteral("cut")),
+             qPrintable(spoken(readout)));
+    // A real measurement on less ground, not a fault: no warning.
+    QVERIFY(!warningLabels(readout).contains(QStringLiteral("Share of subset measured")));
+
+    // and a point no cut reaches does not mention it at all
+    QVERIFY(!spoken(pointReadout(result, 3)).contains(QStringLiteral("Share of subset measured")));
+}
+
+void TestPointReadout::a_point_refused_beside_a_cut_says_how_little_was_clear()
+{
+    CorrelationResult result = plainResult();
+    CorrelationPoint &point = result.points[4];
+    point.converged = false;
+    point.zncc = -9.f;
+    point.failureReason = QStringLiteral("Less than 25 % of its subset lies clear of the cuts");
+    point.validShare = 0.18f;
+    point.masked = true;
+
+    const PointReadout readout = pointReadout(result, 4);
+    QVERIFY(!readout.solved);
+    QVERIFY2(spoken(readout).contains(QStringLiteral("18 %")), qPrintable(spoken(readout)));
 }
 
 QTEST_MAIN(TestPointReadout)

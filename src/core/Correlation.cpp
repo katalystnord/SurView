@@ -49,6 +49,20 @@ std::unique_ptr<DIC> makeSolver(const CorrelationSettings &settings, int threads
     return nullptr;
 }
 
+QString tooLittleOutsideTheCuts(double minValidShare)
+{
+    return QObject::tr("Less than %1 % of its subset lies clear of the cuts, the "
+                       "least a point is measured on.")
+        .arg(qRound(minValidShare * 100.0));
+}
+
+QString solverCannotMask(CorrelationSettings::Solver solver)
+{
+    return QObject::tr("Its subset reaches a cut, and %1 cannot leave the cut out "
+                       "yet; ICGN can.")
+        .arg(solverDisplayName(solver));
+}
+
 }  // namespace
 
 int solverThreadCount(int coresAvailable)
@@ -237,6 +251,36 @@ void CorrelationRunner::run()
                 result.roi = m_roi;
         }
 
+        // --- subsets beside a cut -------------------------------------------
+        // Built once from the region: ground is every pixel no cut removed,
+        // pulled back kMaskPullIn from each cut. The region's outer boundary
+        // removes nothing here, so a subset reaching past it keeps every pixel,
+        // as it always has (decision 1, 2026-10-11).
+        //
+        // ⚑ Only against the image the cuts were drawn on. A sequence that has
+        // re-anchored measures against a later frame, where every cut has moved
+        // with the specimen, and a mask left where it was drawn would remove the
+        // wrong pixels while saying it had removed the right ones.
+        std::unique_ptr<ValidPixelMask2D> mask;
+        if (m_settings.maskAtCuts && m_roi.isValid() && m_roi.hasCuts()) {
+            if (m_referenceIsTheOriginal) {
+                mask = std::make_unique<ValidPixelMask2D>(
+                    *engineRegion(m_roi, QSize(ref_img.width, ref_img.height)),
+                    ref_img.width, ref_img.height, kMaskPullIn);
+                result.maskingApplied = true;
+                result.maskPullIn = kMaskPullIn;
+                result.minValidShare = m_settings.minValidShare;
+            } else {
+                result.maskingNote = tr(
+                    "Subsets beside a cut were not masked on this frame: the run "
+                    "has re-anchored to a later frame, where the cuts no longer "
+                    "sit where they were drawn.");
+            }
+        }
+        // Narrowed to float once, here: the engine compares a float share with
+        // it, and 0.25 widened back would sit on the other side of a boundary.
+        const float minValidShare = float(m_settings.minValidShare);
+
         // Never zero: an empty grid is a refusal from buildPoiGrid() above, and
         // a seeding with no points is treated as no seeding at all.
         const int total = int(queue.size());
@@ -246,6 +290,7 @@ void CorrelationRunner::run()
         // Both are chunked so Stop stays responsive through either stage.
         FFTCC2D fftcc(radius, radius, threads);
         fftcc.setImages(ref_img, tar_img);
+        fftcc.setValidPixels(mask.get(), minValidShare);
 
         std::unique_ptr<DIC> solver = makeSolver(m_settings, threads);
         if (!solver) {
@@ -253,6 +298,7 @@ void CorrelationRunner::run()
             return;
         }
         solver->setImages(ref_img, tar_img);
+        solver->setValidPixels(mask.get(), minValidShare);
         solver->prepare();
 
         result.points.reserve(total);
@@ -464,6 +510,7 @@ void CorrelationRunner::run()
         if (!m_cancelled) {
             Uncertainty2D reliability(radius, radius, threads);
             reliability.setImages(ref_img, tar_img);
+            reliability.setValidPixels(mask.get(), minValidShare);
             reliability.prepare();
 
             const QString stageName = tr("checking reliability");
@@ -566,6 +613,14 @@ void CorrelationRunner::run()
                 point.clippedShareMeasured = true;
             }
 
+            // The share the engine measured it on, asked of the same mask at
+            // the same centre: the engine truncates a position to its subset's
+            // centre pixel, so this does too.
+            if (mask) {
+                point.validShare = mask->validShare(int(poi.x), int(poi.y), radius, radius);
+                point.masked = point.validShare < 1.f;
+            }
+
             if (i >= solvedUpTo) {
                 // Stopped before the solver reached this point. Counted and
                 // named, not silently dropped: the grid the run set out to
@@ -582,6 +637,8 @@ void CorrelationRunner::run()
                 point.converged = !isFailureStatus(poi.result.zncc);
                 if (point.converged) {
                     result.converged++;
+                    if (point.masked)
+                        result.maskedPoints++;
                     if (point.clippedShareMeasured
                         && double(point.clippedShare) > kMostlyClipped)
                         result.mostlyClipped++;
@@ -658,6 +715,12 @@ void CorrelationRunner::run()
                             ref_img.height)) {
                         point.failureReason = kCarriedPastTheEdge;
                     }
+                    // In our words, naming the setting and the remedy: the
+                    // engine's describe the mask, and a reader knows cuts.
+                    if (int(poi.result.zncc) == STATUS_TOO_FEW_VALID_PIXELS)
+                        point.failureReason = tooLittleOutsideTheCuts(m_settings.minValidShare);
+                    if (int(poi.result.zncc) == STATUS_MASK_NOT_SUPPORTED)
+                        point.failureReason = solverCannotMask(m_settings.solver);
                     result.failuresByReason[point.failureReason]++;
                 }
             }

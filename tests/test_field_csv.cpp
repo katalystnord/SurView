@@ -207,6 +207,7 @@ class TestFieldCsv : public QObject
 private slots:
     void every_attempted_point_gets_a_row();
     void the_clipped_share_is_written_for_every_point_attempted();
+    void the_share_each_point_was_measured_on_is_written_for_every_point_attempted();
     void the_columns_name_themselves_and_their_units();
     void a_measured_point_carries_its_measurement();
 
@@ -269,6 +270,31 @@ void TestFieldCsv::the_clipped_share_is_written_for_every_point_attempted()
     QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
     text = contentsOf(path);
     QCOMPARE(cell(text, 0, QStringLiteral("clipped_share")), QString());
+}
+
+void TestFieldCsv::the_share_each_point_was_measured_on_is_written_for_every_point_attempted()
+{
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("field.csv"));
+    CorrelationResult result = plainResult();
+    result.maskingApplied = true;
+    result.maskPullIn = 2;
+    result.minValidShare = 0.3;
+    result.points[0].validShare = 0.5625f;
+    result.points[0].masked = true;
+    result.points[1].converged = false;
+    result.points[1].zncc = -9.f;
+    result.points[1].validShare = 0.1875f;
+    result.points[1].masked = true;
+    result.converged = 1;
+    result.maskedPoints = 1;
+    QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
+    const QString text = contentsOf(path);
+    QCOMPARE(cell(text, 0, QStringLiteral("measured_share")).toDouble(), 0.5625);
+    QCOMPARE(cell(text, 1, QStringLiteral("measured_share")).toDouble(), 0.1875);
+    QVERIFY2(text.contains(QStringLiteral("measured_share is the share"))
+                 && text.contains(QStringLiteral("30 %")),
+             "the file does not say what measured_share is, or under what floor");
 }
 
 void TestFieldCsv::the_columns_name_themselves_and_their_units()

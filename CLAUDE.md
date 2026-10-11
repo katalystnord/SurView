@@ -921,6 +921,46 @@ holds only its starting value, and later application-wide preferences.
 - **Tests never touch the real file.** `setDefaultsPathForTesting()`; the
   walkthrough empties its own file before every case.
 
+### A subset beside a cut is measured on the ground clear of it (2026-10-11)
+
+`maskAtCuts`, on by default (David). Fork issue #19 adds `ValidPixelMask2D` and
+`OrderedRegion2D` to the engine; ICGN (all four bodies), FFTCC's starting guess
+and `Uncertainty2D` correlate only the pixels the mask keeps. `core/Masking.h`
+holds every sentence the screen says about it.
+
+- ⚑ **Measured first, and the reason it is on.** On a hole that moves with the
+  specimen, unmasked points within 4 px of the edge were wrong by 0.6 to 0.7 px
+  while correlating above 0.9 -- invisible to every caution. Masked and pulled
+  back 2 px: 0.004 px, the far-field level.
+- ⚑ **Pulled back `kMaskPullIn` = 2 px**, because the gradient stencil and the
+  B-spline reach across an edge. Masked to the edge alone left 0.06 px.
+- ⚑ **Cuts only.** The outer boundary keeps the whole subset, as it always has,
+  so the mask is built from the whole image ADDED first and the region's shapes
+  after it. Two edges with two rules, so the panel, the report, the files and
+  the manual each say which.
+- **The floor is 25 per cent, and a run setting.** Measured on 432 runs: the
+  error rises steadily as the share falls, with no cliff, and the row beside an
+  ordinary hole sits at 40 to 50 per cent, so 50 would refuse exactly the points
+  around a stress concentration. Every point carries `validShare` to the readout
+  and both files, so a stricter floor can be applied afterwards.
+- ⚑ **A subset the mask does not reach is computed bit-identically**: the engine
+  takes the unmasked path for it, and both test suites hold the far field to
+  the bit.
+- **ICLM, NR and Simplex refuse a subset the mask reaches**, with a status of
+  their own and our sentence naming ICGN, rather than correlating pixels the
+  reader excluded.
+- ⚑ **Only against the reference the cuts were drawn on.** After a re-anchor the
+  hole has moved with the specimen; `setReferenceIsTheOriginal(false)` turns the
+  mask off for that frame and the frame says why. Warping the cuts by the banked
+  displacement is the fix, not yet built.
+
+Found on the way, by the walkthrough written for this: **a click within reach of
+a region's corner that moved nothing was announced as a region adjustment**, and
+discarded the measured field as "measured over a different region". Beside a
+cut, which is where a reader now clicks, a corner is always within reach. A
+corner drag that ends with the region unchanged is a click and pins the reading,
+as the whole-region move already did.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

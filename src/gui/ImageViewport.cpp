@@ -1302,6 +1302,8 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
                 cornerNear(m_roiShown, pixel, grabReachInPixels(event->position()));
             if (corner.isValid()) {
                 m_draggingCorner = corner;
+                m_shapesBeforeCornerDrag = m_roiShown.shapes;
+                m_cornerPressPixel = pixel;
                 setCursor(Qt::ClosedHandCursor);
                 event->accept();
                 return;
@@ -1487,6 +1489,16 @@ void ImageViewport::mouseReleaseEvent(QMouseEvent *event)
     if (m_draggingCorner.isValid() && event->button() == Qt::LeftButton) {
         m_draggingCorner = CornerRef();
         unsetCursor();
+        // ⚑ A drag that moved nothing was a click, and is answered as one: it
+        // pins the reading where it was pressed. Announced as a change it would
+        // log an adjustment that never happened and discard a measured field as
+        // "measured over a different region". A click beside a cut falls within
+        // reach of its corners, and beside a cut is exactly where a reader looks.
+        if (m_roiShown.shapes == m_shapesBeforeCornerDrag) {
+            emit fieldPointPicked(QPointF(m_cornerPressPixel));
+            event->accept();
+            return;
+        }
         // Announced like any other boundary change, so the project, the log and
         // any measured field that no longer matches all react the same way they
         // do to a region drawn from scratch.

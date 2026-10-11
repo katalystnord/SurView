@@ -48,6 +48,9 @@ void SequenceRunner::run()
         // thread of its own: this already IS the worker thread.
         CorrelationRunner runner(m_settings, m_roi, currentReference,
                                  m_targetPaths.at(frame));
+        // The cuts were drawn on the original reference; after a re-anchor
+        // they no longer sit where they were drawn.
+        runner.setReferenceIsTheOriginal(currentReference == m_referencePath);
 
         if (!tracked.isEmpty()) {
             // Measured where the points have been followed TO. Identical to the

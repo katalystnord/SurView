@@ -983,13 +983,46 @@ part2_body = """
     hole would be, just to a lesser degree.
   </p>
   <p>
-    The honest response is not to pretend this cannot happen by excluding
-    every point anywhere near a hole - that would apply a stricter
-    rule at a hole's edge than the same result already accepts at the
-    outer boundary, for no principled reason. It is to <strong>count and
-    report</strong> how many measured points have a subset reaching into a
-    hole, so a reader can widen the exclusion or simply read those points
-    knowing what they are.
+    Measured on images with an exact answer and a 40 px hole through them,
+    the points within 4 px of the hole's edge were wrong by about 0.7 px
+    while correlating above 0.9, so nothing about them looked wrong. So by
+    default SurView <strong>leaves the cut out</strong>: a subset beside a
+    cut is correlated only on the ground clear of it. The same points then
+    measure to within 0.01 px, the same as points far from any hole.
+  </p>
+  <p>
+    Three details matter when reading the result:
+  </p>
+  <ul>
+    <li>
+      <strong>The ground is pulled back 2 px from every cut.</strong> The
+      engine's gradient and interpolation reach about 2 px across an edge,
+      so the pixels right at a cut still carry what is behind it. Pulled
+      back, the error at the edge falls from 0.06 px to the far-field level.
+    </li>
+    <li>
+      <strong>Only cuts are masked, not the region's outer edge.</strong> A
+      subset reaching past the outer boundary keeps every pixel, as it
+      always has. The Analysis panel says so beside the switch.
+    </li>
+    <li>
+      <strong>A point measured on part of its subset says how much.</strong>
+      Its readout shows the share, and both exported files carry it for every
+      point as <code>measured_share</code>. Fewer pixels resolve less, and
+      the noise floor at that point accounts for it. A point with less than
+      25 per cent of its subset clear of the cuts is refused, saying so. The
+      error grows steadily as the share falls, with no sharp limit, so the
+      floor is a setting: <strong>Least of a subset clear of the
+      cuts</strong>, beside the switch.
+    </li>
+  </ul>
+  <p>
+    Masking needs the ICGN solver; with IC-LM or Newton-Raphson a point
+    whose subset reaches a cut is refused with that reason. In a sequence
+    that re-anchors, frames measured against a later reference are not
+    masked, because the cuts were drawn on the original and the hole has
+    since moved; the run report says so. With the switch off, the run
+    report counts the points whose subset reached a cut instead.
   </p>
 
   <h1 id="sequences">6. Sequences: order matters, reference matters</h1>
@@ -2140,6 +2173,7 @@ appendix_body = """
       <tr><td>Turn reference updating on and see its cost</td><td><strong>Analysis</strong> panel, "Reference" group</td></tr>
       <tr><td>Turn the recovery pass on and adjust it</td><td><strong>Analysis</strong> panel, "Points that failed" group</td></tr>
       <tr><td>Choose the settings a new project starts from</td><td>File menu: <strong>Settings</strong></td></tr>
+      <tr><td>Leave cuts out of the subsets beside them, and the least share kept</td><td>Analysis panel, <strong>Correlation</strong> section</td></tr>
       <tr><td>Start or stop measuring</td><td>Toolbar: <strong>Run Correlation</strong>, <strong>Stop</strong></td></tr>
       <tr><td>Read a value at one point of the field</td><td><strong>Point</strong> panel; hover the field, click to pin</td></tr>
       <tr><td>Switch between displacement, strain, and reliability channels</td><td>The "Showing" selector above the field</td></tr>

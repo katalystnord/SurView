@@ -1,4 +1,5 @@
 #include "core/FieldExport.h"
+#include "core/Masking.h"
 
 #include "core/FieldMesh.h"
 #include "core/SpatialResolution.h"
@@ -164,6 +165,7 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     auto noiseFloor = namedArray("displacement_noise_floor", 1, count);
     auto conditioning = namedArray("match_conditioning", 1, count);
     auto clipped = namedArray("subset_clipped_share", 1, count);
+    auto measuredShare = namedArray("measured_share", 1, count);
 
     const bool withStrain = result.strainRequested;
     auto exx = namedArray("strain_exx", 1, count);
@@ -195,6 +197,9 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
         // A property of the reference subset, so it is there for every point
         // attempted, failed ones included: a hole over glare is explained by it.
         clipped->SetTuple1(i, point.clippedShareMeasured ? point.clippedShare : nothing);
+        // Of every point attempted: a point refused for too little ground beside
+        // a cut is explained by it.
+        measuredShare->SetTuple1(i, point.validShare);
 
         if (withStrain) {
             const bool fitted = point.strainFitted;
@@ -212,6 +217,7 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
     grid->GetPointData()->AddArray(noiseFloor);
     grid->GetPointData()->AddArray(conditioning);
     grid->GetPointData()->AddArray(clipped);
+    grid->GetPointData()->AddArray(measuredShare);
     grid->GetPointData()->SetVectors(displacement);
     grid->GetPointData()->SetScalars(magnitude);
 
@@ -303,6 +309,8 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
               .arg(result.converged)
               .arg(result.conditioningUnusable)
               .arg(result.mostlyClipped));
+
+    state(grid, "masking", maskingStatement(result));
 
     state(grid, "result",
           QObject::tr("%1 of %2 points solved in %3 s%4. Values that were not "
@@ -437,6 +445,7 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                              "%2 solved point(s) are more than half clipped.")
                      .arg(result.referenceNoise, 0, 'g', 4)
                      .arg(result.mostlyClipped));
+    csvNote(out, QObject::tr("masking: %1").arg(maskingStatement(result)));
     csvNote(out, QObject::tr("%1 of %2 attempted points solved.")
                      .arg(result.converged)
                      .arg(result.total()));
@@ -453,7 +462,8 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                         QStringLiteral("rejection"),
                         QStringLiteral("noise_floor_px"),
                         QStringLiteral("match_conditioning"),
-                        QStringLiteral("clipped_share")};
+                        QStringLiteral("clipped_share"),
+                        QStringLiteral("measured_share")};
     // Absent rather than present and empty when strain was never asked for. A
     // column of empty strain cells reads as a fit that failed everywhere, which
     // is a far more alarming statement than "not attempted" -- the same
@@ -490,7 +500,8 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
             // empty like everything else nobody measured.
             << csvValue(point.noiseFloorMeasured, double(point.noiseFloor))
             << csvValue(point.conditioningMeasured, double(point.conditioning))
-            << csvValue(point.clippedShareMeasured, double(point.clippedShare));
+            << csvValue(point.clippedShareMeasured, double(point.clippedShare))
+            << csvValue(true, double(point.validShare));
 
         if (withStrain) {
             row << csvValue(point.strainFitted, double(point.exx))
