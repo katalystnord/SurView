@@ -11,6 +11,14 @@ QString percent(double share)
     return QObject::tr("%1 %").arg(qRound(share * 100.0));
 }
 
+// Why a re-anchored frame's cuts are not where they were drawn.
+QString carriedSentence()
+{
+    return QObject::tr("The run had re-anchored to a later frame, so the cuts were "
+                       "carried with the specimen to where it had taken them, by "
+                       "the movement measured around them.");
+}
+
 }  // namespace
 
 QString maskAtCutsLabel()
@@ -34,11 +42,6 @@ QString maskingPanelNote(const CorrelationSettings &settings, const RegionOfInte
                            "too. What shows through a hole does not move with the "
                            "specimen, so those points are pulled toward no movement "
                            "while still correlating well.");
-    }
-    if (settings.solver != CorrelationSettings::ICGN) {
-        return QObject::tr("%1 cannot leave a cut out yet, so a point whose subset "
-                           "reaches a cut will be refused, saying so. ICGN can.")
-            .arg(solverDisplayName(settings.solver));
     }
     return QObject::tr("A subset beside a cut is correlated only on the ground clear "
                        "of it, pulled back %1 px from the cut, because the engine's "
@@ -67,9 +70,13 @@ QStringList maskingReport(const CorrelationResult &result)
                          .arg(result.maskedPoints)
                          .arg(result.maskPullIn)
                          .arg(percent(double(least)));
+            if (result.maskCarried)
+                lines << carriedSentence();
         } else {
             lines << QObject::tr("No measured point's subset reached a cut, so "
                                  "nothing was masked.");
+            if (result.maskCarried)
+                lines << carriedSentence();
         }
         return lines;
     }
@@ -91,7 +98,13 @@ QStringList maskingReport(const CorrelationResult &result)
 QString maskingStatement(const CorrelationResult &result)
 {
     if (result.maskingApplied) {
-        return QObject::tr("subsets beside a cut were correlated only on the ground "
+        const QString carried = result.maskCarried
+            ? QObject::tr("the run had re-anchored, so the cuts were carried with the "
+                          "specimen to the frame measured against, by the movement "
+                          "measured around them; ")
+            : QString();
+        return carried
+               + QObject::tr("subsets beside a cut were correlated only on the ground "
                            "clear of it, pulled back %1 px from the cut; a point with "
                            "less than %2 of its subset clear was refused. The "
                            "region's outer edge was not masked. measured_share is "

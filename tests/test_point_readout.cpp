@@ -144,6 +144,7 @@ private slots:
     void a_subset_clipped_exactly_half_or_less_is_stated_without_a_warning();
     void a_rejected_point_over_glare_says_how_much_of_it_was_clipped();
     void a_point_beside_a_cut_says_how_much_of_its_subset_it_was_measured_on();
+    void a_point_beside_a_carried_cut_says_the_cut_was_carried_and_how_far_the_run_pulled_it_back();
     void a_point_refused_beside_a_cut_says_how_little_was_clear();
 
     // --- strain, which is fitted rather than measured ----------------------
@@ -718,6 +719,25 @@ void TestPointReadout::a_point_beside_a_cut_says_how_much_of_its_subset_it_was_m
 
     // and a point no cut reaches does not mention it at all
     QVERIFY(!spoken(pointReadout(result, 3)).contains(QStringLiteral("Share of subset measured")));
+}
+
+void TestPointReadout::a_point_beside_a_carried_cut_says_the_cut_was_carried_and_how_far_the_run_pulled_it_back()
+{
+    // The pull-in stated is the one this run recorded, never the constant.
+    CorrelationResult result = plainResult();
+    result.maskingApplied = true;
+    result.maskPullIn = 5;
+    result.points[4].validShare = 0.64f;
+    result.points[4].masked = true;
+    QVERIFY2(spoken(pointReadout(result, 4)).contains(QStringLiteral("pulled back 5 px")),
+             qPrintable(spoken(pointReadout(result, 4))));
+    QVERIFY(!spoken(pointReadout(result, 4)).contains(QStringLiteral("carried")));
+
+    result.maskCarried = true;
+    const QString text = spoken(pointReadout(result, 4));
+    QVERIFY2(text.contains(QStringLiteral("pulled back 5 px"))
+                 && text.contains(QStringLiteral("carried with the specimen")),
+             qPrintable(text));
 }
 
 void TestPointReadout::a_point_refused_beside_a_cut_says_how_little_was_clear()

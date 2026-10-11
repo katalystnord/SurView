@@ -169,13 +169,15 @@ private slots:
     void a_region_without_cuts_is_measured_exactly_as_without_masking();
     void the_run_reports_what_masking_did();
     void the_noise_floor_beside_a_cut_is_that_of_the_ground_it_was_measured_on();
-    void a_solver_that_cannot_mask_refuses_points_beside_a_cut_and_names_one_that_can();
+    void every_solver_offered_measures_beside_a_cut_on_the_ground_clear_of_it();
     void a_reference_the_cuts_were_not_drawn_on_is_not_masked_and_says_why();
 
     // --- what the screen says, engine-free ---------------------------------
     void the_panel_note_says_what_masking_will_do_and_that_the_outer_edge_differs();
     void the_panel_note_says_why_masking_would_do_nothing();
     void the_run_report_states_what_masking_did_or_how_many_points_it_would_have_saved();
+    void a_frame_whose_cuts_were_carried_says_so_in_the_report_and_the_files();
+    void a_cut_that_could_not_be_carried_leaves_the_frame_unmasked_in_its_own_words();
 };
 
 void TestMaskedSubsets::a_point_beside_a_cut_is_measured_on_the_ground_outside_it()
@@ -383,27 +385,33 @@ void TestMaskedSubsets::the_noise_floor_beside_a_cut_is_that_of_the_ground_it_wa
                             .arg(ratio).arg(expected)));
 }
 
-void TestMaskedSubsets::a_solver_that_cannot_mask_refuses_points_beside_a_cut_and_names_one_that_can()
+void TestMaskedSubsets::every_solver_offered_measures_beside_a_cut_on_the_ground_clear_of_it()
 {
-    CorrelationSettings iclm = settings();
-    iclm.solver = CorrelationSettings::ICLM;
-    const CorrelationResult result = runOn(iclm, specimenWithHole());
+    // Every combination the Analysis panel offers, from the list it is built
+    // from, so a solver cannot be offered without being held to this. Until
+    // fork issue #19's second half, IC-LM and Newton-Raphson refused these
+    // points rather than correlating ground the reader had cut away.
+    for (const SolverChoice &choice : offeredSolverChoices()) {
+        CorrelationSettings s = settings();
+        s.solver = choice.solver;
+        s.shapeOrder = choice.shapeOrder;
+        const CorrelationResult result = runOn(s, specimenWithHole());
+        const QString name = QStringLiteral("%1, order %2")
+                                 .arg(solverDisplayName(choice.solver))
+                                 .arg(choice.shapeOrder);
 
-    int refused = 0;
-    int measuredFar = 0;
-    for (const CorrelationPoint &p : result.points) {
-        if (p.masked) {
-            QVERIFY(!p.converged);
-            QVERIFY2(p.failureReason.contains(QStringLiteral("IC-LM"))
-                         && p.failureReason.contains(QStringLiteral("ICGN")),
-                     qPrintable(p.failureReason));
-            refused++;
-        } else if (p.converged) {
-            measuredFar++;
+        int counted = 0;
+        const double masked = meanErrorBesideTheHole(result, &counted);
+        int maskedSolved = 0;
+        for (const CorrelationPoint &p : result.points) {
+            if (p.masked && p.converged)
+                maskedSolved++;
         }
+        qInfo("%s: %.4f px beside the hole over %d points, %d masked solved",
+              qPrintable(name), masked, counted, maskedSolved);
+        QVERIFY2(maskedSolved > 40, qPrintable(name));
+        QVERIFY2(masked < 0.02, qPrintable(QStringLiteral("%1: %2 px").arg(name).arg(masked)));
     }
-    QVERIFY(refused > 40);
-    QVERIFY(measuredFar > 400);
 }
 
 void TestMaskedSubsets::a_reference_the_cuts_were_not_drawn_on_is_not_masked_and_says_why()
@@ -439,10 +447,11 @@ void TestMaskedSubsets::the_panel_note_says_why_masking_would_do_nothing()
     off.maskAtCuts = false;
     QVERIFY(maskingPanelNote(off, specimenWithHole()).startsWith(QStringLiteral("Off")));
 
+    // Every solver masks, so none is singled out as refusing.
     CorrelationSettings nr = settings();
     nr.solver = CorrelationSettings::NewtonRaphson;
     const QString note = maskingPanelNote(nr, specimenWithHole());
-    QVERIFY2(note.contains(QStringLiteral("Newton-Raphson")) && note.contains(QStringLiteral("refused")),
+    QVERIFY2(!note.contains(QStringLiteral("refused, saying so")) && note.contains(QStringLiteral("pulled back")),
              qPrintable(note));
 }
 
@@ -474,6 +483,56 @@ void TestMaskedSubsets::the_run_report_states_what_masking_did_or_how_many_point
              qPrintable(offLine));
 
     QVERIFY(maskingReport(CorrelationResult()).isEmpty());
+}
+
+void TestMaskedSubsets::a_frame_whose_cuts_were_carried_says_so_in_the_report_and_the_files()
+{
+    CorrelationResult carried;
+    carried.maskingApplied = true;
+    carried.maskCarried = true;
+    carried.maskPullIn = kMaskPullIn;
+    carried.minValidShare = 0.25;
+    carried.maskedPoints = 1;
+    CorrelationPoint a;
+    a.masked = true;
+    a.converged = true;
+    a.validShare = 0.52f;
+    carried.points << a;
+
+    const QString line = maskingReport(carried).join(QLatin1Char(' '));
+    QVERIFY2(line.contains(QStringLiteral("carried with the specimen"))
+                 && line.contains(QStringLiteral("re-anchored"))
+                 && line.contains(QStringLiteral("pulled back 2 px")),
+             qPrintable(line));
+    const QString file = maskingStatement(carried);
+    QVERIFY2(file.contains(QStringLiteral("carried with the specimen"))
+                 && file.contains(QStringLiteral("pulled back 2 px")),
+             qPrintable(file));
+
+    // and a frame masked where the cuts were drawn does not claim to be carried
+    carried.maskCarried = false;
+    QVERIFY(!maskingReport(carried).join(QLatin1Char(' ')).contains(QStringLiteral("carried")));
+    QVERIFY(!maskingStatement(carried).contains(QStringLiteral("carried")));
+}
+
+void TestMaskedSubsets::a_cut_that_could_not_be_carried_leaves_the_frame_unmasked_in_its_own_words()
+{
+    CarriedCuts refused;
+    refused.refusal = QStringLiteral("shape 2 of the region could not be carried");
+    CorrelationRunner runner(settings(), specimenWithHole(),
+                             fixture(QStringLiteral("hole_reference.tif")),
+                             fixture(QStringLiteral("hole_target.tif")));
+    runner.setReferenceIsTheOriginal(false);
+    runner.setCarriedCuts(refused);
+    CorrelationResult result;
+    QObject::connect(&runner, &CorrelationRunner::finished,
+                     [&result](const CorrelationResult &r) { result = r; });
+    runner.run();
+    QVERIFY(!result.maskingApplied);
+    QVERIFY(!result.maskCarried);
+    QCOMPARE(result.maskingNote, refused.refusal);
+    QVERIFY2(maskingReport(result).join(QLatin1Char(' ')).contains(refused.refusal),
+             qPrintable(maskingReport(result).join(QLatin1Char(' '))));
 }
 
 QTEST_GUILESS_MAIN(TestMaskedSubsets)

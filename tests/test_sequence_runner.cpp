@@ -23,6 +23,8 @@
 #include <QTest>
 #include <QThread>
 
+#include <cmath>
+
 namespace {
 
 QString fixture(const QString &name)
@@ -62,7 +64,8 @@ private slots:
     void re_anchoring_does_not_change_the_answer_when_it_did_not_need_to();
     void a_re_anchor_is_announced_rather_than_done_quietly();
     void a_re_anchor_announces_what_it_lost_rather_than_what_was_lost_before();
-    void after_a_re_anchor_the_cuts_are_not_masked_and_the_frame_says_why();
+    void after_a_re_anchor_the_cuts_are_carried_with_the_specimen_and_measured_clear_of();
+    void re_anchoring_does_not_change_the_answer_on_a_specimen_that_deforms();
 };
 
 void TestSequenceRunner::every_frame_arrives_identified_and_in_the_order_it_was_given()
@@ -478,12 +481,35 @@ void TestSequenceRunner::a_re_anchor_announces_what_it_lost_rather_than_what_was
 }
 
 
-void TestSequenceRunner::after_a_re_anchor_the_cuts_are_not_masked_and_the_frame_says_why()
+// The hole sequence (tools/make-hole-fixture.py): the specimen moves AND
+// deforms, x = X + t + G (X - C) with C = (110, 95), every gradient term
+// non-zero, so each frame's exact displacement relative to the original
+// reference is known at every point.
+QPointF holeSequenceTruth(int frame, double X, double Y)
+{
+    const double t[3][2] = {{6.5, -4.2}, {5.5, -3.6}, {3.1, -1.9}};
+    const double g[3][2][2] = {{{-0.010, -0.008}, {-0.006, 0.010}},
+                               {{0.030, 0.022}, {0.024, -0.026}},
+                               {{0.012, 0.034}, {0.028, -0.010}}};
+    const double dx = X - 110.0, dy = Y - 95.0;
+    return {t[frame][0] + g[frame][0][0] * dx + g[frame][0][1] * dy,
+            t[frame][1] + g[frame][1][0] * dx + g[frame][1][1] * dy};
+}
+
+QStringList holeSequence()
+{
+    return {fixture(QStringLiteral("hole_sequence_1.tif")),
+            fixture(QStringLiteral("hole_sequence_2.tif")),
+            fixture(QStringLiteral("hole_sequence_3.tif"))};
+}
+
+void TestSequenceRunner::after_a_re_anchor_the_cuts_are_carried_with_the_specimen_and_measured_clear_of()
 {
     // The cuts are drawn on the ORIGINAL reference. Once the run re-anchors to a
-    // later frame the hole has moved with the specimen, and a mask left where it
-    // was drawn would leave out the wrong pixels while claiming the right ones.
-    // Forced on every frame, as above.
+    // later frame the hole has moved and deformed with the specimen, so the cut
+    // is carried there by what the run banked, and the frame is masked against
+    // the hole where it now is. Re-anchoring is forced on every frame, as above,
+    // so the second frame is measured against the first.
     ReferenceUpdatePolicy always;
     always.enabled = true;
     always.znccThreshold = 1.1;
@@ -492,7 +518,7 @@ void TestSequenceRunner::after_a_re_anchor_the_cuts_are_not_masked_and_the_frame
     RegionOfInterest roi;
     RegionShape specimen;
     specimen.kind = RegionShape::Rectangle;
-    specimen.points = {QPoint(6, 9), QPoint(232, 188)};
+    specimen.points = {QPoint(6, 9), QPoint(226, 184)};
     RegionShape hole;
     hole.kind = RegionShape::Ellipse;
     hole.subtract = true;
@@ -500,22 +526,151 @@ void TestSequenceRunner::after_a_re_anchor_the_cuts_are_not_masked_and_the_frame
     roi.shapes << specimen << hole;
 
     CorrelationSettings settings = coarseSettings();
-    settings.strainEnabled = false;
-    const QStringList targets = {fixture(QStringLiteral("hole_target.tif")),
-                                 fixture(QStringLiteral("hole_target.tif"))};
-    SequenceRunner runner(settings, roi, fixture(QStringLiteral("hole_reference.tif")),
-                          targets, always);
+    settings.gridStep = 8;
+    settings.maxIterations = 20;
+    const QStringList targets = holeSequence();
 
-    QVector<CorrelationResult> frames;
-    QObject::connect(&runner, &SequenceRunner::frameFinished,
-                     [&frames](int, const CorrelationResult &r) { frames.append(r); });
-    runner.run();
+    const auto measure = [&](bool mask) {
+        CorrelationSettings s = settings;
+        s.maskAtCuts = mask;
+        SequenceRunner runner(s, roi, fixture(QStringLiteral("hole_reference.tif")),
+                              targets, always);
+        QVector<CorrelationResult> frames;
+        QObject::connect(&runner, &SequenceRunner::frameFinished,
+                         [&frames](int, const CorrelationResult &r) { frames.append(r); });
+        runner.run();
+        return frames;
+    };
 
-    QCOMPARE(frames.size(), 2);
-    QVERIFY2(frames.at(0).maskingApplied, "the first frame, against the original, was not masked");
-    QVERIFY2(!frames.at(1).maskingApplied, "a re-anchored frame was masked where the cuts were drawn");
-    QVERIFY2(frames.at(1).maskingNote.contains(QStringLiteral("re-anchored")),
-             qPrintable(frames.at(1).maskingNote));
+    // Mean error over the points whose subset reaches the hole as drawn,
+    // against the exact displacement relative to the original reference.
+    const auto errorBesideTheHole = [&](const CorrelationResult &frame, int index,
+                                        int *counted) {
+        double sum = 0.0;
+        int n = 0;
+        for (const CorrelationPoint &p : frame.points) {
+            if (!p.converged || !subsetReachesACut(roi, qRound(p.x), qRound(p.y), 16))
+                continue;
+            const QPointF truth = holeSequenceTruth(index, p.x, p.y);
+            sum += std::hypot(double(p.u) - truth.x(), double(p.v) - truth.y());
+            n++;
+        }
+        *counted = n;
+        return n > 0 ? sum / n : 1e9;
+    };
+
+    const QVector<CorrelationResult> masked = measure(true);
+    QCOMPARE(masked.size(), 3);
+    QVERIFY2(masked.at(0).maskingApplied && !masked.at(0).maskCarried,
+             "the first frame, against the original, was not masked where drawn");
+
+    const QVector<CorrelationResult> unmasked = measure(false);
+    QCOMPARE(unmasked.size(), 3);
+
+    // Both later frames, the second re-anchored twice: carried from the cuts as
+    // drawn by the whole banked movement each time, never from the last carry.
+    for (int frame = 1; frame < 3; frame++) {
+        QVERIFY2(masked.at(frame).maskingApplied, qPrintable(masked.at(frame).maskingNote));
+        QVERIFY(masked.at(frame).maskCarried);
+        QCOMPARE(masked.at(frame).maskPullIn, kMaskPullIn);
+        QVERIFY(masked.at(frame).maskedPoints > 40);
+
+        int withMask = 0, without = 0;
+        const double carriedError = errorBesideTheHole(masked.at(frame), frame, &withMask);
+        const double unmaskedError = errorBesideTheHole(unmasked.at(frame), frame, &without);
+        qInfo("frame %d, re-anchored, beside the hole: %.4f px masked over %d points, "
+              "%.4f px unmasked over %d", frame + 1, carriedError, withMask,
+              unmaskedError, without);
+        QVERIFY2(withMask > 40, qPrintable(QString::number(withMask)));
+        QVERIFY2(unmaskedError > 0.08, qPrintable(QString::number(unmaskedError)));
+        QVERIFY2(carriedError < 0.03, qPrintable(QString::number(carriedError)));
+    }
+}
+
+void TestSequenceRunner::re_anchoring_does_not_change_the_answer_on_a_specimen_that_deforms()
+{
+    // The same property as re_anchoring_does_not_change_the_answer_when_it_did_
+    // not_need_to, on a specimen that stretches as well as moves. That case
+    // moves by a whole 3 px, so every followed point lands on a whole pixel;
+    // here it lands between pixels, which is where a point followed through a
+    // real test always is.
+    //
+    // ⚑ Found 2026-10-11: the engine reads a reference subset at the TRUNCATED
+    // position of a point and warps the target from the exact one, so every
+    // point measured after a re-anchor was off by the fraction it sat past a
+    // pixel -- half a pixel on average, in a field that still correlated
+    // perfectly.
+    ReferenceUpdatePolicy always;
+    always.enabled = true;
+    always.znccThreshold = 1.1;
+    always.percentile = 1.0;
+    const ReferenceUpdatePolicy never;
+
+    // The specimen without the hole: this case is about re-anchoring alone.
+    RegionOfInterest roi;
+    RegionShape specimen;
+    specimen.kind = RegionShape::Rectangle;
+    specimen.points = {QPoint(6, 9), QPoint(226, 184)};
+    RegionShape hole;
+    hole.kind = RegionShape::Ellipse;
+    hole.subtract = true;
+    hole.points = {QPoint(80, 60), QPoint(160, 140)};
+    roi.shapes << specimen << hole;
+
+    CorrelationSettings settings = coarseSettings();
+    settings.gridStep = 12;
+    settings.maxIterations = 20;
+    settings.strainEnabled = true;
+    settings.strainRadius = 30.0;
+    const QStringList targets = holeSequence();
+
+    const auto measure = [&](const ReferenceUpdatePolicy &policy) {
+        SequenceRunner runner(settings, roi, fixture(QStringLiteral("hole_reference.tif")),
+                              targets, policy);
+        QVector<CorrelationResult> frames;
+        QObject::connect(&runner, &SequenceRunner::frameFinished,
+                         [&frames](int, const CorrelationResult &r) { frames.append(r); });
+        runner.run();
+        return frames;
+    };
+    const QVector<CorrelationResult> anchored = measure(always);
+    const QVector<CorrelationResult> fixed = measure(never);
+    QCOMPARE(anchored.size(), 3);
+    QCOMPARE(fixed.size(), 3);
+
+    // The later frames, each measured against the one before it.
+    for (int frame = 1; frame < 3; frame++) {
+        double worst = 0.0, worstStrain = 0.0, sum = 0.0;
+        int compared = 0, strainCompared = 0;
+        for (const CorrelationPoint &a : anchored.at(frame).points) {
+            if (!a.converged)
+                continue;
+            for (const CorrelationPoint &f : fixed.at(frame).points) {
+                if (f.gridIndex != a.gridIndex || !f.converged)
+                    continue;
+                const double d = std::hypot(double(a.u - f.u), double(a.v - f.v));
+                worst = std::max(worst, d);
+                sum += d;
+                compared++;
+                if (a.strainFitted && f.strainFitted) {
+                    worstStrain = std::max({worstStrain, double(std::abs(a.exx - f.exx)),
+                                            double(std::abs(a.eyy - f.eyy)),
+                                            double(std::abs(a.exy - f.exy))});
+                    strainCompared++;
+                }
+            }
+        }
+        qInfo("frame %d, re-anchored against fixed: mean %.4f px, worst %.4f px over "
+              "%d points; worst strain difference %.2e over %d", frame + 1,
+              sum / compared, worst, compared, worstStrain, strainCompared);
+        QVERIFY(compared > 150);
+        // Strain must actually have been fitted on the re-anchored frame:
+        // two fields with no strain anywhere agree perfectly about it.
+        QVERIFY2(strainCompared > 100, qPrintable(QString::number(strainCompared)));
+        QVERIFY2(sum / compared < 0.005, qPrintable(QString::number(sum / compared)));
+        QVERIFY2(worst < 0.03, qPrintable(QString::number(worst)));
+        QVERIFY2(worstStrain < 5e-4, qPrintable(QString::number(worstStrain)));
+    }
 }
 
 QTEST_MAIN(TestSequenceRunner)

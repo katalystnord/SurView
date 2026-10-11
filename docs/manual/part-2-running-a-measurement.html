@@ -365,12 +365,17 @@ footer a:hover { color: var(--accent-strong); }
     </li>
   </ul>
   <p>
-    Masking needs the ICGN solver; with IC-LM or Newton-Raphson a point
-    whose subset reaches a cut is refused with that reason. In a sequence
-    that re-anchors, frames measured against a later reference are not
-    masked, because the cuts were drawn on the original and the hole has
-    since moved; the run report says so. With the switch off, the run
-    report counts the points whose subset reached a cut instead.
+    Every solver the Analysis panel offers masks the same way. In a
+    sequence that re-anchors, the cuts are drawn on the original reference
+    but later frames are measured against a later one, where the hole has
+    moved and deformed with the specimen. So the cuts are carried there by
+    the movement measured around them, and pulled back the same 2 px. On a
+    hole that moves and stretches, a frame measured this way is within
+    0.004 px of the known answer beside the hole, against 0.13 to 0.19 px
+    unmasked. If too few points around a cut are still measured to carry
+    it, that frame is not masked and the run report names the cut. With the
+    switch off, the run report counts the points whose subset reached a cut
+    instead.
   </p>
 
   <h1 id="sequences">6. Sequences: order matters, reference matters</h1>

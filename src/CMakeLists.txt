@@ -57,6 +57,7 @@ add_library(surview_core STATIC
     core/Clipping.cpp
     core/Clipping.h
     core/Masking.cpp
+    core/CarriedCuts.cpp
     core/Masking.h
     core/Cautions.cpp
     core/Cautions.h

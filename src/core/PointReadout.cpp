@@ -28,14 +28,24 @@ QString notMeasured()
 }
 
 // The share of the subset a point was measured on, for a point beside a cut.
-ReadoutLine measuredShareLine(const CorrelationPoint &point)
+// The pull-in stated is the one the run recorded, not the constant, so the
+// readout cannot outlive a change to it.
+ReadoutLine measuredShareLine(const CorrelationResult &result, const CorrelationPoint &point)
 {
+    const int pullIn = result.maskPullIn > 0 ? result.maskPullIn : kMaskPullIn;
+    const QString where = result.maskCarried
+        ? QObject::tr("Its subset reaches a cut, carried with the specimen to the "
+                      "frame this one was measured against, so it was correlated "
+                      "only on the ground clear of the cut, pulled back %1 px.")
+              .arg(pullIn)
+        : QObject::tr("Its subset reaches a cut, so it was correlated only on the "
+                      "ground clear of the cut, pulled back %1 px.")
+              .arg(pullIn);
     return {QObject::tr("Share of subset measured"),
             QObject::tr("%1 %").arg(qRound(100.0 * double(point.validShare))),
-            QObject::tr("Its subset reaches a cut, so it was correlated only on the "
-                        "ground clear of the cut, pulled back %1 px. Fewer pixels "
-                        "resolve less, which the noise floor below accounts for.")
-                .arg(kMaskPullIn),
+            where + QLatin1Char(' ')
+                + QObject::tr("Fewer pixels resolve less, which the noise floor "
+                              "below accounts for."),
             false};
 }
 
@@ -147,7 +157,7 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
             readout.lines.append(clippedShareLine(point));
         // and the share, which is the reason when the floor refused it
         if (point.masked)
-            readout.lines.append(measuredShareLine(point));
+            readout.lines.append(measuredShareLine(result, point));
         return readout;
     }
 
@@ -189,7 +199,7 @@ PointReadout pointReadout(const CorrelationResult &result, int index)
                           false});
 
     if (point.masked)
-        readout.lines.append(measuredShareLine(point));
+        readout.lines.append(measuredShareLine(result, point));
 
     // --- how far this one point can be trusted ------------------------------
     if (point.noiseFloorMeasured) {

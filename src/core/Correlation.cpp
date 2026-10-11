@@ -56,13 +56,6 @@ QString tooLittleOutsideTheCuts(double minValidShare)
         .arg(qRound(minValidShare * 100.0));
 }
 
-QString solverCannotMask(CorrelationSettings::Solver solver)
-{
-    return QObject::tr("Its subset reaches a cut, and %1 cannot leave the cut out "
-                       "yet; ICGN can.")
-        .arg(solverDisplayName(solver));
-}
-
 }  // namespace
 
 int solverThreadCount(int coresAvailable)
@@ -189,6 +182,9 @@ void CorrelationRunner::run()
 
         std::vector<POI2D> queue;
         std::vector<int> gridIndex;
+        // How far each followed point sits from the whole pixel it is measured
+        // on; empty for a run on a grid, whose points are whole pixels.
+        QVector<QPointF> subPixel;
 
         CorrelationResult result;
 
@@ -234,10 +230,24 @@ void CorrelationRunner::run()
             // that has moved out of the picture is a measurement that failed,
             // and the engine says so in its own words. Dropping it quietly
             // would shrink the field with no account of why.
+            //
+            // ⚑ EACH ON ITS NEAREST WHOLE PIXEL. The engine reads a reference
+            // subset at the TRUNCATED position of a point and warps the target
+            // from the exact one, so a point handed in at 194.6 is measured as
+            // if it sat at 194 and its answer is wrong by the 0.6 px between
+            // them. A followed point is between pixels almost always, so every
+            // frame after a re-anchor was off by half a pixel on average while
+            // correlating perfectly. Measured on the whole pixel, the answer is
+            // carried back to the followed position after the solve (see
+            // "back to where each followed point is", below).
             queue.reserve(size_t(m_seeding.points.size()));
             gridIndex.reserve(size_t(m_seeding.points.size()));
+            subPixel.reserve(m_seeding.points.size());
             for (const PoiSeeding::Seed &seed : m_seeding.points) {
-                queue.emplace_back(Point2D(seed.x, seed.y));
+                const float x = std::round(seed.x);
+                const float y = std::round(seed.y);
+                queue.emplace_back(Point2D(x, y));
+                subPixel.append(QPointF(double(seed.x - x), double(seed.y - y)));
                 gridIndex.push_back(seed.gridIndex);
             }
 
@@ -257,24 +267,35 @@ void CorrelationRunner::run()
         // removes nothing here, so a subset reaching past it keeps every pixel,
         // as it always has (decision 1, 2026-10-11).
         //
-        // ⚑ Only against the image the cuts were drawn on. A sequence that has
+        // ⚑ Where the cuts ARE in the image measured against. On the original
+        // reference that is where they were drawn. A sequence that has
         // re-anchored measures against a later frame, where every cut has moved
-        // with the specimen, and a mask left where it was drawn would remove the
-        // wrong pixels while saying it had removed the right ones.
+        // and deformed with the specimen, so the sequence carries them there by
+        // what it banked (core/CarriedCuts.h). A mask left where the cuts were drawn would remove the wrong
+        // pixels while saying it had removed the right ones, so a cut that
+        // could not be carried leaves the frame unmasked, saying why.
         std::unique_ptr<ValidPixelMask2D> mask;
         if (m_settings.maskAtCuts && m_roi.isValid() && m_roi.hasCuts()) {
+            const RegionOfInterest *cutsHere = nullptr;
             if (m_referenceIsTheOriginal) {
+                cutsHere = &m_roi;
+            } else if (m_carried.isValid()) {
+                cutsHere = &m_carried.region;
+                result.maskCarried = true;
+            } else {
+                result.maskingNote = !m_carried.refusal.isEmpty()
+                    ? m_carried.refusal
+                    : tr("Subsets beside a cut were not masked on this frame: the "
+                         "run has re-anchored to a later frame, where the cuts no "
+                         "longer sit where they were drawn.");
+            }
+            if (cutsHere) {
                 mask = std::make_unique<ValidPixelMask2D>(
-                    *engineRegion(m_roi, QSize(ref_img.width, ref_img.height)),
+                    *engineRegion(*cutsHere, QSize(ref_img.width, ref_img.height)),
                     ref_img.width, ref_img.height, kMaskPullIn);
                 result.maskingApplied = true;
                 result.maskPullIn = kMaskPullIn;
                 result.minValidShare = m_settings.minValidShare;
-            } else {
-                result.maskingNote = tr(
-                    "Subsets beside a cut were not masked on this frame: the run "
-                    "has re-anchored to a later frame, where the cuts no longer "
-                    "sit where they were drawn.");
             }
         }
         // Narrowed to float once, here: the engine compares a float share with
@@ -534,6 +555,28 @@ void CorrelationRunner::run()
             result.referenceNoise = Uncertainty2D::noiseStdDev(ref_img);
         }
 
+        // --- back to where each followed point is ---------------------------
+        // A followed point was measured on its nearest whole pixel (see the
+        // seeding above), so its answer is the movement of the material there.
+        // Its position is left on that pixel: a sequence reports every point
+        // where it started (composeTotalField()), and strain is fitted there.
+        // Carried the fraction of a pixel back to the followed point by the
+        // subset's own displacement gradient, which is exact for a movement
+        // that is affine across the subset -- the engine's own sub-pixel centre
+        // offset for ICGN does the same, and every solver returns the gradient.
+        // After the reliability pass, which probes the solution where it was
+        // found; before strain, whose fit needs each displacement at the
+        // position it belongs to.
+        for (int i = 0; i < subPixel.size(); i++) {
+            POI2D &poi = queue[size_t(i)];
+            const float fx = float(subPixel.at(i).x());
+            const float fy = float(subPixel.at(i).y());
+            if (!isFailureStatus(poi.result.zncc)) {
+                poi.deformation.u += poi.deformation.ux * fx + poi.deformation.uy * fy;
+                poi.deformation.v += poi.deformation.vx * fx + poi.deformation.vy * fy;
+            }
+        }
+
         // --- strain ---------------------------------------------------------
         // Fitted from the solved displacements, so it can only run once they
         // exist. Skipped outright on a stopped run: a gradient fitted through
@@ -558,7 +601,31 @@ void CorrelationRunner::run()
             strain.setDescription(1);   // Lagrangian: gradients about the reference
             strain.setApproximation(
                 m_settings.strainMeasure == StrainMeasure::GreenLagrange ? 2 : 1);
-            strain.prepare(queue);
+            // ⚑ A FOLLOWED POINT'S STRAIN IS FITTED ON ITS TOTAL MOVEMENT, at the
+            // position it started from. What this frame measured is the
+            // increment from the reference the run last moved on to, and its
+            // gradient is the strain since THEN; the field is reported as the
+            // movement from the original reference at the original positions
+            // (composeTotalField(), core/ReferenceUpdate.h), so its strain must
+            // be measured the same way or a re-anchored frame reports the strain
+            // since the last re-anchor under the original reference's name.
+            // A lost point's position is unknown, so it fits no neighbour.
+            std::vector<POI2D> fitted;
+            std::vector<POI2D> &fitOn = m_seeding.isEmpty() ? queue : fitted;
+            if (!m_seeding.isEmpty()) {
+                fitted = queue;
+                for (int i = 0; i < total; i++) {
+                    const PoiSeeding::Seed &seed = m_seeding.points.at(i);
+                    POI2D &poi = fitted[size_t(i)];
+                    poi.x = seed.x0;
+                    poi.y = seed.y0;
+                    poi.deformation.u += seed.bankedU;
+                    poi.deformation.v += seed.bankedV;
+                    if (seed.lost)
+                        poi.result.zncc = -1.f;
+                }
+            }
+            strain.prepare(fitOn);
 
             const QString stageName = tr("fitting strain");
             emit progress(0, total, stageName);
@@ -573,8 +640,12 @@ void CorrelationRunner::run()
                 const int count = std::min(m_chunkPoints, total - start);
 #pragma omp parallel for num_threads(threads)
                 for (int i = start; i < start + count; i++)
-                    strain.compute(&queue[size_t(i)], queue);
+                    strain.compute(&fitOn[size_t(i)], fitOn);
                 emit progress(start + count, total, stageName);
+            }
+            if (!m_seeding.isEmpty()) {
+                for (int i = 0; i < total; i++)
+                    queue[size_t(i)].strain = fitted[size_t(i)].strain;
             }
 
             result.strainRequested = true;
@@ -614,10 +685,10 @@ void CorrelationRunner::run()
             }
 
             // The share the engine measured it on, asked of the same mask at
-            // the same centre: the engine truncates a position to its subset's
-            // centre pixel, so this does too.
+            // the same centre: the whole pixel the point was measured on, which
+            // for a followed point is the nearest one (see the seeding above).
             if (mask) {
-                point.validShare = mask->validShare(int(poi.x), int(poi.y), radius, radius);
+                point.validShare = mask->validShare(qRound(poi.x), qRound(poi.y), radius, radius);
                 point.masked = point.validShare < 1.f;
             }
 
@@ -719,8 +790,6 @@ void CorrelationRunner::run()
                     // engine's describe the mask, and a reader knows cuts.
                     if (int(poi.result.zncc) == STATUS_TOO_FEW_VALID_PIXELS)
                         point.failureReason = tooLittleOutsideTheCuts(m_settings.minValidShare);
-                    if (int(poi.result.zncc) == STATUS_MASK_NOT_SUPPORTED)
-                        point.failureReason = solverCannotMask(m_settings.solver);
                     result.failuresByReason[point.failureReason]++;
                 }
             }

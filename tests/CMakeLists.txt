@@ -50,6 +50,7 @@ set(SURVIEW_UNIT_TESTS
     test_run_refusals
     test_cross_validation
     test_masked_subsets
+    test_carried_cuts
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

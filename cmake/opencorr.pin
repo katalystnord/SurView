@@ -16,9 +16,9 @@
 # changed while hiding what.
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
-SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=ef192e32a4e79c974c9d677b5a4867fc38a31f0d
+SURVIEW_OPENCORR_BRANCH=masked-solvers
+SURVIEW_OPENCORR_PIN=f7af6cf45ef71d8f4ee0482eb6eed2e5426fca01
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=masked-subsets-19
+SURVIEW_OPENCORR_PIN_NOTE=masked-solvers-19

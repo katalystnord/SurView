@@ -40,6 +40,10 @@ void SequenceRunner::run()
     QString currentReference = m_referencePath;
     QVector<TrackedPoint> tracked;
 
+    // The cuts as they sit in the current reference, carried there on each
+    // re-anchor by what was banked. Unused until the first re-anchor.
+    CarriedCuts carried;
+
     for (int frame = 0; frame < frameCount; frame++) {
         if (m_cancelled)
             break;
@@ -49,8 +53,9 @@ void SequenceRunner::run()
         CorrelationRunner runner(m_settings, m_roi, currentReference,
                                  m_targetPaths.at(frame));
         // The cuts were drawn on the original reference; after a re-anchor
-        // they no longer sit where they were drawn.
+        // they are where the specimen took them.
         runner.setReferenceIsTheOriginal(currentReference == m_referencePath);
+        runner.setCarriedCuts(carried);
 
         if (!tracked.isEmpty()) {
             // Measured where the points have been followed TO. Identical to the
@@ -70,9 +75,16 @@ void SequenceRunner::run()
                 // discarded when the field is composed. Dropping them here
                 // would shift every later index and silently re-pair each
                 // remaining point with another point's history.
-                seeding.points.append(PoiSeeding::Seed{point.gridIndex,
-                                                       trackedX(point),
-                                                       trackedY(point)});
+                PoiSeeding::Seed seed;
+                seed.gridIndex = point.gridIndex;
+                seed.x = trackedX(point);
+                seed.y = trackedY(point);
+                seed.x0 = point.x0;
+                seed.y0 = point.y0;
+                seed.bankedU = point.bankedU;
+                seed.bankedV = point.bankedV;
+                seed.lost = point.lost;
+                seeding.points.append(seed);
             }
             runner.setSeeding(seeding);
         }
@@ -116,6 +128,13 @@ void SequenceRunner::run()
                         const int lostBefore = lostCount(tracked);
                         bankIncrement(tracked, increment);
                         currentReference = m_targetPaths.at(frame);
+                        // Carried from the drawn region every time, never from
+                        // the last carried one: the banked displacement is
+                        // already relative to the original reference, and
+                        // carrying a carried boundary would compound its
+                        // rounding at every re-anchor.
+                        if (m_settings.maskAtCuts && m_roi.hasCuts())
+                            carried = carryCuts(m_roi, tracked, m_step);
                         emit referenceReanchored(frame,
                                                  lostCount(tracked) - lostBefore);
                     }

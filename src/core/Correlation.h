@@ -1,5 +1,6 @@
 #pragma once
 
+#include "core/CarriedCuts.h"
 #include "core/Recovery.h"
 #include "core/Roi.h"
 #include "core/StrainFit.h"
@@ -221,6 +222,10 @@ struct CorrelationResult
     int    maskPullIn = 0;
     double minValidShare = 0.0;
 
+    // The cuts were carried with the specimen to a reference the run re-anchored
+    // to (core/CarriedCuts.h), rather than used where they were drawn.
+    bool   maskCarried = false;
+
     // Points measured on part of their subset, counted among the solved.
     int maskedPoints = 0;
 
@@ -303,8 +308,21 @@ struct PoiSeeding
     struct Seed
     {
         int gridIndex = 0;
-        float x = 0.f;
+        float x = 0.f;     // where it is measured: in the current reference
         float y = 0.f;
+
+        // Where it started, in the original reference, and how far it had
+        // moved from there when the reference last moved on. Strain is fitted
+        // on these: the field reported is the total movement from the original
+        // reference at the original positions, so its gradient must be too.
+        float x0 = 0.f;
+        float y0 = 0.f;
+        float bankedU = 0.f;
+        float bankedV = 0.f;
+
+        // Its position is no longer known (core/ReferenceUpdate.h). Measured
+        // anyway so indices stay aligned, never used to fit a neighbour.
+        bool lost = false;
     };
 
     QVector<Seed> points;
@@ -379,6 +397,12 @@ public:
     // cut has moved with the specimen. Must be set before run().
     void setReferenceIsTheOriginal(bool original) { m_referenceIsTheOriginal = original; }
 
+    // The cuts as they sit in a reference that is not the original, carried
+    // there by the sequence (core/CarriedCuts.h); or, when they could not be,
+    // the reason. Used only when the reference is not the original. Must be set
+    // before run().
+    void setCarriedCuts(const CarriedCuts &cuts) { m_carried = cuts; }
+
 public slots:
     void run();
     void cancel();
@@ -396,5 +420,6 @@ private:
     PoiSeeding m_seeding;
     int m_chunkPoints = kDefaultChunkPoints;
     bool m_referenceIsTheOriginal = true;
+    CarriedCuts m_carried;
     std::atomic<bool> m_cancelled{false};
 };

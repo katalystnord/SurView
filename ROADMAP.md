@@ -567,9 +567,15 @@ Understood well enough to start, large enough to need their own care.
      window like every other.
 
      **DONE 2026-10-11** on the `masked-subsets` branches of SurView and the
-     fork (fork issue #19). Still to do: warp the cuts with the banked
-     displacement so a re-anchored frame can be masked too (today it is not,
-     and says so), and mask ICLM, NR and Simplex rather than refusing.
+     fork (fork issue #19), merged to main. **Both follow-ons DONE the same
+     night** on the `masked-follow-ons` branch (SurView) and `masked-solvers`
+     (fork): IC-LM, Newton-Raphson and Simplex mask instead of refusing, and
+     a re-anchored frame's cuts are carried with the specimen by an affine
+     fit to the banked displacement around each edge (`core/CarriedCuts.h`),
+     pulled back the same 2 px. Building the carried case exposed two older defects in
+     re-anchoring itself, both fixed there: every followed point was measured
+     at its truncated position, and a re-anchored frame reported strain since
+     the last re-anchor. See CLAUDE.md, *A subset beside a cut*.
 
   2. ~~⚑ **Report SPATIAL resolution, not only displacement resolution.**~~
      DONE 2026-10-07, `core/SpatialResolution.h`. The Analysis panel and the

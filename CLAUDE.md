@@ -946,13 +946,46 @@ holds every sentence the screen says about it.
 - ⚑ **A subset the mask does not reach is computed bit-identically**: the engine
   takes the unmasked path for it, and both test suites hold the far field to
   the bit.
-- **ICLM, NR and Simplex refuse a subset the mask reaches**, with a status of
-  their own and our sentence naming ICGN, rather than correlating pixels the
-  reader excluded.
-- ⚑ **Only against the reference the cuts were drawn on.** After a re-anchor the
-  hole has moved with the specimen; `setReferenceIsTheOriginal(false)` turns the
-  mask off for that frame and the frame says why. Warping the cuts by the banked
-  displacement is the fix, not yet built.
+- **Every solver masks** (fork `masked-solvers`, f7af6cf): IC-LM and Simplex as
+  ICGN does; Newton-Raphson also drops from its Jacobian any pixel whose target
+  gradient reaches masked ground, because its search direction is built from a
+  B-spline of a gradient image that reaches about 4 px, past the pull-in.
+- ⚑ **A re-anchored frame's cuts are CARRIED with the specimen**
+  (`core/CarriedCuts.h`). Each edge is walked every 2 px, each sample moved by
+  an affine fit to the banked displacement of the followed points around it
+  (the recovery pass's neighbourhood: four grid steps, at least nine points,
+  lost points never), and pulled back the same 2 px: an extra pixel for
+  rounding the carried edge was measured and bought nothing. Always carried from the DRAWN region, never
+  from the last carried one, so rounding cannot compound. A cut that cannot be
+  carried leaves that frame unmasked, naming the shape. Measured on the hole
+  sequence (moves AND stretches, three frames, every gradient term non-zero):
+  0.003 to 0.004 px beside the hole against 0.13 to 0.19 px unmasked. ⚑ The bending-crack case exists because on an affine movement a
+  straight edge stays straight, so carrying only the corners passed every other
+  case.
+
+### Two defects in re-anchoring, found by carrying the cuts (2026-10-11)
+
+Neither had anything to do with masking; both were invisible because the only
+re-anchoring fixture moved by a whole 3 px. A fixture that agrees with itself,
+again.
+
+- ⚑ **A FOLLOWED POINT WAS MEASURED AT ITS TRUNCATED POSITION.** The engine reads
+  a reference subset at `(int)poi->x` and warps the target from the exact
+  `poi->x`, so a point handed in at 194.6 was solved as if it sat at 194 and its
+  increment was wrong by the fraction. After a re-anchor every followed point
+  sits between pixels, so every later frame was off by half a pixel on average
+  while correlating perfectly. Now each is measured on its nearest whole pixel
+  and the answer carried back by the subset's own displacement gradient, which
+  is what the engine's ICGN centre-offset path does internally and works for
+  every solver. Re-anchored and fixed-reference runs now agree to 0.002 to
+  0.003 px on average
+  (`re_anchoring_does_not_change_the_answer_on_a_specimen_that_deforms`). The
+  fork's own `SequenceTracker2D` has the same flaw; SurView does not use it.
+- ⚑ **A RE-ANCHORED FRAME REPORTED THE STRAIN SINCE THE LAST RE-ANCHOR** under
+  the original reference's name: `composeTotalField()` added the banked
+  displacement but passed the increment's strain through. Strain of a followed
+  point is now fitted on its TOTAL movement at its ORIGINAL position, and lost
+  points fit no neighbour. Off by 1.2e-2 before, under 3e-4 after.
 
 Found on the way, by the walkthrough written for this: **a click within reach of
 a region's corner that moved nothing was announced as a region adjustment**, and
