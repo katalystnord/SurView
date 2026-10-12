@@ -713,6 +713,58 @@ Understood well enough to start, large enough to need their own care.
   Unblocks the recovered-strip direction below, and hand-held or phone capture
   generally.
 
+  **Scoped 2026-10-12**, with a spike measured against an exact answer: a static
+  rig with a specimen disc on it, the specimen deformed by a known uniform E, the
+  target camera moved by a scale of 1.07, 3.5 degrees and a shift, into an image
+  of a different size (280 x 240 against 240 x 200). SIFT matches, a RANSAC
+  similarity fit, ICGN seeded from the fit on the ORIGINAL images, and each
+  measured position mapped back through the fit. ⚑ **No image is resampled at
+  any step**: the camera move is applied to coordinates, never to pixels, which
+  is what keeps tenet 10 intact.
+
+  | alignment fitted on | camera recovered | E recovered (truth +0.0120 +0.0040 +0.0020 -0.0050) | displacement error |
+  |---|---|---|---|
+  | the stationary rig only | 1.07001, 3.4998 deg | +0.01199 +0.00399 +0.00201 -0.00500 | 0.030 px |
+  | everything (rig dominates) | 1.07000, 3.5017 deg | +0.01200 +0.00402 +0.00198 -0.00499 | 0.039 px |
+  | the specimen only | 1.07304, 3.4434 deg | +0.00913 +0.00300 +0.00300 -0.00780 | 1.50 px |
+
+  ⚑ **THE TRAP, and it is exactly the size theory says.** Fitted on the specimen
+  alone, the similarity absorbs the specimen's own rigid motion, its rotation
+  (E12 - E21) / 2, and its isotropic dilatation (E11 + E22) / 2 = 0.0035. The
+  rotation is harmless (not strain; the symmetric shear survives at 0.003), but
+  the dilatation is a real strain, lost while every point still reads
+  plausibly. A known length on screen restores that one number. A homography
+  fitted on the specimen would absorb every uniform strain, which is why it waits.
+
+  **Decided 2026-10-12 (David):**
+
+  - **Alignment from marked stationary ground by default** (rig, fixture,
+    fiducials), where nothing is lost. **Where there is none** (the recovered
+    strip), fitted on the specimen, with the screen, the report and both files
+    stating that rigid motion and uniform dilatation are not measured, **unless a
+    known length** (a scale bar, two fiducials) restores the dilatation.
+  - **Similarity first; homography later**, and then only when fitted on ground.
+
+  What it takes, about five to eight sessions:
+
+  - Fork: an alignment class in the fork's own idiom (SIFT2D matches, RANSAC
+    similarity, then sub-pixel refinement by correlating points on the ground,
+    since the 0.030 px above is the fit's own translation error passing straight
+    into displacement while leaving strain untouched).
+  - SurView: the alignment arithmetic engine-free in `core/` (seed from the fit,
+    map back, compose), the dimension refusal relaxed only when alignment is on,
+    an Analysis panel section, a way to mark the ground (a region kind beside
+    add and cut), the known-length input, and the alignment residual reported
+    as part of the reliability account. Committed fixtures rendered like the
+    spike, the manual, a walkthrough.
+  - First version pair by pair: each target aligned to the reference on its
+    own, reference updating off while aligned.
+
+  ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
+  `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero
+  matches with no complaint. SurView loads from files, which fill both, so it is
+  not exposed today; anything rendering in memory is.
+
 - **One visual language for the kinds of picture we will be drawing.** By the time the entries
   above land there will be four views that all look three-dimensional and mean
   quite different things: today's flat 2D field; the pseudo-3D surface, where
