@@ -1167,17 +1167,19 @@ as a backlog with everything in it.
   of every fit, a target of a different height alone, and a hole with three
   corners.
 
-  ⚑ **One gap that file exposed is worth more than the mutants that revealed
+  ⚑ ~~**One gap that file exposed is worth more than the mutants that revealed
   it**: the choice between the first- and second-order solvers can be INVERTED
-  with the whole suite green. Nothing in this repository deforms in a way a
-  first-order shape function cannot describe - every synthetic example is a
-  uniform deformation gradient by construction, which first order represents
-  exactly - and on the real photographs the two orders agree to within a
-  thousandth of a correlation in neither direction consistently. Closing it
-  needs a fixture with a QUADRATIC displacement field, and the generator's
-  exactness comes from a uniform F mapping a Gaussian blob to a Gaussian blob,
-  which a non-uniform one does not. Worth doing: it is the only way anything
-  here can tell whether a user asking for second order gets it.
+  with the whole suite green.~~ CLOSED 2026-10-12. Nothing in this repository
+  deformed in a way a first-order shape function cannot describe, so
+  `tools/make-curved-fixture.py` renders a pair whose displacement is
+  QUADRATIC, and `second_order_measures_a_curved_field_that_first_order_cannot`
+  measures every offered combination on it: second order 0.0026 px, first order
+  0.235 px, against the 0.238 px bias theory predicts for a first-order fit to
+  that field. Inverting either order line now goes red. ⚑ The obstacle written
+  here before was not one: the renderer evaluates the speckle at each sample's
+  MATERIAL point, which is exact under any invertible map, uniform or not. A dot
+  stops being a Gaussian in the target and does not need to be one; only the
+  inverse map loses its closed form, and Newton's method finds it.
 
   **Worked to the end on 2026-09-10**, file by file, across every core source
   the sweep had left standing. Fourteen commits carry the reasoning; the two

@@ -14,27 +14,14 @@
 // The fixture pair is the reference displaced by exactly +3 px in x and 0 in y,
 // so every solver has the same known answer to be wrong about.
 
-// ⚑ AND ONE GAP THIS FILE CANNOT CLOSE, found by the same sweep and worth more
-// than the mutants that revealed it. The two lines choosing between the first-
-// and second-order solvers (ICGN2D1 against ICGN2D2, ICLM2D1 against ICLM2D2)
-// can be INVERTED and the whole suite stays green: every user asking for a
-// second-order shape function would get a first-order one, and nothing here or
-// anywhere else would notice.
-//
-// It is not for want of a case. Nothing in this repository DEFORMS in a way a
-// first-order shape function cannot describe. Every synthetic example is a
-// uniform deformation gradient by construction -- translation, tension, shear,
-// rotation, all of them exactly affine, which is what first order represents
-// exactly -- and measured on the real photographs the two orders agree to
-// within a thousandth of a correlation, in neither direction consistently
-// (checked, 2026-09-10: 0.99103 against 0.99020 on the open-hole set at a
-// subset radius of 24, and 0.99245 against 0.99294 at 36).
-//
-// What would close it is a fixture whose displacement field is quadratic, where
-// second order can fit what first order cannot. That is a real piece of work
-// with a real question inside it - the generator's exactness comes from a
-// uniform F mapping a Gaussian blob to a Gaussian blob, and a non-uniform one
-// does not - so it is on the roadmap rather than half-done here.
+// ⚑ AND THE GAP THIS FILE COULD NOT CLOSE UNTIL 2026-10-12. The two lines
+// choosing between the first- and second-order solvers (ICGN2D1 against ICGN2D2,
+// ICLM2D1 against ICLM2D2) could be INVERTED with the whole suite green: every
+// user asking for a second-order shape function would have got a first-order one.
+// Nothing here deformed in a way first order cannot describe -- every synthetic
+// example is a uniform deformation gradient, and on the real photographs the two
+// orders agree to within a thousandth of a correlation. The curved pair closes it;
+// see second_order_measures_a_curved_field_that_first_order_cannot.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -75,11 +62,14 @@ QString describe(const SolverChoice &choice)
 }
 
 // Runs one correlation to completion on this thread and returns the result.
-CorrelationResult runOnce(const SolverChoice &choice, const RegionOfInterest &roi)
+CorrelationResult runOnce(const SolverChoice &choice, const RegionOfInterest &roi,
+                          const QString &reference = QStringLiteral("shift_reference.tif"),
+                          const QString &target = QStringLiteral("shift_target.tif"),
+                          int gridStep = 12)
 {
-    CorrelationRunner runner(settingsFor(choice), roi,
-                             fixture(QStringLiteral("shift_reference.tif")),
-                             fixture(QStringLiteral("shift_target.tif")));
+    CorrelationSettings settings = settingsFor(choice);
+    settings.gridStep = gridStep;
+    CorrelationRunner runner(settings, roi, fixture(reference), fixture(target));
 
     CorrelationResult result;
     QString failure;
@@ -106,6 +96,7 @@ private slots:
     void the_combination_that_is_not_offered_says_why_it_is_not();
     void every_offered_combination_recovers_a_known_shift();
     void every_offered_combination_honours_a_region_of_interest();
+    void second_order_measures_a_curved_field_that_first_order_cannot();
 };
 
 void TestSolverChoices::the_application_offers_the_combinations_the_engine_implements()
@@ -234,6 +225,75 @@ void TestSolverChoices::every_offered_combination_honours_a_region_of_interest()
                      qPrintable(describe(choice)));
             QVERIFY2(point.y >= box.top() && point.y <= box.bottom(),
                      qPrintable(describe(choice)));
+        }
+    }
+}
+
+namespace {
+
+// The field tests/fixtures/curved_target.tif was rendered under, as
+// tools/make-curved-fixture.py states it: quadratic about (80, 80).
+QPointF curvedDisplacement(double x, double y)
+{
+    const double dx = x - 80.0;
+    const double dy = y - 80.0;
+    return QPointF(0.9 + 0.006 * dx - 0.004 * dy
+                       + 0.0012 * dx * dx + 0.0007 * dx * dy + 0.0008 * dy * dy,
+                   -0.6 + 0.003 * dx + 0.005 * dy
+                       - 0.0006 * dx * dx + 0.0010 * dx * dy - 0.0011 * dy * dy);
+}
+
+}  // namespace
+
+void TestSolverChoices::second_order_measures_a_curved_field_that_first_order_cannot()
+{
+    // The pair's displacement is QUADRATIC (tools/make-curved-fixture.py), which a
+    // second-order shape function describes across a subset and a first-order one
+    // cannot. A first-order fit to it is biased at the centre by the quadratic
+    // terms averaged over the subset: r(r + 1) / 3 = 90.7 px^2 per squared term
+    // for r = 16, so (0.0012 + 0.0008) * 90.7 = 0.181 px in u and
+    // (-0.0006 - 0.0011) * 90.7 = -0.154 px in v, 0.238 px together. That is
+    // theory, not this code, and the first-order solvers land on it (0.235), which
+    // is what says the fixture is the field it claims to be. Second order: 0.0026.
+    //
+    // Negative-checked: with the order line in makeSolver() inverted for ICGN, and
+    // separately for IC-LM, this case goes red -- the first-order choice then reads
+    // 0.0026 px, nowhere near the bias a first-order fit must show. It is the case
+    // the header of this file said was missing.
+    RegionOfInterest roi;  // only where the fixture is stated: 40 px about the centre
+    setOutline(roi, {QPoint(40, 40), QPoint(120, 40), QPoint(120, 120), QPoint(40, 120)});
+    const double firstOrderBias = std::hypot((0.0012 + 0.0008) * 16 * 17 / 3.0,
+                                             (-0.0006 - 0.0011) * 16 * 17 / 3.0);
+
+    for (const SolverChoice &choice : offeredSolverChoices()) {
+        const CorrelationResult result = runOnce(choice, roi,
+                                                 QStringLiteral("curved_reference.tif"),
+                                                 QStringLiteral("curved_target.tif"), 8);
+        double sum = 0.0;
+        int counted = 0;
+        for (const CorrelationPoint &point : result.points) {
+            if (!point.converged)
+                continue;
+            const QPointF truth = curvedDisplacement(point.x, point.y);
+            sum += std::hypot(point.u - truth.x(), point.v - truth.y());
+            counted++;
+        }
+        QVERIFY2(result.total() > 100 && counted == result.total(),
+                 qPrintable(QStringLiteral("%1: %2 of %3 points solved")
+                                .arg(describe(choice)).arg(counted).arg(result.total())));
+        const double meanError = sum / counted;
+
+        if (choice.shapeOrder == 2) {
+            QVERIFY2(meanError < 0.01,
+                     qPrintable(QStringLiteral("%1 asked for second order and measured the "
+                                               "curved field %2 px off, as first order does")
+                                    .arg(describe(choice)).arg(meanError)));
+        } else {
+            QVERIFY2(std::abs(meanError - firstOrderBias) < 0.2 * firstOrderBias,
+                     qPrintable(QStringLiteral("%1: mean error %2 px, where a first-order fit "
+                                               "to this field is biased by %3 px")
+                                    .arg(describe(choice)).arg(meanError)
+                                    .arg(firstOrderBias)));
         }
     }
 }
