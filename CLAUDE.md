@@ -980,7 +980,8 @@ again.
   every solver. Re-anchored and fixed-reference runs now agree to 0.002 to
   0.003 px on average
   (`re_anchoring_does_not_change_the_answer_on_a_specimen_that_deforms`). The
-  fork's own `SequenceTracker2D` has the same flaw; SurView does not use it.
+  fork's own `SequenceTracker2D` had the same flaw, fixed there the same way
+  (`484c83b`), though SurView does not use it.
 - ⚑ **A RE-ANCHORED FRAME REPORTED THE STRAIN SINCE THE LAST RE-ANCHOR** under
   the original reference's name: `composeTotalField()` added the banked
   displacement but passed the increment's strain through. Strain of a followed

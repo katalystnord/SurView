@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=f7af6cf45ef71d8f4ee0482eb6eed2e5426fca01
+SURVIEW_OPENCORR_PIN=484c83b4db72f82a1fa64c274e2f520e0c404dc4
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=masked-solvers-19
+SURVIEW_OPENCORR_PIN_NOTE=tracker-whole-pixel
