@@ -760,6 +760,28 @@ Understood well enough to start, large enough to need their own care.
   - First version pair by pair: each target aligned to the reference on its
     own, reference updating off while aligned.
 
+  **Built 2026-10-15, the engine and the run (no screen yet):**
+
+  - Fork `SessionAlignment2D` (`fcaabee`): SIFT on the ground, a RANSAC
+    similarity, then ICGN on a grid of subsets lying wholly on the ground and a
+    reweighted least-squares fit. 0.0012 px worst anywhere on the image, against
+    0.033 px for RANSAC alone. With no ground, the reweighting removes a specimen
+    that is a minority of the picture; one that is most of it, or that slid 9 px,
+    is only got right with the ground marked, and the engine test says so.
+    `SIFT2D` no longer aborts on a featureless image.
+  - `CorrelationRunner::setSessionAlignment(ground)`: the size refusal is lifted
+    for that run only, every point starts from the camera move instead of FFTCC,
+    and every answer is carried back into the reference frame before strain.
+    `CorrelationResult::alignment` records what it was fitted on and how well,
+    and `alignmentLimitation()` states what a fit on the specimen did not measure.
+    On the committed `session_*` fixtures: displacement within 0.01 px and every
+    strain term within 3e-4 on ground. On the specimen, both normal strains fall
+    short by the same 0.0040, which is the dilatation as the fit's points sample
+    it (0.0035 exactly only from points spread evenly in every direction).
+  - Still to do: the Analysis panel switch and saving it with the project, ground
+    as a region kind, the known length, the report and both files, the manual
+    and a walkthrough.
+
   ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
   `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero
   matches with no complaint. SurView loads from files, which fill both, so it is

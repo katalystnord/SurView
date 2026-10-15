@@ -158,7 +158,18 @@ void CorrelationRunner::run()
             emit failed(tr("The engine could not read the reference image."));
             return;
         }
-        if (tar_img.width != ref_img.width || tar_img.height != ref_img.height) {
+        // ⚑ A target from a separate session is measured against the reference
+        // directly, frame by frame. A followed point sits in the frame it was
+        // followed to, whose camera is not the one the alignment describes.
+        if (m_align && !m_seeding.isEmpty()) {
+            emit failed(tr("A target from a separate session is measured against the "
+                           "reference directly, one pair at a time; it cannot be "
+                           "followed from an earlier frame. Turn reference updating "
+                           "off."));
+            return;
+        }
+        if (!m_align
+            && (tar_img.width != ref_img.width || tar_img.height != ref_img.height)) {
             emit failed(tr("Reference and target differ in size (%1×%2 and "
                            "%3×%4). They must describe the same pixel grid.")
                             .arg(ref_img.width)
@@ -166,6 +177,74 @@ void CorrelationRunner::run()
                             .arg(tar_img.width)
                             .arg(tar_img.height));
             return;
+        }
+
+        // --- a target from a separate session --------------------------------
+        // The camera move between the sessions, as a similarity fitted by the
+        // engine on stationary ground, or failing that on what is measured.
+        // Applied to COORDINATES only: each point starts from it, is measured on
+        // the target as recorded, and is carried back below. Nothing resampled.
+        CorrelationResult result;
+        Similarity2D camera;
+        if (m_align) {
+            SessionAlignmentRecord &record = result.alignment;
+            record.targetWidth = tar_img.width;
+            record.targetHeight = tar_img.height;
+
+            // Membership only, so no image size: given one, engineRegion() adds
+            // the whole image first (the masking convention, where only a cut
+            // removes) and every pixel would count as ground.
+            std::shared_ptr<OrderedRegion2D> fitOn;
+            QRect fitBounds(0, 0, ref_img.width, ref_img.height);
+            if (m_ground.isValid()) {
+                fitOn = engineRegion(m_ground);
+                record.fittedOn = SessionAlignmentRecord::Ground;
+                fitBounds = m_ground.bounds().intersected(fitBounds);
+            } else if (m_roi.isValid()) {
+                fitOn = engineRegion(m_roi);
+                record.fittedOn = SessionAlignmentRecord::MeasuredRegion;
+                fitBounds = m_roi.bounds().intersected(fitBounds);
+            } else {
+                record.fittedOn = SessionAlignmentRecord::WholeImage;
+            }
+
+            // The refinement's subsets: the run's own grid step, widened only
+            // as far as keeps a large image to a few thousand of them.
+            const double area = double(fitBounds.width()) * double(fitBounds.height());
+            const int alignStep = std::max(m_settings.gridStep,
+                                           int(std::ceil(std::sqrt(area / 4000.0))));
+
+            emit progress(0, 1, tr("aligning the two sessions"));
+            SessionAlignment2D aligner(m_settings.subsetRadius, alignStep, threads);
+            aligner.setImages(ref_img, tar_img);
+            aligner.setGround(fitOn.get());
+            const AlignmentResult fit = aligner.compute();
+
+            record.matches = fit.matches;
+            record.inliers = fit.inliers;
+            record.groundPoints = fit.refined_points;
+            record.groundPointsUsed = fit.refined_used;
+            record.residualRms = fit.residual_rms;
+
+            if (fit.status != AlignmentStatus::ok) {
+                const QString why = fit.status == AlignmentStatus::too_few_ground_points
+                    ? tr("only %1 of %2 subsets correlated and agreed with the camera "
+                         "move.").arg(fit.refined_used).arg(fit.refined_points)
+                    : tr("only %1 features were found in common, %2 of them "
+                         "agreeing.").arg(fit.matches).arg(fit.inliers);
+                emit failed(tr("The target could not be aligned to the reference: %1 "
+                               "Marking a larger stretch of stationary ground, or a "
+                               "target with more of the same scene in view, gives the "
+                               "alignment more to work with.").arg(why));
+                return;
+            }
+
+            camera = fit.transform;
+            record.scale = camera.scale;
+            record.angleDegrees = camera.angle * 180.0 / M_PI;
+            record.shiftX = camera.tx;
+            record.shiftY = camera.ty;
+            emit progress(1, 1, tr("aligning the two sessions"));
         }
 
         // Where the points go is worked out by buildPoiGrid() (core/PoiGrid.h),
@@ -185,8 +264,6 @@ void CorrelationRunner::run()
         // How far each followed point sits from the whole pixel it is measured
         // on; empty for a run on a grid, whose points are whole pixels.
         QVector<QPointF> subPixel;
-
-        CorrelationResult result;
 
         if (m_seeding.isEmpty()) {
             const PoiGrid grid = buildPoiGrid(
@@ -348,7 +425,14 @@ void CorrelationRunner::run()
                                          queue.begin() + start + count);
 
                 if (stage == 0) {
-                    fftcc.compute(chunk);
+                    // Aligned: the camera move is the starting guess. FFTCC
+                    // compares two images on one pixel grid, which these are not.
+                    if (m_align) {
+                        for (POI2D &poi : chunk)
+                            camera.seed(poi);
+                    } else {
+                        fftcc.compute(chunk);
+                    }
                     for (int k = 0; k < count; k++) {
                         estimate[size_t(start + k)] = {chunk[size_t(k)].deformation.u,
                                                        chunk[size_t(k)].deformation.v};
@@ -577,6 +661,18 @@ void CorrelationRunner::run()
             }
         }
 
+        // --- back into the reference frame -------------------------------------
+        // Aligned, every answer so far is where the material went IN THE TARGET:
+        // the solve, the second pass and the reliability probe all work there.
+        // Carried back through the camera move here, before strain, so the field
+        // and its gradient are the specimen's own and in reference pixels.
+        if (m_align) {
+            for (POI2D &poi : queue) {
+                if (!isFailureStatus(poi.result.zncc))
+                    camera.toReference(poi);
+            }
+        }
+
         // --- strain ---------------------------------------------------------
         // Fitted from the solved displacements, so it can only run once they
         // exist. Skipped outright on a stopped run: a gradient fitted through
@@ -782,8 +878,8 @@ void CorrelationRunner::run()
                     if (int(poi.result.zncc) == STATUS_INVALID_SUBSET_OR_GUESS
                         && subsetCarriedPastTheEdge(
                             poi.x, poi.y, radius, estimate[size_t(i)].first,
-                            estimate[size_t(i)].second, ref_img.width,
-                            ref_img.height)) {
+                            estimate[size_t(i)].second, tar_img.width,
+                            tar_img.height)) {
                         point.failureReason = kCarriedPastTheEdge;
                     }
                     // In our words, naming the setting and the remedy: the

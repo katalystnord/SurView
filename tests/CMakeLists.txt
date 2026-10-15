@@ -51,6 +51,7 @@ set(SURVIEW_UNIT_TESTS
     test_cross_validation
     test_masked_subsets
     test_carried_cuts
+    test_separate_sessions
 )
 
 foreach(test_name ${SURVIEW_UNIT_TESTS})

@@ -45,6 +45,8 @@ add_library(surview_core STATIC
     core/Recovery.h
     core/Series.cpp
     core/Series.h
+    core/SessionAlignment.cpp
+    core/SessionAlignment.h
     core/Roi.cpp
     core/Roi.h
     core/RoiDetect.cpp

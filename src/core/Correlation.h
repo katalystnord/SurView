@@ -3,6 +3,7 @@
 #include "core/CarriedCuts.h"
 #include "core/Recovery.h"
 #include "core/Roi.h"
+#include "core/SessionAlignment.h"
 #include "core/StrainFit.h"
 
 #include <QMap>
@@ -282,6 +283,10 @@ struct CorrelationResult
     int  recoveryRounds = 0;
     int  stillUnrecovered = 0;   // attempted, and still below the retry bar
 
+    // A target from a separate session: how it was brought onto the reference,
+    // and on what. NotAligned for the ordinary run. See core/SessionAlignment.h.
+    SessionAlignmentRecord alignment;
+
     double secondsElapsed = 0.0;
     bool   cancelled      = false;
 
@@ -403,6 +408,16 @@ public:
     // before run().
     void setCarriedCuts(const CarriedCuts &cuts) { m_carried = cuts; }
 
+    // The target was photographed in a separate session: align it to the
+    // reference first, fitted on `ground` (stationary, in reference pixels) or,
+    // where that is empty, on the region being measured. The target may then
+    // differ in size. Pair by pair only: a followed sequence is refused.
+    void setSessionAlignment(const RegionOfInterest &ground)
+    {
+        m_align = true;
+        m_ground = ground;
+    }
+
 public slots:
     void run();
     void cancel();
@@ -421,5 +436,7 @@ private:
     int m_chunkPoints = kDefaultChunkPoints;
     bool m_referenceIsTheOriginal = true;
     CarriedCuts m_carried;
+    bool m_align = false;
+    RegionOfInterest m_ground;
     std::atomic<bool> m_cancelled{false};
 };
