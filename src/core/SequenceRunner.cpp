@@ -32,6 +32,16 @@ void SequenceRunner::run()
         emit failed(tr("There is no target image to measure."));
         return;
     }
+    // Refused before anything is measured: re-anchoring would follow points into
+    // a later frame's camera, which no alignment describes, and the single-pair
+    // refusal would otherwise surface only at whichever frame first re-anchored.
+    if (m_settings.separateSessions && m_policy.enabled) {
+        emit failed(tr("\"%1\" measures each target against the reference one pair "
+                       "at a time, so it cannot be combined with \"Re-anchor the "
+                       "reference when tracking degrades\". Turn one of them off.")
+                        .arg(separateSessionsLabel()));
+        return;
+    }
 
     int measured = 0;
 

@@ -161,21 +161,23 @@ void CorrelationRunner::run()
         // ⚑ A target from a separate session is measured against the reference
         // directly, frame by frame. A followed point sits in the frame it was
         // followed to, whose camera is not the one the alignment describes.
-        if (m_align && !m_seeding.isEmpty()) {
+        if (m_settings.separateSessions && !m_seeding.isEmpty()) {
             emit failed(tr("A target from a separate session is measured against the "
                            "reference directly, one pair at a time; it cannot be "
                            "followed from an earlier frame. Turn reference updating "
                            "off."));
             return;
         }
-        if (!m_align
+        if (!m_settings.separateSessions
             && (tar_img.width != ref_img.width || tar_img.height != ref_img.height)) {
             emit failed(tr("Reference and target differ in size (%1×%2 and "
-                           "%3×%4). They must describe the same pixel grid.")
+                           "%3×%4). They must describe the same pixel grid, "
+                           "unless they come from separate sessions: \"%5\".")
                             .arg(ref_img.width)
                             .arg(ref_img.height)
                             .arg(tar_img.width)
-                            .arg(tar_img.height));
+                            .arg(tar_img.height)
+                            .arg(separateSessionsLabel()));
             return;
         }
 
@@ -186,7 +188,7 @@ void CorrelationRunner::run()
         // the target as recorded, and is carried back below. Nothing resampled.
         CorrelationResult result;
         Similarity2D camera;
-        if (m_align) {
+        if (m_settings.separateSessions) {
             SessionAlignmentRecord &record = result.alignment;
             record.targetWidth = tar_img.width;
             record.targetHeight = tar_img.height;
@@ -427,7 +429,7 @@ void CorrelationRunner::run()
                 if (stage == 0) {
                     // Aligned: the camera move is the starting guess. FFTCC
                     // compares two images on one pixel grid, which these are not.
-                    if (m_align) {
+                    if (m_settings.separateSessions) {
                         for (POI2D &poi : chunk)
                             camera.seed(poi);
                     } else {
@@ -666,7 +668,7 @@ void CorrelationRunner::run()
         // the solve, the second pass and the reliability probe all work there.
         // Carried back through the camera move here, before strain, so the field
         // and its gradient are the specimen's own and in reference pixels.
-        if (m_align) {
+        if (m_settings.separateSessions) {
             for (POI2D &poi : queue) {
                 if (!isFailureStatus(poi.result.zncc))
                     camera.toReference(poi);

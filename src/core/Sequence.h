@@ -39,4 +39,5 @@ struct SequencePlan
 };
 
 SequencePlan planSequence(const ImageRecord &reference,
-                          const QVector<ImageRecord> &targets);
+                          const QVector<ImageRecord> &targets,
+                          bool separateSessions = false);

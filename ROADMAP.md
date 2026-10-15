@@ -769,7 +769,8 @@ Understood well enough to start, large enough to need their own care.
     that is a minority of the picture; one that is most of it, or that slid 9 px,
     is only got right with the ground marked, and the engine test says so.
     `SIFT2D` no longer aborts on a featureless image.
-  - `CorrelationRunner::setSessionAlignment(ground)`: the size refusal is lifted
+  - `CorrelationSettings::separateSessions`, with `CorrelationRunner::setGround()`
+    for the stationary ground: the size refusal is lifted
     for that run only, every point starts from the camera move instead of FFTCC,
     and every answer is carried back into the reference frame before strain.
     `CorrelationResult::alignment` records what it was fitted on and how well,
@@ -778,9 +779,15 @@ Understood well enough to start, large enough to need their own care.
     strain term within 3e-4 on ground. On the specimen, both normal strains fall
     short by the same 0.0040, which is the dilatation as the fit's points sample
     it (0.0035 exactly only from points spread evenly in every direction).
-  - Still to do: the Analysis panel switch and saving it with the project, ground
-    as a region kind, the known length, the report and both files, the manual
-    and a walkthrough.
+  - **The switch, 2026-10-15:** "Reference and target from separate sessions",
+    first in the Analysis panel's Reference section, saved with the project and
+    listed in the Settings window. Off, a target of another size is refused at
+    import, and the warning names the switch and the section it is in (it used to
+    say only "1 does not match the reference"). On, the project tree stops
+    marking the target, Run is offered, and re-anchoring is greyed with the
+    reason beside it; a sequence asked for both is refused before any frame.
+  - Still to do: ground as a region kind, the known length, the report and both
+    files, the manual.
 
   ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
   `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero

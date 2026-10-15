@@ -22,6 +22,7 @@
 #include "core/SubsetOverlay.h"
 #include "core/Sequence.h"
 #include "core/Masking.h"
+#include "core/SessionAlignment.h"
 #include "core/Roi.h"
 #include "core/ViewFit.h"
 #include "gui/ImageViewport.h"
@@ -55,6 +56,8 @@
 #include <QScrollArea>
 #include <QSignalSpy>
 #include <QTest>
+#include <QTimer>
+#include <QMessageBox>
 #include <QToolBar>
 #include <QToolButton>
 #include <QDir>
@@ -455,6 +458,8 @@ private slots:
     void a_folded_section_still_governs_the_run();
     void subsets_beside_a_cut_are_left_out_and_the_screen_says_so();
     void the_masking_settings_are_saved_with_the_project_and_come_back_with_it();
+    void a_target_from_another_session_is_measured_once_the_screen_says_how();
+    void the_separate_sessions_switch_is_saved_with_the_project();
 
     void the_settings_window_is_on_the_file_menu_and_names_every_default();
     void a_new_project_starts_from_the_defaults_saved_in_settings();
@@ -869,6 +874,30 @@ QLineEdit *logFilterField(QWidget *root)
     }
     return nullptr;
 }
+
+// A modal message the window raises, read and closed as a reader would: read,
+// then its button pressed. Armed BEFORE the step that raises it, since that step
+// does not return until the message is closed. Gives up after ten seconds, so a
+// message that never comes fails the case instead of hanging it.
+class MessageReader
+{
+public:
+    void arm() { poll(200); }
+    QString text() const { return m_text; }
+
+private:
+    void poll(int attemptsLeft)
+    {
+        if (auto *box = qobject_cast<QMessageBox *>(QApplication::activeModalWidget())) {
+            m_text = box->text();
+            box->accept();
+            return;
+        }
+        if (attemptsLeft > 0)
+            QTimer::singleShot(50, [this, attemptsLeft] { poll(attemptsLeft - 1); });
+    }
+    QString m_text;
+};
 
 QPlainTextEdit *logView(QWidget *root)
 {
@@ -4170,6 +4199,96 @@ void TestWorkspaceWalkthrough::the_masking_settings_are_saved_with_the_project_a
     QVERIFY(other.openProjectFrom(path));
     QVERIFY2(!otherSwitch->isChecked(), "the project reopened with masking back on");
     QCOMPARE(otherFloor->value(), 40);
+}
+
+void TestWorkspaceWalkthrough::a_target_from_another_session_is_measured_once_the_screen_says_how()
+{
+    // A reference and a target photographed in separate sessions: the camera
+    // moved, so the target is a different size (tools/make-session-fixture.py).
+    //
+    // Negative checks, each run and reverted: the pairing or the planner
+    // ignoring the switch (Run stays off), the import warning without its
+    // reasons or without the switch's name, the panel's switch not read into the
+    // run settings, re-anchoring left available, the project tree not refreshed
+    // and the folded summary ignoring the switch: each red here. Not restoring
+    // the switch from a project, or not writing it: the save case below red.
+    // Off by default. Everything this case does is something the screen said:
+    // the refusal names the switch and where it is, and the switch's note says
+    // what it costs.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("session_reference.tif")));
+    MessageReader warning;
+    warning.arm();
+    window.addTargetImages({fixture(QStringLiteral("session_target.tif"))});
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    QVERIFY2(!run->isEnabled(), "a target of another size can be run without aligning it");
+    QVERIFY(projectLine(&window, QStringLiteral("Target images")).contains(QStringLiteral("does not match")));
+    // The warning on import is the first thing such a reader sees, so it is
+    // where the remedy has to be: the switch, and the section it is in.
+    QVERIFY2(warning.text().contains(separateSessionsLabel())
+                 && warning.text().contains(QStringLiteral("Reference section")),
+             qPrintable(QStringLiteral("the import warning does not say how to measure such "
+                                       "a pair:\n%1").arg(warning.text())));
+
+    // Where the refusal said: the Reference section.
+    CollapsibleSection *reference = sectionTitled(&window, QStringLiteral("Reference"));
+    QVERIFY(reference);
+    if (reference->isCollapsed())
+        reference->findChild<QToolButton *>()->click();
+    auto *sessions = byVisibleText<QCheckBox>(&window, separateSessionsLabel());
+    QVERIFY2(sessions && sessions->isVisible(), "the Reference section has no such switch");
+    QVERIFY(!sessions->isChecked());
+    sessions->click();
+
+    QVERIFY2(run->isEnabled(), "with the switch on, the pair still cannot be run");
+    QVERIFY2(!projectLine(&window, QStringLiteral("Target images")).contains(QStringLiteral("does not match")),
+             qPrintable(projectLine(&window, QStringLiteral("Target images"))));
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("rigid motion and uniform stretch")),
+             "the switch does not say what fitting the camera move on the specimen costs");
+    auto *reanchor = byVisibleText<QCheckBox>(&window, QStringLiteral("Re-anchor the reference"));
+    QVERIFY2(!reanchor->isEnabled(), "re-anchoring still looks available across sessions");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("one pair at a time")),
+             "nothing says why re-anchoring is unavailable");
+
+    // Folded, the section still says which way it is set.
+    reference->findChild<QToolButton *>()->click();
+    QVERIFY2(visibleText(reference).contains(QStringLiteral("separate sessions")),
+             qPrintable(visibleText(reference)));
+    reference->findChild<QToolButton *>()->click();
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    run->trigger();
+    QVERIFY2(QTest::qWaitFor([viewport] { return viewport->hasField(); }, 120000),
+             "the correlation produced no field within two minutes");
+    // The field lands before the run finishes; Run comes back when it has.
+    QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
+    QVERIFY(window.lastResult().alignment.isAligned());
+}
+
+void TestWorkspaceWalkthrough::the_separate_sessions_switch_is_saved_with_the_project()
+{
+    // A run setting, so it belongs to the project. On is not the default, so a
+    // switch read or restored as its default cannot pass.
+    MainWindow window;
+    window.openReferenceImage(fixture(QStringLiteral("session_reference.tif")));
+    auto *sessions = byVisibleText<QCheckBox>(&window, separateSessionsLabel());
+    QVERIFY(sessions);
+    sessions->setChecked(true);
+
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("sessions.svproj"));
+    QVERIFY(window.saveProjectTo(path));
+
+    MainWindow other;
+    auto *otherSessions = byVisibleText<QCheckBox>(&other, separateSessionsLabel());
+    QVERIFY(!otherSessions->isChecked());
+    QVERIFY(other.openProjectFrom(path));
+    QVERIFY2(otherSessions->isChecked(), "the project reopened with the sessions treated as one");
 }
 
 void TestWorkspaceWalkthrough::a_folded_section_still_governs_the_run()

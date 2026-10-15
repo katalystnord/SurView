@@ -64,3 +64,29 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
         lines << limitation;
     return lines;
 }
+
+QString separateSessionsLabel()
+{
+    return tr("Reference and target from separate sessions");
+}
+
+QString separateSessionsPanelNote(bool on)
+{
+    if (!on) {
+        return tr("Off: the reference and every target share one camera and one "
+                  "pixel grid. Turn this on for a target photographed after the "
+                  "camera was moved, refocused or replaced; it may then differ in "
+                  "size.");
+    }
+    return tr("On: each target is aligned to the reference before it is measured, "
+              "by the camera's scale, turn and shift, and measured as it was "
+              "recorded, with nothing resampled. The camera move is fitted on what "
+              "is being measured, which takes up the specimen's own rigid motion "
+              "and uniform stretch; the report says so.");
+}
+
+QString separateSessionsReanchorNote()
+{
+    return tr("Across separate sessions each target is measured against the "
+              "reference one pair at a time, so the reference is never re-anchored.");
+}

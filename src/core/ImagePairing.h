@@ -25,5 +25,8 @@ struct PairCompatibility
     bool matches() const { return mismatches.isEmpty(); }
 };
 
+// With separateSessions, the camera may have moved between the two, so the
+// dimensions may differ; channels and pixel type still may not.
 PairCompatibility compareToReference(const ImageRecord &reference,
-                                     const ImageRecord &target);
+                                     const ImageRecord &target,
+                                     bool separateSessions = false);

@@ -90,6 +90,7 @@ private slots:
     void a_target_that_cannot_pair_is_skipped_with_its_reason_kept();
     void a_target_that_could_not_be_read_is_skipped_with_its_reason_kept();
     void a_plan_with_nothing_to_measure_says_so();
+    void across_sessions_a_target_of_another_size_is_planned();
 
     // ⚑ Frame order is a CORRECTNESS problem and nothing downstream can detect
     // it: every field solves, the displacements are real, and the specimen
@@ -385,6 +386,20 @@ void TestSequence::a_padded_number_and_a_shorter_one_do_not_each_precede_the_oth
     const QStringList oneWay = sortIntoSequenceOrder({padded, shorter});
     const QStringList theOther = sortIntoSequenceOrder({shorter, padded});
     QCOMPARE(oneWay, theOther);
+}
+
+void TestSequence::across_sessions_a_target_of_another_size_is_planned()
+{
+    // The Run button asks this planner, so a pair the run would align must not
+    // be left out of the plan as a different pixel grid.
+    QVector<ImageRecord> targets;
+    targets << frame(QStringLiteral("f_1.tif")) << frame(QStringLiteral("f_2.tif"));
+    targets[1].width = 999;
+
+    QCOMPARE(planSequence(reference(), targets).order.size(), 1);
+    const SequencePlan plan = planSequence(reference(), targets, true);
+    QCOMPARE(plan.order.size(), 2);
+    QVERIFY(plan.skipped.isEmpty());
 }
 
 QTEST_MAIN(TestSequence)

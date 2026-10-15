@@ -1,6 +1,7 @@
 #include "core/Defaults.h"
 
 #include "core/Masking.h"
+#include "core/SessionAlignment.h"
 #include "core/StrainFit.h"
 
 #include <QCoreApplication>
@@ -161,6 +162,8 @@ QVector<SettingLine> settingLines(const RunDefaults &defaults)
          count(o.strainMinPoints, QObject::tr("point"), QObject::tr("points"))},
         {strain, QObject::tr("Strain measure"), strainMeasureName(s.strainMeasure),
          strainMeasureName(o.strainMeasure)},
+        {reference, separateSessionsLabel(), onOff(s.separateSessions),
+         onOff(o.separateSessions)},
         {reference, QObject::tr("Re-anchor the reference when tracking degrades"),
          onOff(p.enabled), onOff(op.enabled)},
         {reference, QObject::tr("Correlation a point must keep"),
@@ -194,6 +197,7 @@ QJsonObject correlationSettingsToJson(const CorrelationSettings &s)
     settings[QStringLiteral("convergence")] = s.convergence;
     settings[QStringLiteral("maskAtCuts")] = s.maskAtCuts;
     settings[QStringLiteral("minValidShare")] = s.minValidShare;
+    settings[QStringLiteral("separateSessions")] = s.separateSessions;
     settings[QStringLiteral("strainEnabled")] = s.strainEnabled;
     settings[QStringLiteral("strainRadius")] = s.strainRadius;
     settings[QStringLiteral("strainMinPoints")] = s.strainMinPoints;
@@ -218,6 +222,8 @@ CorrelationSettings correlationSettingsFromJson(const QJsonObject &settings)
     s.convergence = settings[QStringLiteral("convergence")].toDouble(s.convergence);
     s.maskAtCuts = settings[QStringLiteral("maskAtCuts")].toBool(s.maskAtCuts);
     s.minValidShare = settings[QStringLiteral("minValidShare")].toDouble(s.minValidShare);
+    s.separateSessions =
+        settings[QStringLiteral("separateSessions")].toBool(s.separateSessions);
     s.strainEnabled = settings[QStringLiteral("strainEnabled")].toBool(s.strainEnabled);
     s.strainRadius = settings[QStringLiteral("strainRadius")].toDouble(s.strainRadius);
     s.strainMinPoints = settings[QStringLiteral("strainMinPoints")].toInt(s.strainMinPoints);

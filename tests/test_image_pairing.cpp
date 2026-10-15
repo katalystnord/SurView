@@ -6,6 +6,7 @@
 
 #include "core/ImagePairing.h"
 #include "core/ImageRecord.h"
+#include "core/SessionAlignment.h"
 
 #include <QTest>
 
@@ -41,6 +42,8 @@ private slots:
     void differing_pixel_types_are_reported_even_though_both_decode();
     void every_disagreement_is_listed_not_just_the_first();
     void nothing_is_claimed_before_there_is_something_to_compare();
+    void a_different_size_names_the_switch_that_measures_it();
+    void a_target_from_a_separate_session_may_differ_in_size_and_nothing_else();
 };
 
 void TestImagePairing::an_identical_target_matches()
@@ -105,6 +108,34 @@ void TestImagePairing::nothing_is_claimed_before_there_is_something_to_compare()
     QVERIFY(compareToReference(ImageRecord(), reference()).matches());
     QVERIFY(compareToReference(reference(), ImageRecord()).matches());
     QVERIFY(compareToReference(ImageRecord(), ImageRecord()).matches());
+}
+
+void TestImagePairing::a_different_size_names_the_switch_that_measures_it()
+{
+    // Negative-checked: the switch's name dropped from the message, red here;
+    // the dimensions compared regardless of the switch, the case below red.
+    // A target from a second session is usually a different size, and the
+    // refusal is where a reader with such a pair first learns it can be
+    // measured at all. Naming the control is what makes it findable.
+    const PairCompatibility pairing =
+        compareToReference(reference(), image(1024, 768, 1, VTK_UNSIGNED_SHORT));
+    QCOMPARE(pairing.mismatches.size(), 1);
+    QVERIFY2(pairing.mismatches.first().contains(separateSessionsLabel()),
+             qPrintable(pairing.mismatches.first()));
+}
+
+void TestImagePairing::a_target_from_a_separate_session_may_differ_in_size_and_nothing_else()
+{
+    // The camera moved, so the size may change; the intensities still have to
+    // be on one scale, which no alignment changes.
+    QVERIFY(compareToReference(reference(), image(1024, 768, 1, VTK_UNSIGNED_SHORT), true)
+                .matches());
+
+    const PairCompatibility pairing =
+        compareToReference(reference(), image(640, 480, 3, VTK_UNSIGNED_CHAR), true);
+    QCOMPARE(pairing.mismatches.size(), 2);
+    for (const QString &mismatch : pairing.mismatches)
+        QVERIFY2(!mismatch.contains(QStringLiteral("dimensions")), qPrintable(mismatch));
 }
 
 QTEST_MAIN(TestImagePairing)

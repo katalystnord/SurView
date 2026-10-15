@@ -39,9 +39,13 @@
 // - The refusal of a failed fit removed: that case red.
 // - A point refused at an edge judged against the REFERENCE's size instead of
 //   the target's: NOT caught. No point in these fixtures is refused at an edge.
+// - The sequence's refusal of re-anchoring across sessions removed: that case
+//   red, a frame measured before anything refused.
+// - The size refusal without the switch's name: the first case red.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
+#include "core/SequenceRunner.h"
 #include "core/SessionAlignment.h"
 
 #include <QTest>
@@ -105,9 +109,12 @@ struct Outcome
 Outcome run(const RegionOfInterest &roi, const QString &reference, const QString &target,
             bool align, const RegionOfInterest &ground = RegionOfInterest())
 {
-    CorrelationRunner runner(settings(), roi, fixture(reference), fixture(target));
-    if (align)
-        runner.setSessionAlignment(ground);
+    // The switch is a run setting, saved with the project; the ground is a
+    // region drawn on the reference.
+    CorrelationSettings s = settings();
+    s.separateSessions = align;
+    CorrelationRunner runner(s, roi, fixture(reference), fixture(target));
+    runner.setGround(ground);
 
     Outcome outcome;
     QObject::connect(&runner, &CorrelationRunner::finished,
@@ -168,6 +175,7 @@ private slots:
     void an_alignment_that_finds_nothing_is_refused_in_its_own_words();
     void a_run_without_alignment_records_none();
     void a_followed_point_cannot_be_measured_across_sessions();
+    void a_sequence_across_sessions_refuses_reference_updating_before_measuring();
 };
 
 void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
@@ -175,6 +183,8 @@ void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
     const Outcome o = run(specimenRegion(), QStringLiteral("session_reference.tif"),
                           QStringLiteral("session_target.tif"), false);
     QVERIFY2(o.failure.contains(QStringLiteral("differ in size")), qPrintable(o.failure));
+    // and names the control that measures such a pair
+    QVERIFY2(o.failure.contains(separateSessionsLabel()), qPrintable(o.failure));
     QCOMPARE(o.result.total(), 0);
 }
 
@@ -288,7 +298,9 @@ void TestSeparateSessions::a_followed_point_cannot_be_measured_across_sessions()
 {
     // A point followed from an earlier frame sits in that frame's camera, which
     // is not the one the alignment describes. Pair by pair only, said so.
-    CorrelationRunner runner(settings(), RegionOfInterest(), fixture(QStringLiteral("session_reference.tif")),
+    CorrelationSettings aligned = settings();
+    aligned.separateSessions = true;
+    CorrelationRunner runner(aligned, RegionOfInterest(), fixture(QStringLiteral("session_reference.tif")),
                              fixture(QStringLiteral("session_target.tif")));
     PoiSeeding seeding;
     PoiSeeding::Seed seed;
@@ -297,7 +309,7 @@ void TestSeparateSessions::a_followed_point_cannot_be_measured_across_sessions()
     seeding.points = {seed};
     seeding.gridColumns = seeding.gridRows = 1;
     runner.setSeeding(seeding);
-    runner.setSessionAlignment(groundRegion());
+    runner.setGround(groundRegion());
 
     QString failure;
     bool finished = false;
@@ -308,6 +320,31 @@ void TestSeparateSessions::a_followed_point_cannot_be_measured_across_sessions()
     runner.run();
     QVERIFY(!finished);
     QVERIFY2(failure.contains(QStringLiteral("one pair at a time")), qPrintable(failure));
+}
+
+void TestSeparateSessions::a_sequence_across_sessions_refuses_reference_updating_before_measuring()
+{
+    // Re-anchoring would follow points into a later frame's camera, which the
+    // pair-by-pair refusal above catches only once it has happened: after the
+    // first frames were measured, at whatever frame tracking first degraded.
+    // Refused before anything is measured instead, naming both switches.
+    CorrelationSettings aligned = settings();
+    aligned.separateSessions = true;
+    ReferenceUpdatePolicy policy;
+    policy.enabled = true;
+    SequenceRunner runner(aligned, specimenRegion(), fixture(QStringLiteral("session_reference.tif")),
+                          {fixture(QStringLiteral("session_target.tif"))}, policy);
+
+    QString failure;
+    int frames = 0;
+    QObject::connect(&runner, &SequenceRunner::failed,
+                     [&failure](const QString &reason) { failure = reason; });
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&frames](int, const CorrelationResult &) { frames++; });
+    runner.run();
+    QCOMPARE(frames, 0);
+    QVERIFY2(failure.contains(separateSessionsLabel()), qPrintable(failure));
+    QVERIFY2(failure.contains(QStringLiteral("Re-anchor the reference")), qPrintable(failure));
 }
 
 QTEST_MAIN(TestSeparateSessions)

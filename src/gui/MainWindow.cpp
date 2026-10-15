@@ -631,6 +631,7 @@ void MainWindow::applySettings(const CorrelationSettings &settings,
     }
 
     m_reanchorEnabled->setChecked(policy.enabled);
+    m_separateSessions->setChecked(settings.separateSessions);
     m_reanchorThreshold->setValue(policy.znccThreshold);
     m_reanchorShare->setValue(int(qRound(policy.percentile * 100.0)));
 
@@ -1176,6 +1177,16 @@ QWidget *MainWindow::createAnalysisPanel()
     auto *referenceGroup = new QGroupBox(panel);
     auto *referenceColumn = new QVBoxLayout(referenceGroup);
 
+    // Whether the target came from the same session as the reference. First,
+    // because it decides whether the rest of the section applies at all; and
+    // the place a size mismatch sends a reader.
+    m_separateSessions = new QCheckBox(separateSessionsLabel());
+    m_separateSessions->setChecked(CorrelationSettings().separateSessions);
+    referenceColumn->addWidget(m_separateSessions);
+    m_separateSessionsNote = new NoteLabel;
+    referenceColumn->addWidget(m_separateSessionsNote);
+    referenceColumn->addSpacing(8);
+
     auto *referenceNote = new QLabel(
         tr("Every frame is measured against the original reference, so the "
            "displacements are directly comparable. Correlation degrades as the "
@@ -1187,6 +1198,9 @@ QWidget *MainWindow::createAnalysisPanel()
         new QCheckBox(tr("Re-anchor the reference when tracking degrades"));
     m_reanchorEnabled->setChecked(false);
     referenceColumn->addWidget(m_reanchorEnabled);
+    m_reanchorUnavailable = new NoteLabel;
+    m_reanchorUnavailable->setText(separateSessionsReanchorNote());
+    referenceColumn->addWidget(m_reanchorUnavailable);
 
     auto *reanchorForm = new QFormLayout;
     reanchorForm->setContentsMargins(0, 6, 0, 0);
@@ -1317,6 +1331,8 @@ QWidget *MainWindow::createAnalysisPanel()
 
     connect(m_reanchorEnabled, &QCheckBox::toggled, this,
             &MainWindow::updateReferenceUpdateControls);
+    connect(m_separateSessions, &QCheckBox::toggled, this,
+            &MainWindow::onSeparateSessionsToggled);
     updateReferenceUpdateControls();
 
     connect(m_strainEnabled, &QCheckBox::toggled, this,
@@ -1360,9 +1376,31 @@ ReferenceUpdatePolicy MainWindow::currentReferencePolicy() const
 
 void MainWindow::updateReferenceUpdateControls()
 {
-    const bool on = m_reanchorEnabled->isChecked();
+    // Across sessions the reference never re-anchors, and the panel says why
+    // beside the switch it greys rather than leaving it to be discovered.
+    const bool across = m_separateSessions->isChecked();
+    m_reanchorEnabled->setEnabled(!across);
+    m_reanchorUnavailable->setVisible(across);
+    m_separateSessionsNote->setText(separateSessionsPanelNote(across));
+
+    const bool on = m_reanchorEnabled->isChecked() && !across;
     m_reanchorThreshold->setEnabled(on);
     m_reanchorShare->setEnabled(on);
+}
+
+void MainWindow::onSeparateSessionsToggled(bool on)
+{
+    // Turned off rather than left checked under a greyed box: a choice in force
+    // that cannot be changed where it is shown is the hidden state this panel
+    // forbids itself. Said in the log, since it is a setting that changed.
+    if (on && m_reanchorEnabled->isChecked()) {
+        m_reanchorEnabled->setChecked(false);
+        log(tr("Re-anchoring turned off: %1").arg(separateSessionsReanchorNote()));
+    }
+    updateReferenceUpdateControls();
+    updateSectionSummaries();
+    refreshTargetPairing();
+    updateActionStates();
 }
 
 void MainWindow::updateSpeckleQuality()
@@ -1493,9 +1531,11 @@ void MainWindow::updateSectionSummaries()
 
     const ReferenceUpdatePolicy policy = currentReferencePolicy();
     m_referenceSection->setSummary(
-        policy.enabled
-            ? tr("re-anchors below %1% still tracking").arg(int(policy.percentile * 100.0))
-            : tr("always the original reference"));
+        settings.separateSessions
+            ? tr("separate sessions, each target aligned to the reference")
+            : policy.enabled
+                  ? tr("re-anchors below %1% still tracking").arg(int(policy.percentile * 100.0))
+                  : tr("always the original reference"));
 
     m_recoverySection->setSummary(
         settings.recovery.enabled
@@ -1757,6 +1797,7 @@ CorrelationSettings MainWindow::currentSettings() const
     settings.convergence = m_convergence->value();
     settings.maskAtCuts = m_maskAtCuts->isChecked();
     settings.minValidShare = m_minValidShare->value() / 100.0;
+    settings.separateSessions = m_separateSessions && m_separateSessions->isChecked();
 
     settings.strainEnabled = m_strainEnabled->isChecked();
     settings.strainRadius = m_strainRadius->value();
@@ -1909,6 +1950,9 @@ void MainWindow::addTargetImages(const QStringList &paths)
     int recorded = 0;
     int unreadable = 0;
     int mismatched = 0;
+    // Why each mismatched target cannot be measured, for the warning: a count
+    // alone sends a reader to the log to find out what to do about it.
+    QStringList reasons;
 
     // Built detached and parented once the whole list has been put in frame
     // order, so the tree never shows an order the run would not follow.
@@ -1937,14 +1981,11 @@ void MainWindow::addTargetImages(const QStringList &paths)
         }
 
         ++recorded;
-        const PairCompatibility pairing =
-            compareToReference(m_referenceRecord, record);
+        const PairCompatibility pairing = compareToReference(
+            m_referenceRecord, record, m_separateSessions->isChecked());
+        markTargetPairing(item, record, pairing);
 
         if (pairing.matches()) {
-            item->setText(0, tr("%1 (%2×%3)")
-                                 .arg(name)
-                                 .arg(record.width)
-                                 .arg(record.height));
             log(tr("Recorded target image: %1 - %2×%3 px, %4, %5, no conversion")
                     .arg(name)
                     .arg(record.width)
@@ -1952,17 +1993,9 @@ void MainWindow::addTargetImages(const QStringList &paths)
                     .arg(record.pixelTypeName(), record.channelsText()));
         } else {
             ++mismatched;
-            // The reason is stated in the log and the tooltip, but this panel
-            // is narrow enough to truncate the text -- so the item also carries
-            // an icon, which survives any width.
-            item->setText(0, tr("%1 (%2×%3) - does not match the reference")
-                                 .arg(name)
-                                 .arg(record.width)
-                                 .arg(record.height));
-            item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
-            item->setToolTip(0, pairing.mismatches.join(QStringLiteral("\n")));
             log(tr("Recorded target image: %1 - does not match the reference: %2")
                     .arg(name, pairing.mismatches.join(QStringLiteral("; "))));
+            reasons << tr("%1: %2").arg(name, pairing.mismatches.join(QStringLiteral("; ")));
         }
         pending.append(item);
     }
@@ -2015,8 +2048,11 @@ void MainWindow::addTargetImages(const QStringList &paths)
     statusBar()->showMessage(summary.join(tr(", ")), 6000);
 
     if (mismatched > 0 || unreadable > 0) {
+        QStringList text = summary;
+        if (!reasons.isEmpty())
+            text << QString() << reasons;
         QMessageBox::warning(this, tr("Target images imported"),
-                             summary.join(QStringLiteral("\n")));
+                             text.join(QStringLiteral("\n")));
     }
 
     updateActionStates();
@@ -2067,6 +2103,49 @@ void MainWindow::displayRecord(const ImageRecord &record)
     m_pinned = false;
     m_hoveredPixelValid = false;
     showPoint(-1, QPoint(), false);
+}
+
+void MainWindow::markTargetPairing(QTreeWidgetItem *item, const ImageRecord &record,
+                                   const PairCompatibility &pairing)
+{
+    if (pairing.matches()) {
+        item->setText(0, tr("%1 (%2×%3)")
+                             .arg(record.fileName)
+                             .arg(record.width)
+                             .arg(record.height));
+        item->setIcon(0, QIcon());
+        item->setToolTip(0, QString());
+        return;
+    }
+    // The reason is stated in the log and the tooltip, but this panel is narrow
+    // enough to truncate the text -- so the item also carries an icon, which
+    // survives any width.
+    item->setText(0, tr("%1 (%2×%3) - does not match the reference")
+                         .arg(record.fileName)
+                         .arg(record.width)
+                         .arg(record.height));
+    item->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+    item->setToolTip(0, pairing.mismatches.join(QStringLiteral("\n")));
+}
+
+void MainWindow::refreshTargetPairing()
+{
+    // A target of another size is measurable across sessions and not within
+    // one, so the list follows the switch rather than the moment of import.
+    if (!m_targetsItem)
+        return;
+    for (int i = 0; i < m_targetsItem->childCount(); i++) {
+        QTreeWidgetItem *item = m_targetsItem->child(i);
+        const int index = item->data(0, kRecordIndexRole).toInt();
+        if (index < 0 || index >= m_targetRecords.size())
+            continue;
+        const ImageRecord &record = m_targetRecords.at(index);
+        if (!record.isValid())
+            continue;
+        markTargetPairing(item, record,
+                          compareToReference(m_referenceRecord, record,
+                                             m_separateSessions->isChecked()));
+    }
 }
 
 void MainWindow::rebuildTargetList(QVector<QTreeWidgetItem *> pending)
@@ -2476,7 +2555,8 @@ void MainWindow::runCorrelation()
     // Which targets can be measured, in which order, and why the rest cannot.
     // Worked out by core/Sequence.h rather than here, so the same judgement is
     // testable without a window.
-    const SequencePlan plan = planSequence(m_referenceRecord, m_targetRecords);
+    const SequencePlan plan = planSequence(m_referenceRecord, m_targetRecords,
+                                           m_separateSessions->isChecked());
 
     if (plan.isEmpty()) {
         QMessageBox::warning(
@@ -3110,7 +3190,10 @@ void MainWindow::updateActionStates()
     // for a project the run would then refuse, nor disabled for one it would
     // accept. Before this there were two answers to the same question.
     const bool hasPair =
-        hasReference && !planSequence(m_referenceRecord, m_targetRecords).isEmpty();
+        hasReference
+        && !planSequence(m_referenceRecord, m_targetRecords,
+                         m_separateSessions && m_separateSessions->isChecked())
+                 .isEmpty();
 
     // While a boundary is being placed, the viewport's own bar is the control
     // surface. Leaving these live would offer two ways to decide the same

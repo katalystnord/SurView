@@ -93,7 +93,8 @@ QStringList sortIntoSequenceOrder(const QStringList &paths)
 }
 
 SequencePlan planSequence(const ImageRecord &reference,
-                          const QVector<ImageRecord> &targets)
+                          const QVector<ImageRecord> &targets,
+                          bool separateSessions)
 {
     SequencePlan plan;
 
@@ -109,7 +110,7 @@ SequencePlan planSequence(const ImageRecord &reference,
 
         // The judgement itself belongs to core/ImagePairing.h and is not
         // repeated here; only the decision to skip is made here.
-        const PairCompatibility pairing = compareToReference(reference, target);
+        const PairCompatibility pairing = compareToReference(reference, target, separateSessions);
         if (!pairing.matches()) {
             plan.skipped.insert(i, pairing.mismatches.join(QStringLiteral("; ")));
             continue;

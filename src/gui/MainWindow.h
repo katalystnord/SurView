@@ -8,6 +8,7 @@
 #include "core/ReferenceUpdate.h"
 #include "core/SequenceRunner.h"
 #include "core/ImageRecord.h"
+#include "core/ImagePairing.h"
 #include "core/KnownAnswer.h"
 #include "core/PixelReadout.h"
 #include "core/Roi.h"
@@ -166,6 +167,12 @@ private slots:
     // The re-anchor rule's own numbers mean nothing while it is off, so they
     // follow the switch that turns it on.
     void updateReferenceUpdateControls();
+    void onSeparateSessionsToggled(bool on);
+    // Each listed target's name, icon and tooltip, for whether it can be
+    // measured against the reference as the switches now stand.
+    void markTargetPairing(QTreeWidgetItem *item, const ImageRecord &record,
+                           const PairCompatibility &pairing);
+    void refreshTargetPairing();
     void updateRecoveryControls();
 
     // A gauge was placed on the image, or the plotted curve is to be written
@@ -367,6 +374,10 @@ private:
     QCheckBox *m_reanchorEnabled = nullptr;
     QDoubleSpinBox *m_reanchorThreshold = nullptr;
     QSpinBox *m_reanchorShare = nullptr;
+    // A target from a separate session, and the re-anchoring it rules out.
+    QCheckBox *m_separateSessions = nullptr;
+    NoteLabel *m_separateSessionsNote = nullptr;
+    NoteLabel *m_reanchorUnavailable = nullptr;
 
     QCheckBox *m_recoveryEnabled = nullptr;
     QDoubleSpinBox *m_recoveryRetryBelow = nullptr;

@@ -37,6 +37,7 @@ RunDefaults lopsided()
     s.convergence = 0.0007;
     s.maskAtCuts = false;
     s.minValidShare = 0.37;
+    s.separateSessions = true;   // negative-checked: key not written, red
     s.strainEnabled = false;
     s.strainRadius = 31.5;
     s.strainMinPoints = 9;
@@ -107,6 +108,7 @@ void TestDefaults::saved_defaults_are_read_back_exactly()
     QCOMPARE(s.convergence, 0.0007);
     QCOMPARE(s.maskAtCuts, false);
     QCOMPARE(s.minValidShare, 0.37);
+    QCOMPARE(s.separateSessions, true);
     QCOMPARE(s.strainEnabled, false);
     QCOMPARE(s.strainRadius, 31.5);
     QCOMPARE(s.strainMinPoints, 9);

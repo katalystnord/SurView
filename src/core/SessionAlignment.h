@@ -49,6 +49,16 @@ struct SessionAlignmentRecord
     bool isAligned() const { return fittedOn != NotAligned; }
 };
 
+// The Analysis panel's switch, as it reads there and wherever it is named.
+QString separateSessionsLabel();
+
+// The note under the switch: what it does, or what turning it on would allow.
+QString separateSessionsPanelNote(bool on);
+
+// Why re-anchoring is unavailable while the switch is on. A followed point sits
+// in a later frame's camera, which no alignment describes.
+QString separateSessionsReanchorNote();
+
 // What an alignment fitted on anything but ground could not measure, in one
 // sentence for the report and the files. Empty when nothing was lost.
 QString alignmentLimitation(const SessionAlignmentRecord &alignment);

@@ -61,6 +61,13 @@ struct CorrelationSettings
     // be applied afterwards.
     double minValidShare = 0.25;
 
+    // --- a target from a separate session -----------------------------------
+    // The reference and target were photographed in separate sessions, so the
+    // camera may have moved and the target may differ in size. The run aligns
+    // each target to the reference first (core/SessionAlignment.h). Off by
+    // default: one session, one pixel grid, is the ordinary case.
+    bool   separateSessions = false;
+
     // --- the second pass at points that failed ------------------------------
     // How forgiving the run is about repairing points the first solve could not
     // measure well. On by default; see core/Recovery.h for why, and for why
@@ -408,15 +415,10 @@ public:
     // before run().
     void setCarriedCuts(const CarriedCuts &cuts) { m_carried = cuts; }
 
-    // The target was photographed in a separate session: align it to the
-    // reference first, fitted on `ground` (stationary, in reference pixels) or,
-    // where that is empty, on the region being measured. The target may then
-    // differ in size. Pair by pair only: a followed sequence is refused.
-    void setSessionAlignment(const RegionOfInterest &ground)
-    {
-        m_align = true;
-        m_ground = ground;
-    }
+    // Ground marked as stationary, in reference pixels, that a target from a
+    // separate session (CorrelationSettings::separateSessions) is aligned on.
+    // Empty: aligned on the region being measured, which the result states.
+    void setGround(const RegionOfInterest &ground) { m_ground = ground; }
 
 public slots:
     void run();
@@ -436,7 +438,6 @@ private:
     int m_chunkPoints = kDefaultChunkPoints;
     bool m_referenceIsTheOriginal = true;
     CarriedCuts m_carried;
-    bool m_align = false;
     RegionOfInterest m_ground;
     std::atomic<bool> m_cancelled{false};
 };
