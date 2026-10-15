@@ -786,8 +786,24 @@ Understood well enough to start, large enough to need their own care.
     say only "1 does not match the reference"). On, the project tree stops
     marking the target, Run is offered, and re-anchoring is greyed with the
     reason beside it; a sequence asked for both is refused before any frame.
-  - Still to do: ground as a region kind, the known length, the report and both
-    files, the manual.
+  - **Ground, 2026-10-15:** a third kind of shape beside add and cut, drawn from
+    Mark Ground on the toolbar (a fixed-support sign) and in its own blue. It is
+    no part of the region measured and takes no part in the region's order: it
+    adds nothing, cuts nothing, does not move when the region is dragged, is not
+    carried with a re-anchored frame, and survives auto-detect. It lives in the
+    same list as the other shapes so it is drawn, numbered, adjusted, removed and
+    saved by the same means, and the run fits the camera move on it through
+    `groundOf()`, so a sequence carries it to every frame by the region's own
+    route. The tool is live only with the switch on and says which switch while
+    it is not, on its tooltip and on the status line (a greyed tool's tooltip is
+    not shown everywhere: found by screenshot). The switch's note says what the
+    move is fitted on and names the tool; ground marked with the switch off is
+    listed "not used" first on its line, since the end of a line is what the dock
+    elides. Project files are version 3, because a version 2 SurView would read
+    ground as an addition and measure the bench.
+  - Still to do: the known length, the report and both files, the manual.
+    Ground marked over the specimen itself is used as drawn; the alignment's
+    reweighting rejects some of it, and nothing says so yet.
 
   ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
   `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero

@@ -415,11 +415,6 @@ public:
     // before run().
     void setCarriedCuts(const CarriedCuts &cuts) { m_carried = cuts; }
 
-    // Ground marked as stationary, in reference pixels, that a target from a
-    // separate session (CorrelationSettings::separateSessions) is aligned on.
-    // Empty: aligned on the region being measured, which the result states.
-    void setGround(const RegionOfInterest &ground) { m_ground = ground; }
-
 public slots:
     void run();
     void cancel();
@@ -438,6 +433,5 @@ private:
     int m_chunkPoints = kDefaultChunkPoints;
     bool m_referenceIsTheOriginal = true;
     CarriedCuts m_carried;
-    RegionOfInterest m_ground;
     std::atomic<bool> m_cancelled{false};
 };

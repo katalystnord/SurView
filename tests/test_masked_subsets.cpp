@@ -50,7 +50,7 @@ RegionShape box(RegionShape::Kind kind, int left, int top, int right, int bottom
 {
     RegionShape shape;
     shape.kind = kind;
-    shape.subtract = cut;
+    shape.role = cut ? RegionShape::Cut : RegionShape::Add;
     shape.points = {QPoint(left, top), QPoint(right, bottom)};
     return shape;
 }
@@ -136,7 +136,7 @@ double expectedShare(const RegionOfInterest &roi, int x, int y, int radius)
     const auto cutAway = [&roi](int px, int py) {
         for (int i = roi.shapes.size() - 1; i >= 0; i--) {
             if (shapeContains(roi.shapes.at(i), px, py))
-                return roi.shapes.at(i).subtract;
+                return roi.shapes.at(i).isCut();
         }
         return false;
     };

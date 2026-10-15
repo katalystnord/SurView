@@ -35,7 +35,8 @@ QString alignmentLimitation(const SessionAlignmentRecord &alignment)
               "rigid motion and its uniform dilatation (the part of the strain that "
               "is the same in every direction) are not measured: both were taken "
               "for the camera. Strain differences between directions and shear are "
-              "measured. Mark ground that did not move to measure all of it.");
+              "measured. %1 on the toolbar marks ground that did not move, so that "
+              "all of it is measured.").arg(markGroundLabel());
 }
 
 QStringList alignmentReport(const SessionAlignmentRecord &alignment)
@@ -70,7 +71,19 @@ QString separateSessionsLabel()
     return tr("Reference and target from separate sessions");
 }
 
-QString separateSessionsPanelNote(bool on)
+QString markGroundLabel()
+{
+    return tr("Mark Ground");
+}
+
+QString markGroundUnavailableNote()
+{
+    return tr("Ground is what a target from a separate session is aligned on. Turn "
+              "on \"%1\" in the Reference section of the Analysis panel to mark it.")
+        .arg(separateSessionsLabel());
+}
+
+QString separateSessionsPanelNote(bool on, bool groundMarked)
 {
     if (!on) {
         return tr("Off: the reference and every target share one camera and one "
@@ -78,11 +91,18 @@ QString separateSessionsPanelNote(bool on)
                   "camera was moved, refocused or replaced; it may then differ in "
                   "size.");
     }
-    return tr("On: each target is aligned to the reference before it is measured, "
-              "by the camera's scale, turn and shift, and measured as it was "
-              "recorded, with nothing resampled. The camera move is fitted on what "
+    const QString how = tr("On: each target is aligned to the reference before it is "
+                           "measured, by the camera's scale, turn and shift, and "
+                           "measured as it was recorded, with nothing resampled.");
+    if (groundMarked) {
+        return tr("%1 The camera move is fitted on the ground marked, so the "
+                  "specimen's own movement is measured in full.").arg(how);
+    }
+    return tr("%1 With no stationary ground marked, the camera move is fitted on what "
               "is being measured, which takes up the specimen's own rigid motion "
-              "and uniform stretch; the report says so.");
+              "and uniform stretch; the report says so. %2 on the toolbar marks "
+              "ground that did not move, such as the bench or a fixture.")
+        .arg(how, markGroundLabel());
 }
 
 QString separateSessionsReanchorNote()

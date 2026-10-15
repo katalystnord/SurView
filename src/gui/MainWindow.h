@@ -435,12 +435,14 @@ private:
     // Actions whose enabled state depends on project progress.
     QAction *m_actRun = nullptr;
     QAction *m_actStop = nullptr;
-    // Two drop-down buttons, each offering the three shapes, and the action
+    // Three drop-down buttons, each offering the three shapes, and the action
     // that takes a shape selected in the project list away again.
     QAction *m_actAddToRegion = nullptr;
     QAction *m_actCutFromRegion = nullptr;
+    QAction *m_actMarkGround = nullptr;
     QVector<QAction *> m_actAddShape;
     QVector<QAction *> m_actCutShape;
+    QVector<QAction *> m_actGroundShape;
     QAction *m_actRemoveShape = nullptr;
     QAction *m_actExtensometer = nullptr;
     QAction *m_actProbe = nullptr;

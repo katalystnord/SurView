@@ -15,7 +15,7 @@ inline void setOutline(RegionOfInterest &roi, const QVector<QPoint> &corners)
 inline void addCut(RegionOfInterest &roi, const QVector<QPoint> &corners)
 {
     RegionShape cut;
-    cut.subtract = true;
+    cut.role = RegionShape::Cut;
     cut.points = corners;
     roi.shapes.append(cut);
 }

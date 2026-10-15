@@ -82,14 +82,16 @@ public:
     // --- Region of interest ------------------------------------------------
     // Enter the mode where clicking the image draws one shape of the region:
     // a rectangle or an ellipse by two opposite corners of its box, a polygon
-    // corner by corner. `cut` draws it as a cut rather than an addition. The
-    // mode announces itself with an on-screen bar carrying its own controls, so
-    // it can be entered, completed and left without knowing a shortcut. A cut
-    // needs a region to cut from, and is refused without one.
-    void beginShapeDrawing(RegionShape::Kind kind, bool cut);
+    // corner by corner. `role` says whether it adds, cuts or marks ground
+    // (core/Roi.h). The mode announces itself with an on-screen bar carrying
+    // its own controls, so it can be entered, completed and left without
+    // knowing a shortcut. A cut needs a region to cut from, and is refused
+    // without one; ground needs none.
+    void beginShapeDrawing(RegionShape::Kind kind, RegionShape::Role role);
     void cancelRoiDrawing();
     bool isDrawingRoi() const { return m_roiDrawing; }
-    bool isDrawingCut() const { return m_roiDrawing && m_drawCut; }
+    bool isDrawingCut() const { return m_roiDrawing && m_drawRole == RegionShape::Cut; }
+    bool isDrawingGround() const { return m_roiDrawing && m_drawRole == RegionShape::Ground; }
 
     // Display a region that already exists -- the one just drawn, or one the
     // detector proposed. Passing an invalid region clears the display.
@@ -441,7 +443,7 @@ private:
     double grabReachInPixels(const QPointF &position) const;
 
     bool m_roiDrawing = false;
-    bool m_drawCut = false;
+    RegionShape::Role m_drawRole = RegionShape::Add;
     RegionShape::Kind m_drawKind = RegionShape::Polygon;
     bool m_roiActorAdded = false;
     QVector<QPoint> m_roiPlaced;   // corners placed so far, while drawing

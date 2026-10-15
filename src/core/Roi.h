@@ -35,10 +35,24 @@ struct RegionShape
 {
     enum Kind { Rectangle, Ellipse, Polygon };
 
-    Kind kind = Polygon;
+    // What the shape does. An ADDED shape is measured; a CUT removes what it
+    // covers from everything before it.
+    //
+    // ⚑ GROUND is not part of the region measured at all. It marks ground that
+    // did not move between two sessions -- the bench, a fixture, the frame --
+    // which a target photographed after the camera was moved is aligned on
+    // (CorrelationSettings::separateSessions, core/SessionAlignment.h). It
+    // takes no part in the ordered rule below: it adds nothing, cuts nothing,
+    // and its place in the list changes nothing. Kept in the same list so that
+    // it is drawn, listed, numbered, adjusted and saved by the same means as
+    // every other shape, rather than by a second set of them.
+    enum Role { Add, Cut, Ground };
 
-    // Removes what it covers rather than adding it.
-    bool subtract = false;
+    Kind kind = Polygon;
+    Role role = Add;
+
+    bool isCut() const { return role == Cut; }
+    bool isGround() const { return role == Ground; }
 
     // A polygon's corners, as an open ring: the last joins back to the first.
     // A rectangle or an ellipse: exactly two points, opposite corners of its
@@ -63,7 +77,7 @@ struct RegionShape
 
     bool operator==(const RegionShape &other) const
     {
-        return kind == other.kind && subtract == other.subtract && points == other.points;
+        return kind == other.kind && role == other.role && points == other.points;
     }
 };
 
@@ -93,6 +107,14 @@ struct RegionOfInterest
     // A valid cut in the region, which is what a hole has become.
     bool hasCuts() const;
 
+    // A valid ground shape. Ground alone does not make a region valid: with
+    // nothing added, the whole image is measured, ground marked or not.
+    bool hasGround() const;
+
+    // Any valid shape at all, ground included: whether there is anything to
+    // draw, list or adjust, as opposed to anything to measure.
+    bool hasShapes() const;
+
     // Smallest pixel rectangle holding every shape that ADDS, inclusive. Cuts
     // cannot enlarge it: they remove, and a bounds that grew to include one
     // would put the grid's origin somewhere no point can be placed.
@@ -103,7 +125,16 @@ struct RegionOfInterest
 
 // The region as one line for a reader: "3 shapes: + rectangle, - ellipse,
 // + polygon of 5 corners". Empty for an invalid region.
+// Ground shapes are not part of it; see groundSummary().
 QString regionSummary(const RegionOfInterest &roi);
+
+// The ground marked, as one line: "ground: 2 shapes, rectangle 40 x 30 px,
+// polygon of 5 corners". Empty when none is.
+QString groundSummary(const RegionOfInterest &roi);
+
+// The ground marked, as a region of its own whose shapes all ADD: what the
+// alignment is fitted on. Invalid when no ground is marked.
+RegionOfInterest groundOf(const RegionOfInterest &roi);
 
 // What a field measured with no region drawn has to say about itself, in the
 // one wording the field bar, the run report and the tests share.
@@ -196,7 +227,11 @@ RegionOfInterest withCornerInserted(const RegionOfInterest &roi, CornerRef edge,
 // A refusal returns `roi` untouched.
 RegionOfInterest withCornerRemoved(const RegionOfInterest &roi, CornerRef corner);
 
-// `roi` shifted bodily by `by`, every shape together.
+// `roi` shifted bodily by `by`, every shape together, ground excepted.
+//
+// ⚑ GROUND STAYS. It is drawn where the scene did not move, and that has
+// nothing to do with where the specimen's region is put; a move that carried
+// it along would quietly mark the specimen as stationary.
 //
 // ⚑ THE CUTS MOVE WITH IT. A cut is part of the region, and a move that left one
 // behind would be the worst kind of wrong: the boundary lands where the reader
@@ -221,6 +256,14 @@ CornerRef edgeNear(const RegionOfInterest &roi, const QPoint &at, double reach);
 // `roi` with one more shape at the end, which is where a new shape applies:
 // last, over everything before it. An invalid shape returns `roi` untouched.
 RegionOfInterest withShapeAdded(const RegionOfInterest &roi, const RegionShape &shape);
+
+// `roi`'s measured shapes replaced by `replacement`'s, as auto-detection
+// replaces them, with `roi`'s ground kept after them. The detector proposes
+// what to measure; ground marked by hand is no part of that proposal, and a
+// detection that silently erased it would leave the alignment fitted on the
+// specimen instead. The replacement's origin and caveat are kept.
+RegionOfInterest withMeasuredShapesReplaced(const RegionOfInterest &roi,
+                                            const RegionOfInterest &replacement);
 
 // `roi` without one shape. Out of range returns `roi` untouched.
 RegionOfInterest withShapeRemoved(const RegionOfInterest &roi, int shape);

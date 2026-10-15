@@ -42,6 +42,15 @@
 // - The sequence's refusal of re-anchoring across sessions removed: that case
 //   red, a frame measured before anything refused.
 // - The size refusal without the switch's name: the first case red.
+//
+// Ground as a shape of the region (2026-10-15), each run and reverted:
+// - The run ignoring the ground: the ground case red, fitted on the region.
+// - groundOf() returning the region's additions: the dilatation case red.
+// - A region of nothing but ground counted as a region: the one-session case
+//   red, the run refusing a region the whole image does not hold.
+// - The engine counting ground as an addition: NOT caught here, because every
+//   ground band lies outside the specimen's box and no point is placed there.
+//   The pixel-by-pixel case in test_roi_engine_boundary catches it.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -67,7 +76,7 @@ RegionShape box(RegionShape::Kind kind, int x0, int y0, int x1, int y1, bool cut
 {
     RegionShape shape;
     shape.kind = kind;
-    shape.subtract = cut;
+    shape.role = cut ? RegionShape::Cut : RegionShape::Add;
     shape.points = {QPoint(x0, y0), QPoint(x1, y1)};
     return shape;
 }
@@ -80,13 +89,20 @@ RegionOfInterest specimenRegion()
     return roi;
 }
 
-// The rig: the whole reference less the disc and 10 px around it.
-RegionOfInterest groundRegion()
+// The specimen region with the rig marked as ground around it: four bands,
+// the whole reference less a box 10 px clear of the disc. Ground is a shape of
+// the region (core/Roi.h), so it travels wherever the region does.
+RegionOfInterest withGround(RegionOfInterest roi)
 {
-    RegionOfInterest ground;
-    ground.shapes = {box(RegionShape::Rectangle, 0, 0, 239, 199),
-                     box(RegionShape::Ellipse, 50, 30, 190, 170, true)};
-    return ground;
+    for (const RegionShape &band : {box(RegionShape::Rectangle, 0, 0, 239, 29),
+                                    box(RegionShape::Rectangle, 0, 171, 239, 199),
+                                    box(RegionShape::Rectangle, 0, 30, 49, 170),
+                                    box(RegionShape::Rectangle, 191, 30, 239, 170)}) {
+        RegionShape ground = band;
+        ground.role = RegionShape::Ground;
+        roi.shapes.append(ground);
+    }
+    return roi;
 }
 
 CorrelationSettings settings()
@@ -107,14 +123,13 @@ struct Outcome
 };
 
 Outcome run(const RegionOfInterest &roi, const QString &reference, const QString &target,
-            bool align, const RegionOfInterest &ground = RegionOfInterest())
+            bool align)
 {
-    // The switch is a run setting, saved with the project; the ground is a
-    // region drawn on the reference.
+    // The switch is a run setting, saved with the project; the ground is part
+    // of the region drawn on the reference.
     CorrelationSettings s = settings();
     s.separateSessions = align;
     CorrelationRunner runner(s, roi, fixture(reference), fixture(target));
-    runner.setGround(ground);
 
     Outcome outcome;
     QObject::connect(&runner, &CorrelationRunner::finished,
@@ -176,6 +191,8 @@ private slots:
     void a_run_without_alignment_records_none();
     void a_followed_point_cannot_be_measured_across_sessions();
     void a_sequence_across_sessions_refuses_reference_updating_before_measuring();
+    void a_sequence_aligns_every_frame_on_the_ground_marked();
+    void ground_marked_in_one_session_changes_nothing_measured();
 };
 
 void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
@@ -190,8 +207,8 @@ void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
 
 void TestSeparateSessions::aligned_on_the_ground_the_specimen_reads_its_own_deformation()
 {
-    const Outcome o = run(specimenRegion(), QStringLiteral("session_reference.tif"),
-                          QStringLiteral("session_target.tif"), true, groundRegion());
+    const Outcome o = run(withGround(specimenRegion()), QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
     QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
 
     const SessionAlignmentRecord &a = o.result.alignment;
@@ -300,7 +317,8 @@ void TestSeparateSessions::a_followed_point_cannot_be_measured_across_sessions()
     // is not the one the alignment describes. Pair by pair only, said so.
     CorrelationSettings aligned = settings();
     aligned.separateSessions = true;
-    CorrelationRunner runner(aligned, RegionOfInterest(), fixture(QStringLiteral("session_reference.tif")),
+    CorrelationRunner runner(aligned, withGround(RegionOfInterest()),
+                             fixture(QStringLiteral("session_reference.tif")),
                              fixture(QStringLiteral("session_target.tif")));
     PoiSeeding seeding;
     PoiSeeding::Seed seed;
@@ -309,7 +327,6 @@ void TestSeparateSessions::a_followed_point_cannot_be_measured_across_sessions()
     seeding.points = {seed};
     seeding.gridColumns = seeding.gridRows = 1;
     runner.setSeeding(seeding);
-    runner.setGround(groundRegion());
 
     QString failure;
     bool finished = false;
@@ -345,6 +362,61 @@ void TestSeparateSessions::a_sequence_across_sessions_refuses_reference_updating
     QCOMPARE(frames, 0);
     QVERIFY2(failure.contains(separateSessionsLabel()), qPrintable(failure));
     QVERIFY2(failure.contains(QStringLiteral("Re-anchor the reference")), qPrintable(failure));
+}
+
+void TestSeparateSessions::a_sequence_aligns_every_frame_on_the_ground_marked()
+{
+    // What the application runs is a sequence, so the ground has to reach every
+    // frame through it, and not only a pair measured directly.
+    CorrelationSettings aligned = settings();
+    aligned.separateSessions = true;
+    SequenceRunner runner(aligned, withGround(specimenRegion()),
+                          fixture(QStringLiteral("session_reference.tif")),
+                          {fixture(QStringLiteral("session_target.tif"))}, ReferenceUpdatePolicy());
+
+    QString failure;
+    QVector<CorrelationResult> frames;
+    QObject::connect(&runner, &SequenceRunner::failed,
+                     [&failure](const QString &reason) { failure = reason; });
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&frames](int, const CorrelationResult &r) { frames << r; });
+    runner.run();
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QCOMPARE(frames.size(), 1);
+    QCOMPARE(frames.first().alignment.fittedOn, SessionAlignmentRecord::Ground);
+    const Means m = measure(frames.first());
+    QVERIFY2(std::abs(m.exx - kE11) < 3e-4, qPrintable(QString::number(m.exx, 'f', 5)));
+}
+
+void TestSeparateSessions::ground_marked_in_one_session_changes_nothing_measured()
+{
+    // Ground is not part of the region measured: with the switch off it does
+    // nothing at all, and a region of nothing but ground measures the whole
+    // image exactly as no region does. On the shift pair, lopsided ground in a
+    // corner where a point would land if it were read as an addition.
+    RegionOfInterest onlyGround;
+    RegionShape corner = box(RegionShape::Rectangle, 3, 5, 61, 40);
+    corner.role = RegionShape::Ground;
+    onlyGround.shapes = {corner};
+
+    const Outcome plain = run(RegionOfInterest(), QStringLiteral("shift_reference.tif"),
+                              QStringLiteral("shift_target.tif"), false);
+    const Outcome grounded = run(onlyGround, QStringLiteral("shift_reference.tif"),
+                                 QStringLiteral("shift_target.tif"), false);
+    QVERIFY2(grounded.failure.isEmpty(), qPrintable(grounded.failure));
+    QCOMPARE(grounded.result.total(), plain.result.total());
+    QCOMPARE(grounded.result.alignment.fittedOn, SessionAlignmentRecord::NotAligned);
+    for (int i = 0; i < plain.result.points.size(); i++) {
+        QCOMPARE(grounded.result.points.at(i).x, plain.result.points.at(i).x);
+        QCOMPARE(grounded.result.points.at(i).u, plain.result.points.at(i).u);
+    }
+
+    // And beside a specimen region it measures the specimen only.
+    const Outcome specimen = run(specimenRegion(), QStringLiteral("session_reference.tif"),
+                                 QStringLiteral("session_reference.tif"), false);
+    const Outcome beside = run(withGround(specimenRegion()), QStringLiteral("session_reference.tif"),
+                               QStringLiteral("session_reference.tif"), false);
+    QCOMPARE(beside.result.total(), specimen.result.total());
 }
 
 QTEST_MAIN(TestSeparateSessions)

@@ -308,23 +308,36 @@ void MainWindow::createActions()
         paint.drawLine(15, 4, 15, 12);
         paint.drawLine(11, 8, 19, 8);
     }
-    const struct { RegionShape::Kind kind; const char *add; const char *cut; } kinds[] = {
-        {RegionShape::Rectangle, QT_TR_NOOP("Add Rectangle"), QT_TR_NOOP("Cut Rectangle")},
-        {RegionShape::Ellipse, QT_TR_NOOP("Add Ellipse"), QT_TR_NOOP("Cut Ellipse")},
-        {RegionShape::Polygon, QT_TR_NOOP("Add Polygon"), QT_TR_NOOP("Cut Polygon")},
+    const struct {
+        RegionShape::Kind kind;
+        const char *add;
+        const char *cut;
+        const char *ground;
+    } kinds[] = {
+        {RegionShape::Rectangle, QT_TR_NOOP("Add Rectangle"), QT_TR_NOOP("Cut Rectangle"),
+         QT_TR_NOOP("Ground Rectangle")},
+        {RegionShape::Ellipse, QT_TR_NOOP("Add Ellipse"), QT_TR_NOOP("Cut Ellipse"),
+         QT_TR_NOOP("Ground Ellipse")},
+        {RegionShape::Polygon, QT_TR_NOOP("Add Polygon"), QT_TR_NOOP("Cut Polygon"),
+         QT_TR_NOOP("Ground Polygon")},
     };
     auto *addMenu = new QMenu(this);
     auto *cutMenu = new QMenu(this);
+    auto *groundMenu = new QMenu(this);
     for (const auto &entry : kinds) {
         const RegionShape::Kind kind = entry.kind;
         QAction *add = addMenu->addAction(tr(entry.add));
         connect(add, &QAction::triggered, this,
-                [this, kind] { m_viewport->beginShapeDrawing(kind, false); });
+                [this, kind] { m_viewport->beginShapeDrawing(kind, RegionShape::Add); });
         m_actAddShape.append(add);
         QAction *cut = cutMenu->addAction(tr(entry.cut));
         connect(cut, &QAction::triggered, this,
-                [this, kind] { m_viewport->beginShapeDrawing(kind, true); });
+                [this, kind] { m_viewport->beginShapeDrawing(kind, RegionShape::Cut); });
         m_actCutShape.append(cut);
+        QAction *ground = groundMenu->addAction(tr(entry.ground));
+        connect(ground, &QAction::triggered, this,
+                [this, kind] { m_viewport->beginShapeDrawing(kind, RegionShape::Ground); });
+        m_actGroundShape.append(ground);
     }
 
     m_actAddToRegion = new QAction(QIcon(addIcon), tr("Add to Region"), this);
@@ -338,6 +351,25 @@ void MainWindow::createActions()
         tr("Draw a rectangle, ellipse or polygon to take out of the region: a hole "
            "through the specimen, or anywhere the pattern cannot be trusted"));
     m_actCutFromRegion->setMenu(cutMenu);
+
+    // ⚑ Ground: the engineer's sign for a fixed support, a line with hatching
+    // under it, which is what stationary ground is to the alignment. Not part
+    // of the region measured (core/Roi.h), so a tool of its own rather than a
+    // third entry under Add.
+    QPixmap groundIcon(20, 20);
+    groundIcon.fill(Qt::transparent);
+    {
+        QPainter paint(&groundIcon);
+        paint.setRenderHint(QPainter::Antialiasing);
+        const QColor ink = palette().color(QPalette::WindowText);
+        paint.setPen(QPen(ink, 1.8));
+        paint.drawLine(2, 8, 18, 8);
+        paint.setPen(QPen(ink, 1.2));
+        for (int x = 4; x <= 18; x += 4)
+            paint.drawLine(x, 9, x - 4, 16);
+    }
+    m_actMarkGround = new QAction(QIcon(groundIcon), markGroundLabel(), this);
+    m_actMarkGround->setMenu(groundMenu);
 
     m_actRemoveShape = new QAction(tr("Remove Shape"), this);
     m_actRemoveShape->setStatusTip(
@@ -489,6 +521,8 @@ void MainWindow::createMenus()
     addSub->addActions(m_actAddShape);
     QMenu *cutSub = analysisMenu->addMenu(m_actCutFromRegion->icon(), tr("Cut from Region"));
     cutSub->addActions(m_actCutShape);
+    QMenu *groundSub = analysisMenu->addMenu(m_actMarkGround->icon(), markGroundLabel());
+    groundSub->addActions(m_actGroundShape);
     analysisMenu->addAction(m_actRemoveShape);
     analysisMenu->addAction(m_actAutoRoi);
     analysisMenu->addAction(m_actClearRoi);
@@ -528,8 +562,9 @@ void MainWindow::createToolBar()
     toolbar->addSeparator();
     toolbar->addAction(m_actAddToRegion);
     toolbar->addAction(m_actCutFromRegion);
+    toolbar->addAction(m_actMarkGround);
     // A press opens the menu of shapes; there is no default shape to guess.
-    for (QAction *action : {m_actAddToRegion, m_actCutFromRegion}) {
+    for (QAction *action : {m_actAddToRegion, m_actCutFromRegion, m_actMarkGround}) {
         if (auto *button = qobject_cast<QToolButton *>(toolbar->widgetForAction(action)))
             button->setPopupMode(QToolButton::InstantPopup);
     }
@@ -1381,7 +1416,7 @@ void MainWindow::updateReferenceUpdateControls()
     const bool across = m_separateSessions->isChecked();
     m_reanchorEnabled->setEnabled(!across);
     m_reanchorUnavailable->setVisible(across);
-    m_separateSessionsNote->setText(separateSessionsPanelNote(across));
+    m_separateSessionsNote->setText(separateSessionsPanelNote(across, m_roi.hasGround()));
 
     const bool on = m_reanchorEnabled->isChecked() && !across;
     m_reanchorThreshold->setEnabled(on);
@@ -1398,6 +1433,8 @@ void MainWindow::onSeparateSessionsToggled(bool on)
         log(tr("Re-anchoring turned off: %1").arg(separateSessionsReanchorNote()));
     }
     updateReferenceUpdateControls();
+    // The ground's own lines say whether it is in use.
+    showRoiInProject();
     updateSectionSummaries();
     refreshTargetPairing();
     updateActionStates();
@@ -1532,7 +1569,8 @@ void MainWindow::updateSectionSummaries()
     const ReferenceUpdatePolicy policy = currentReferencePolicy();
     m_referenceSection->setSummary(
         settings.separateSessions
-            ? tr("separate sessions, each target aligned to the reference")
+            ? (m_roi.hasGround() ? tr("separate sessions, aligned on the ground marked")
+                                 : tr("separate sessions, each target aligned to the reference"))
             : policy.enabled
                   ? tr("re-anchors below %1% still tracking").arg(int(policy.percentile * 100.0))
                   : tr("always the original reference"));
@@ -1679,8 +1717,10 @@ void MainWindow::onShapeDrawn(const RegionShape &shape)
 {
     // A cut with nothing to cut from is refused before it can be drawn; this is
     // the second line of that, for a region cleared while the cut was drawn.
-    if (!shape.isValid() || (shape.subtract && !m_roi.isValid()))
+    if (!shape.isValid() || (shape.isCut() && !m_roi.isValid()))
         return;
+    // Ground needs no region: with none, the whole image is measured and the
+    // target is still aligned on the ground.
 
     // Added last, which is where a new shape applies: over everything before
     // it. withShapeAdded() makes the region Drawn, and drops the detector's
@@ -1692,8 +1732,16 @@ void MainWindow::onShapeDrawn(const RegionShape &shape)
     discardStaleResult();
     updateActionStates();
 
+    if (shape.isGround()) {
+        log(tr("Marked %1, shape %2 of %3. It is not measured; a target from a "
+               "separate session is aligned on it.")
+                .arg(shape.describe())
+                .arg(m_roi.shapes.size())
+                .arg(m_roi.shapes.size()));
+        return;
+    }
     log(tr("%1 the region: %2. It is shape %3 of %4, applied last.")
-            .arg(shape.subtract ? tr("Cut from") : tr("Added to"))
+            .arg(shape.isCut() ? tr("Cut from") : tr("Added to"))
             .arg(shape.describe())
             .arg(m_roi.shapes.size())
             .arg(m_roi.shapes.size()));
@@ -2087,7 +2135,7 @@ void MainWindow::displayRecord(const ImageRecord &record)
     // over an image that shares that grid and withheld from one that does not:
     // an outline over a differently sized picture would point at pixels it was
     // never about.
-    const bool sameGrid = m_roi.isValid() && record.isValid()
+    const bool sameGrid = m_roi.hasShapes() && record.isValid()
                           && record.width == m_referenceRecord.width
                           && record.height == m_referenceRecord.height;
     if (sameGrid)
@@ -2371,8 +2419,13 @@ void MainWindow::showRoiInProject()
     // property of the region.
     updateSpeckleQuality();
     updateMaskingNote();
+    // And the switch's note, which says what the alignment is fitted on.
+    if (m_separateSessions && m_reanchorUnavailable) {
+        updateReferenceUpdateControls();
+        updateSectionSummaries();
+    }
 
-    if (!m_roi.isValid()) {
+    if (!m_roi.hasShapes()) {
         m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
         m_roiItem->setToolTip(0, QString());
         qDeleteAll(m_roiItem->takeChildren());
@@ -2399,12 +2452,21 @@ void MainWindow::showRoiInProject()
     // for the reason the Analysis panel folds nothing that acts: a hint nobody
     // can see is a hint nobody has.
     int shapes = 0;
-    for (const RegionShape &shape : m_roi.shapes)
-        shapes += shape.isValid() ? 1 : 0;
-    const QString summary = (shapes == 1 ? tr("Region of interest - 1 shape, %1")
-                                         : tr("Region of interest - %1 shapes, %2").arg(shapes))
-                                .arg(m_roi.originText());
+    int grounds = 0;
+    for (const RegionShape &shape : m_roi.shapes) {
+        if (shape.isValid())
+            (shape.isGround() ? grounds : shapes)++;
+    }
+    // Ground is listed here, numbered with the rest, but is no part of what is
+    // measured: with nothing added the whole image is, and the line says so.
+    QString summary = !m_roi.isValid() ? tr("Region of interest - none (whole image)")
+                      : (shapes == 1 ? tr("Region of interest - 1 shape, %1")
+                                     : tr("Region of interest - %1 shapes, %2").arg(shapes))
+                            .arg(m_roi.originText());
+    if (grounds > 0)
+        summary += grounds == 1 ? tr(", 1 ground") : tr(", %1 ground").arg(grounds);
     m_roiItem->setText(0, summary);
+    const bool groundInUse = m_separateSessions && m_separateSessions->isChecked();
 
     qDeleteAll(m_roiItem->takeChildren());
     // ⚑ THE SHAPES, NUMBERED IN THE ORDER THEY APPLY. Order decides what a
@@ -2416,9 +2478,22 @@ void MainWindow::showRoiInProject()
         if (!shape.isValid())
             continue;
         auto *line = new QTreeWidgetItem(m_roiItem);
-        line->setText(0, tr("%1. %2").arg(i + 1).arg(shape.describe()));
         line->setData(0, kShapeRole, i);
-        line->setToolTip(0, shape.subtract
+        if (shape.isGround()) {
+            // ⚑ Whether it is in use is on the line itself, and FIRST: ground
+            // marked while the switch is off does nothing and must not look as
+            // if it did, and at the dock's width the end of a line is the part
+            // that is elided. The reason is a short line of its own below.
+            line->setText(0, groundInUse
+                                 ? tr("%1. %2").arg(i + 1).arg(shape.describe())
+                                 : tr("%1. not used: %2").arg(i + 1).arg(shape.describe()));
+            line->setToolTip(0, tr("Ground: did not move between the sessions. A target "
+                                   "from a separate session is aligned on it. Not "
+                                   "measured, and not part of the region's order."));
+            continue;
+        }
+        line->setText(0, tr("%1. %2").arg(i + 1).arg(shape.describe()));
+        line->setToolTip(0, shape.isCut()
                                 ? tr("Cut: removes what it covers from everything before it")
                                 : tr("Added: everything it covers is measured, unless a later cut "
                                      "removes it"));
@@ -2428,25 +2503,39 @@ void MainWindow::showRoiInProject()
     // is over one and the cursor changes, but a reader has no reason to try an
     // edge or a right-click, and a capability nobody has a reason to look for
     // is one this project treats as absent.
-    for (const QString &gesture : {tr("Drag a corner to move it"),
-                                   tr("Drag inside it to move the whole region"),
-                                   tr("Double-click a polygon edge to add a corner"),
-                                   tr("Right-click a polygon corner to take it out"),
-                                   tr("Select a shape above, then Analysis > Remove Shape")}) {
+    if (m_roi.hasGround() && !groundInUse) {
+        auto *line = new QTreeWidgetItem(m_roiItem);
+        line->setText(0, tr("Ground unused: separate sessions off"));
+        line->setToolTip(0, markGroundUnavailableNote());
+    }
+    QStringList gestures{tr("Drag a corner to move it")};
+    // Ground does not move with the region (core/Roi.h), so with nothing but
+    // ground there is no region to drag.
+    if (m_roi.isValid())
+        gestures << tr("Drag inside it to move the whole region");
+    gestures << tr("Double-click a polygon edge to add a corner")
+             << tr("Right-click a polygon corner to take it out")
+             << tr("Select a shape above, then Analysis > Remove Shape");
+    for (const QString &gesture : gestures) {
         auto *line = new QTreeWidgetItem(m_roiItem);
         line->setText(0, gesture);
     }
-    auto *extent = new QTreeWidgetItem(m_roiItem);
-    extent->setText(0, tr("%1 x %2 px box").arg(box.width()).arg(box.height()));
+    if (m_roi.isValid()) {
+        auto *extent = new QTreeWidgetItem(m_roiItem);
+        extent->setText(0, tr("%1 x %2 px box").arg(box.width()).arg(box.height()));
+    }
     m_roiItem->setExpanded(true);
 
     // What the region does NOT do sits beside it rather than in a manual. Both
     // sentences are easy to assume wrongly, and assuming either one wrongly
     // changes how the resulting field should be read.
     QStringList notes;
-    notes << tr("%1, %2 x %3 px box. Drag a corner to adjust it.")
-                 .arg(summary).arg(box.width()).arg(box.height());
+    notes << (m_roi.isValid() ? tr("%1, %2 x %3 px box. Drag a corner to adjust it.")
+                                    .arg(summary).arg(box.width()).arg(box.height())
+                              : tr("%1. Drag a corner to adjust it.").arg(summary));
     notes << regionSummary(m_roi);
+    if (m_roi.hasGround())
+        notes << groundSummary(m_roi);
     notes << tr("Selects the point centres that get measured. Each subset still "
                 "reaches up to its radius beyond the boundary, so pixels just "
                 "outside it contribute to the points near its edge.");
@@ -2511,7 +2600,9 @@ void MainWindow::detectRoi()
     }
 
     discardStaleResult();
-    m_roi = detection.roi;
+    // The detector proposes the region measured; ground marked by hand is not
+    // part of that proposal, and stays.
+    m_roi = withMeasuredShapesReplaced(m_roi, detection.roi);
     showRoiInProject();
 
     const QRect box = m_roi.bounds();
@@ -2536,13 +2627,16 @@ void MainWindow::detectRoi()
 
 void MainWindow::clearRoi()
 {
-    if (!m_roi.isValid())
+    if (!m_roi.hasShapes())
         return;
 
     discardStaleResult();
+    const bool hadGround = m_roi.hasGround();
     m_roi = RegionOfInterest();
     showRoiInProject();
-    log(tr("Region of interest cleared - the next run measures the whole image."));
+    log(hadGround ? tr("Region of interest and the ground marked cleared - the next run "
+                       "measures the whole image.")
+                  : tr("Region of interest cleared - the next run measures the whole image."));
     statusBar()->showMessage(tr("Region of interest cleared"), 4000);
     updateActionStates();
 }
@@ -3211,7 +3305,7 @@ void MainWindow::updateActionStates()
         hasImage ? tr("Propose a region by segmenting the speckled area")
                  : tr("Import an image first"));
 
-    m_actClearRoi->setEnabled(m_roi.isValid() && !running && !drawing);
+    m_actClearRoi->setEnabled(m_roi.hasShapes() && !running && !drawing);
     // A cut needs a region to cut from, so the action is dead until there is
     // one -- and says so through being disabled rather than by failing when
     // pressed.
@@ -3222,6 +3316,30 @@ void MainWindow::updateActionStates()
     m_actCutFromRegion->setToolTip(
         m_roi.isValid() ? tr("Cut a rectangle, ellipse or polygon out of the region")
                         : tr("Add something to the region first, to have something to cut"));
+    // Ground is only for aligning a target from a separate session, so the tool
+    // is live only with that switch on -- and says which switch while it is not.
+    const bool across = m_separateSessions && m_separateSessions->isChecked();
+    const bool canGround = hasImage && across && !running && !drawing;
+    m_actMarkGround->setEnabled(canGround);
+    for (QAction *ground : m_actGroundShape)
+        ground->setEnabled(canGround);
+    // ⚑ The status bar too, and with the reason: a greyed tool's tooltip is
+    // not shown on every platform, and the status line is what a hover is
+    // certain to change. Found by screenshot, where hovering the greyed tool
+    // said what it was for and nothing about how to make it available.
+    const QString groundPurpose =
+        tr("Draw a rectangle, ellipse or polygon over ground that did not move "
+           "between the two sessions, such as the bench or a fixture: a target from "
+           "a separate session is aligned on it. Ground is not measured.");
+    m_actMarkGround->setStatusTip(across ? groundPurpose
+                                         : tr("%1 %2").arg(markGroundUnavailableNote(),
+                                                           groundPurpose));
+    m_actMarkGround->setToolTip(
+        drawing      ? tr("A shape is being drawn - use the bar on the image")
+        : !hasImage  ? tr("Import an image first")
+        : !across    ? markGroundUnavailableNote()
+                     : tr("Mark ground that did not move between the sessions; the "
+                          "target is aligned on it"));
     const bool shapeSelected = selectedShapeIndex() >= 0;
     m_actRemoveShape->setEnabled(shapeSelected && !running && !drawing);
     m_actRemoveShape->setToolTip(shapeSelected

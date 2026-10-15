@@ -20,7 +20,12 @@ constexpr const char *kMagic = "SurView DIC project";
 // 2 since 2026-10-10: the region is a list of shapes. An older SurView would
 // find no region in it and silently measure the whole image; with the version
 // raised it refuses the file, in words, instead. Version 1 files still open.
-constexpr int kVersion = 2;
+//
+// 3 since 2026-10-15: a shape may be GROUND, which is not part of the region. A
+// version 2 SurView reads any shape that is not a cut as an addition, and would
+// open a project with ground in it and measure the bench; with the version
+// raised it refuses the file instead. Version 2 files still open as they were.
+constexpr int kVersion = 3;
 
 QString hashOf(const QString &path)
 {
@@ -94,14 +99,16 @@ QString saveProject(const QString &path, const Project &project)
     root[QStringLiteral("targets")] = targets;
 
     // One entry per shape, in the order they apply, each its kind, whether it
-    // cuts, and its points in the [x, y] form every point here uses.
+    // cuts or is ground, and its points in the [x, y] form every point here uses.
     QJsonArray shapes;
     for (const RegionShape &shape : project.roi.shapes) {
         QJsonObject entry;
         entry[QStringLiteral("kind")] = shape.kind == RegionShape::Rectangle ? QStringLiteral("rectangle")
                                         : shape.kind == RegionShape::Ellipse ? QStringLiteral("ellipse")
                                                                              : QStringLiteral("polygon");
-        entry[QStringLiteral("cut")] = shape.subtract;
+        entry[QStringLiteral("cut")] = shape.isCut();
+        if (shape.isGround())
+            entry[QStringLiteral("ground")] = true;
         QJsonArray points;
         for (const QPoint &vertex : shape.points) {
             QJsonArray point;
@@ -228,7 +235,9 @@ ProjectLoad loadProject(const QString &path)
             shape.kind = kind == QStringLiteral("rectangle") ? RegionShape::Rectangle
                          : kind == QStringLiteral("ellipse") ? RegionShape::Ellipse
                                                              : RegionShape::Polygon;
-            shape.subtract = entry[QStringLiteral("cut")].toBool();
+            shape.role = entry[QStringLiteral("ground")].toBool() ? RegionShape::Ground
+                         : entry[QStringLiteral("cut")].toBool()  ? RegionShape::Cut
+                                                                  : RegionShape::Add;
             shape.points = pointsOf(entry[QStringLiteral("points")].toArray());
             // A shape that encloses nothing is dropped on the way in rather than
             // carried as something to keep re-checking.
@@ -245,7 +254,7 @@ ProjectLoad loadProject(const QString &path)
             out.project.roi.shapes.append(outline);
             for (const QJsonValue &ring : roi[QStringLiteral("holes")].toArray()) {
                 RegionShape hole;
-                hole.subtract = true;
+                hole.role = RegionShape::Cut;
                 hole.points = pointsOf(ring.toArray());
                 if (hole.isValid())
                     out.project.roi.shapes.append(hole);

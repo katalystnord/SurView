@@ -145,9 +145,10 @@ CarriedCuts carryCuts(const RegionOfInterest &drawn,
     bool pastFirstCut = false;
     for (int i = 0; i < drawn.shapes.size(); i++) {
         const RegionShape &shape = drawn.shapes.at(i);
-        if (!shape.isValid())
+        // Ground is not part of the mask, and is not carried (core/Roi.h).
+        if (!shape.isValid() || shape.isGround())
             continue;
-        if (shape.subtract)
+        if (shape.isCut())
             pastFirstCut = true;
         // An addition before any cut changes nothing in the mask (see header).
         if (!pastFirstCut)
@@ -155,7 +156,7 @@ CarriedCuts carryCuts(const RegionOfInterest &drawn,
 
         RegionShape moved;
         moved.kind = RegionShape::Polygon;
-        moved.subtract = shape.subtract;
+        moved.role = shape.role;
         for (const QPointF &sample : boundaryOf(shape)) {
             const std::optional<QPointF> to = carriedTo(sample, tracked, gridStep);
             if (!to) {

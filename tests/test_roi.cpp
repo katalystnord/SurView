@@ -22,7 +22,7 @@ void setOutline(RegionOfInterest &roi, const QVector<QPoint> &corners)
 void addCut(RegionOfInterest &roi, const QVector<QPoint> &corners)
 {
     RegionShape cut;
-    cut.subtract = true;
+    cut.role = RegionShape::Cut;
     cut.points = corners;
     roi.shapes.append(cut);
 }
@@ -137,6 +137,15 @@ private slots:
     void of_two_handles_equally_near_the_later_shape_s_is_grabbed();
     void a_shape_can_be_added_and_taken_away_again();
     void the_region_describes_itself_shape_by_shape_in_order();
+
+    // Ground, from 2026-10-15: stationary ground a target from a separate
+    // session is aligned on. Listed with the region, never part of it.
+    void ground_is_neither_measured_nor_cut_wherever_it_sits_in_the_order();
+    void a_region_of_nothing_but_ground_still_measures_the_whole_image();
+    void ground_does_not_widen_the_bounds_or_count_as_a_cut();
+    void moving_the_region_leaves_the_ground_where_it_was_drawn();
+    void the_ground_is_its_own_shapes_and_described_apart();
+    void a_detected_region_replaces_what_is_measured_and_keeps_the_ground();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -774,7 +783,7 @@ void TestRoi::a_whole_region_moves_with_its_holes_and_keeps_its_shape()
         QCOMPARE(outlineOf(moved).at(i), outlineOf(region).at(i) + by);
 
     QCOMPARE(moved.shapes.size(), 2);
-    QVERIFY(moved.shapes.at(1).subtract);
+    QVERIFY(moved.shapes.at(1).isCut());
     for (int i = 0; i < moved.shapes.at(1).points.size(); i++)
         QCOMPARE(moved.shapes.at(1).points.at(i), region.shapes.at(1).points.at(i) + by);
 
@@ -819,8 +828,15 @@ RegionShape box(RegionShape::Kind kind, QPoint a, QPoint b, bool cut = false)
 {
     RegionShape shape;
     shape.kind = kind;
-    shape.subtract = cut;
+    shape.role = cut ? RegionShape::Cut : RegionShape::Add;
     shape.points = {a, b};
+    return shape;
+}
+
+RegionShape ground(RegionShape::Kind kind, QPoint a, QPoint b)
+{
+    RegionShape shape = box(kind, a, b);
+    shape.role = RegionShape::Ground;
     return shape;
 }
 
@@ -979,7 +995,7 @@ void TestRoi::a_shape_can_be_added_and_taken_away_again()
     QCOMPARE(withShapeRemoved(holed, -1).shapes.size(), 2);
     // ⚑ And the FIRST shape comes out like any other.
     QCOMPARE(withShapeRemoved(holed, 0).shapes.size(), 1);
-    QVERIFY(withShapeRemoved(holed, 0).shapes.first().subtract);
+    QVERIFY(withShapeRemoved(holed, 0).shapes.first().isCut());
 }
 
 void TestRoi::the_region_describes_itself_shape_by_shape_in_order()
@@ -991,6 +1007,138 @@ void TestRoi::the_region_describes_itself_shape_by_shape_in_order()
              QStringLiteral("2 shapes, applied in order: + polygon of 5 corners, "
                             "- ellipse 31 x 21 px"));
     QVERIFY(regionSummary(RegionOfInterest()).isEmpty());
+}
+
+// ⚑ Ground is placed LAST in every case below, over the other shapes, which is
+// where it would decide a pixel if the ordered rule counted it: read as an
+// addition it would put its ground into the region, read as a cut it would take
+// the specimen out. And at least one case places it first as well.
+//
+// NEGATIVE CHECKS (2026-10-15), each red on the case named: ground treated as an
+// addition in regionContains() (neither measured nor cut); ground treated as a
+// cut there (neither measured nor cut); ground counted by bounds() or by
+// isValid() (nothing but ground); ground counted by hasCuts() (bounds or a
+// cut); withRegionMoved() moving ground (moving); groundOf() keeping the Ground
+// role, or keeping the region's adds (its own shapes); regionSummary() listing
+// ground (described apart). ⚑ subsetReachesACut() reaching ground SURVIVED the
+// first version of the bounds case, whose region had no cut, so the function
+// returned before looking at a single shape; a cut was added to it and the
+// break then went red.
+
+void TestRoi::ground_is_neither_measured_nor_cut_wherever_it_sits_in_the_order()
+{
+    // A specimen box with ground over its right half and beyond it.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(60, 40)),
+                  ground(RegionShape::Rectangle, QPoint(40, 5), QPoint(110, 50))};
+    QVERIFY2(regionContains(roi, 20, 20), "the specimen, clear of the ground");
+    QVERIFY2(regionContains(roi, 50, 20), "the specimen, under the ground: not cut");
+    QVERIFY2(!regionContains(roi, 90, 20), "ground alone is not measured");
+    QVERIFY(roi.isValid());
+    QVERIFY(roi.hasGround());
+
+    // First in the list, the same.
+    RegionOfInterest first;
+    first.shapes = {roi.shapes.at(1), roi.shapes.at(0)};
+    QVERIFY(regionContains(first, 50, 20));
+    QVERIFY(!regionContains(first, 90, 20));
+}
+
+void TestRoi::a_region_of_nothing_but_ground_still_measures_the_whole_image()
+{
+    RegionOfInterest roi;
+    roi.shapes = {ground(RegionShape::Ellipse, QPoint(0, 0), QPoint(80, 30))};
+    QVERIFY2(!roi.isValid(), "ground alone is not a region to measure");
+    QVERIFY(!regionContains(roi, 40, 15));
+    QVERIFY(roi.hasGround());
+    QVERIFY2(roi.hasShapes(), "but it is a shape to draw, list and adjust");
+    QVERIFY(roi.bounds().isNull());
+
+    QVERIFY(!RegionOfInterest().hasShapes());
+    QVERIFY(!RegionOfInterest().hasGround());
+}
+
+void TestRoi::ground_does_not_widen_the_bounds_or_count_as_a_cut()
+{
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(60, 40)),
+                  ground(RegionShape::Rectangle, QPoint(0, 0), QPoint(200, 120))};
+    QCOMPARE(roi.bounds(), QRect(QPoint(10, 10), QPoint(60, 40)));
+    QVERIFY2(!roi.hasCuts(), "ground is not a cut");
+    // A subset over the ground reaches nothing removed, in a region that has a
+    // cut elsewhere, so the question is asked of every shape.
+    roi.shapes.insert(1, box(RegionShape::Ellipse, QPoint(12, 12), QPoint(20, 20), true));
+    QVERIFY(roi.hasCuts());
+    QVERIFY(!subsetReachesACut(roi, 58, 38, 10));
+    QVERIFY2(subsetReachesACut(roi, 26, 16, 10), "the cut is still reached");
+}
+
+void TestRoi::moving_the_region_leaves_the_ground_where_it_was_drawn()
+{
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(60, 40)),
+                  box(RegionShape::Ellipse, QPoint(20, 15), QPoint(30, 25), true),
+                  ground(RegionShape::Rectangle, QPoint(70, 5), QPoint(110, 50))};
+    const RegionOfInterest moved = withRegionMoved(roi, QPoint(7, -3));
+    QCOMPARE(moved.shapes.at(0).points.first(), QPoint(17, 7));
+    QCOMPARE(moved.shapes.at(1).points.first(), QPoint(27, 12));
+    QVERIFY2(moved.shapes.at(2) == roi.shapes.at(2), "the ground moved with the specimen");
+}
+
+void TestRoi::the_ground_is_its_own_shapes_and_described_apart()
+{
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(60, 40)),
+                  ground(RegionShape::Rectangle, QPoint(70, 5), QPoint(109, 34)),
+                  box(RegionShape::Ellipse, QPoint(20, 15), QPoint(30, 25), true)};
+    RegionShape strip;
+    strip.role = RegionShape::Ground;
+    strip.points = {QPoint(0, 60), QPoint(120, 60), QPoint(120, 70), QPoint(60, 80),
+                    QPoint(0, 70)};
+    roi.shapes.append(strip);
+
+    // What the alignment is fitted on: the two ground shapes, as additions.
+    const RegionOfInterest fitOn = groundOf(roi);
+    QCOMPARE(fitOn.shapes.size(), 2);
+    QVERIFY(fitOn.isValid());
+    QCOMPARE(fitOn.shapes.at(0).points, roi.shapes.at(1).points);
+    QCOMPARE(fitOn.shapes.at(1).points, strip.points);
+    for (const RegionShape &shape : fitOn.shapes)
+        QCOMPARE(int(shape.role), int(RegionShape::Add));
+    QVERIFY(regionContains(fitOn, 90, 20));
+    QVERIFY2(!regionContains(fitOn, 15, 15), "the specimen is not ground");
+    QVERIFY(!groundOf(RegionOfInterest()).isValid());
+
+    QCOMPARE(roi.shapes.at(1).describe(), QStringLiteral("ground rectangle 40 x 30 px"));
+    QCOMPARE(regionSummary(roi),
+             QStringLiteral("2 shapes, applied in order: + rectangle 51 x 31 px, "
+                            "- ellipse 11 x 11 px"));
+    QCOMPARE(groundSummary(roi),
+             QStringLiteral("ground: 2 shapes, rectangle 40 x 30 px, polygon of 5 corners"));
+    QVERIFY(groundSummary(RegionOfInterest()).isEmpty());
+}
+
+void TestRoi::a_detected_region_replaces_what_is_measured_and_keeps_the_ground()
+{
+    // Negative checks (2026-10-15): the ground dropped, and the old additions
+    // kept, each red here.
+    RegionOfInterest drawn;
+    drawn.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(60, 40)),
+                    ground(RegionShape::Rectangle, QPoint(70, 5), QPoint(109, 34)),
+                    box(RegionShape::Ellipse, QPoint(20, 15), QPoint(30, 25), true)};
+    RegionOfInterest detected;
+    RegionShape outline;
+    outline.points = {QPoint(5, 5), QPoint(65, 8), QPoint(60, 50)};
+    detected.shapes = {outline};
+    detected.origin = RegionOfInterest::Detected;
+    detected.limitation = QStringLiteral("single outline, no holes");
+
+    const RegionOfInterest after = withMeasuredShapesReplaced(drawn, detected);
+    QCOMPARE(after.shapes.size(), 2);
+    QVERIFY(after.shapes.at(0) == outline);
+    QVERIFY(after.shapes.at(1) == drawn.shapes.at(1));
+    QVERIFY(after.origin == RegionOfInterest::Detected);
+    QCOMPARE(after.limitation, detected.limitation);
 }
 
 QTEST_MAIN(TestRoi)

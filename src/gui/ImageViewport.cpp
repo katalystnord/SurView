@@ -424,17 +424,17 @@ void ImageViewport::positionRoiBar()
                           barWidth, barHeight);
 }
 
-void ImageViewport::beginShapeDrawing(RegionShape::Kind kind, bool cut)
+void ImageViewport::beginShapeDrawing(RegionShape::Kind kind, RegionShape::Role role)
 {
     if (!m_hasImage || m_roiDrawing)
         return;
     // A cut with nothing to cut from removes nothing from nothing.
-    if (cut && !m_roiShown.isValid())
+    if (role == RegionShape::Cut && !m_roiShown.isValid())
         return;
 
     m_roiDrawing = true;
     m_drawKind = kind;
-    m_drawCut = cut;
+    m_drawRole = role;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
@@ -454,7 +454,7 @@ void ImageViewport::cancelRoiDrawing()
         return;
 
     m_roiDrawing = false;
-    m_drawCut = false;
+    m_drawRole = RegionShape::Add;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
@@ -473,13 +473,13 @@ void ImageViewport::finishRoiDrawing()
     // finishes itself on its second corner; a polygon needs three.
     RegionShape shape;
     shape.kind = m_drawKind;
-    shape.subtract = m_drawCut;
+    shape.role = m_drawRole;
     shape.points = m_roiPlaced;
     if (!m_roiDrawing || !shape.isValid())
         return;
 
     m_roiDrawing = false;
-    m_drawCut = false;
+    m_drawRole = RegionShape::Add;
     m_roiPlaced.clear();
     m_roiCursorValid = false;
 
@@ -521,8 +521,10 @@ void ImageViewport::updateRoiBar()
     const QString shapeName = m_drawKind == RegionShape::Rectangle ? tr("a rectangle")
                               : m_drawKind == RegionShape::Ellipse ? tr("an ellipse")
                                                                    : tr("a polygon");
-    const QString doing = m_drawCut ? tr("<b>Cutting %1 from the region</b>").arg(shapeName)
-                                    : tr("<b>Adding %1 to the region</b>").arg(shapeName);
+    const QString doing =
+        m_drawRole == RegionShape::Cut      ? tr("<b>Cutting %1 from the region</b>").arg(shapeName)
+        : m_drawRole == RegionShape::Ground ? tr("<b>Marking %1 of stationary ground</b>").arg(shapeName)
+                                            : tr("<b>Adding %1 to the region</b>").arg(shapeName);
 
     // Says what to do, how far along it is, and what is still missing -- the
     // count alone would not explain why "Close shape" is refusing.
@@ -559,7 +561,8 @@ void ImageViewport::updateRoiBar()
 
 void ImageViewport::showRoi(const RegionOfInterest &roi)
 {
-    m_roiShown = roi.isValid() ? roi : RegionOfInterest();
+    // Ground alone is still something to draw and adjust (core/Roi.h).
+    m_roiShown = roi.hasShapes() ? roi : RegionOfInterest();
     refreshRoiGeometry();
     // The region moves the grid, so it moves where a subset can be previewed.
     refreshSettingsPreview();
@@ -611,9 +614,11 @@ void ImageViewport::refreshRoiGeometry()
 
     // Added green, cut coral: a cut is part of the region but takes away, and a
     // reader looking at two overlapping outlines has to be able to tell which.
-    // Amber is anything not yet committed, as it is for a gauge being placed.
+    // Ground sky blue, since it is neither. Amber is anything not yet
+    // committed, as it is for a gauge being placed.
     const std::array<unsigned char, 3> added{72, 242, 158};
     const std::array<unsigned char, 3> cut{255, 128, 102};
+    const std::array<unsigned char, 3> stationary{110, 182, 255};
     const std::array<unsigned char, 3> inProgress{255, 199, 64};
 
     auto handle = [&](const QPoint &at, const std::array<unsigned char, 3> &colour) {
@@ -674,7 +679,7 @@ void ImageViewport::refreshRoiGeometry()
     for (const RegionShape &shape : m_roiShown.shapes) {
         if (!shape.isValid())
             continue;
-        const auto &colour = shape.subtract ? cut : added;
+        const auto &colour = shape.isGround() ? stationary : shape.isCut() ? cut : added;
         outlineOf(shape, colour);
         // Larger than the line is wide, so the corners read as handles rather
         // than as decoration. They can be dragged, and something that can be
@@ -1295,7 +1300,7 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
         event->accept();
         return;
     }
-    if (event->button() == Qt::LeftButton && m_roiShown.isValid()) {
+    if (event->button() == Qt::LeftButton && m_roiShown.hasShapes()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
             const CornerRef corner =
@@ -1319,7 +1324,7 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
     // A press inside the boundary might be the start of a move, or might be a
     // click meaning "pin the reading here". Which one it was is not known yet,
     // so it is remembered and decided on the first movement.
-    if (event->button() == Qt::LeftButton && m_roiShown.isValid()) {
+    if (event->button() == Qt::LeftButton && m_roiShown.hasShapes()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)
             && regionContains(m_roiShown, pixel.x(), pixel.y())) {
@@ -1332,7 +1337,7 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
         }
     }
 
-    if (event->button() == Qt::RightButton && m_roiShown.isValid()) {
+    if (event->button() == Qt::RightButton && m_roiShown.hasShapes()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
             const CornerRef corner =
@@ -1418,7 +1423,7 @@ void ImageViewport::mouseMoveEvent(QMouseEvent *event)
     // The cursor is the affordance: a handle that can be picked up says so
     // before it is pressed, which is the only warning a reader gets that these
     // corners are not just decoration.
-    if (!m_roiDrawing && m_roiShown.isValid()) {
+    if (!m_roiDrawing && m_roiShown.hasShapes()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
             const double reach = grabReachInPixels(event->position());
@@ -1547,7 +1552,7 @@ void ImageViewport::mouseDoubleClickEvent(QMouseEvent *event)
     // halfway along a side is far from both of its ends - and the new corner
     // goes into the ring in that edge's place, so the boundary cannot cross
     // itself.
-    if (!m_roiDrawing && event->button() == Qt::LeftButton && m_roiShown.isValid()) {
+    if (!m_roiDrawing && event->button() == Qt::LeftButton && m_roiShown.hasShapes()) {
         QPoint pixel;
         if (widgetToImagePixel(event->position(), pixel)) {
             const CornerRef edge =

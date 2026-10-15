@@ -28,7 +28,7 @@ void setOutline(RegionOfInterest &roi, const QVector<QPoint> &corners)
 void addCut(RegionOfInterest &roi, const QVector<QPoint> &corners)
 {
     RegionShape cut;
-    cut.subtract = true;
+    cut.role = RegionShape::Cut;
     cut.points = corners;
     roi.shapes.append(cut);
 }
@@ -240,7 +240,7 @@ void TestRoiEngineBoundary::the_drawn_region_and_the_engine_agree_at_every_pixel
                      QPoint(9, 91)});
     RegionShape ellipse;
     ellipse.kind = RegionShape::Ellipse;
-    ellipse.subtract = true;
+    ellipse.role = RegionShape::Cut;
     ellipse.points = {QPoint(30, 20), QPoint(91, 61)};
     roi.shapes.append(ellipse);
     RegionShape island;
@@ -252,6 +252,16 @@ void TestRoiEngineBoundary::the_drawn_region_and_the_engine_agree_at_every_pixel
     patch.kind = RegionShape::Ellipse;
     patch.points = {QPoint(130, 60), QPoint(150, 97)};
     roi.shapes.append(patch);
+    // ⚑ Ground, last and over a stretch of everything, where it would decide
+    // every pixel it covers if either side counted it as an addition or a cut.
+    // Negative checks (2026-10-15): the engine region built with ground as an
+    // addition fails at (40, 0), the first ground pixel outside every shape;
+    // the mirror counting ground as an addition fails at the same pixel.
+    RegionShape stationary;
+    stationary.kind = RegionShape::Rectangle;
+    stationary.role = RegionShape::Ground;
+    stationary.points = {QPoint(152, 0), QPoint(40, 100)};
+    roi.shapes.append(stationary);
 
     const auto engine = regionInsideTest(roi);
     int inside = 0;
@@ -283,7 +293,7 @@ void TestRoiEngineBoundary::a_run_measures_inside_an_island_and_not_around_it()
     outer.points = {QPoint(30, 25), QPoint(210, 135)};
     RegionShape cut;
     cut.kind = RegionShape::Ellipse;
-    cut.subtract = true;
+    cut.role = RegionShape::Cut;
     cut.points = {QPoint(60, 40), QPoint(180, 120)};
     RegionShape island;
     island.kind = RegionShape::Rectangle;

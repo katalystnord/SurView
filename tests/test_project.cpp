@@ -102,9 +102,15 @@ Project sampleProject(const QString &dir)
     // reads back as a different region.
     RegionShape ellipse;
     ellipse.kind = RegionShape::Ellipse;
-    ellipse.subtract = true;
+    ellipse.role = RegionShape::Cut;
     ellipse.points = {QPoint(85, 70), QPoint(66, 51)};
     project.roi.shapes.append(ellipse);
+    // Ground between them, lopsided, so a file that read it back as an
+    // addition or a cut would change the region measured as well.
+    RegionShape stationary;
+    stationary.role = RegionShape::Ground;
+    stationary.points = {QPoint(150, 5), QPoint(190, 9), QPoint(187, 40)};
+    project.roi.shapes.append(stationary);
     RegionShape island;
     island.kind = RegionShape::Rectangle;
     island.points = {QPoint(48, 52), QPoint(45, 43)};
@@ -177,6 +183,7 @@ private slots:
     void a_hole_of_three_corners_survives_the_round_trip();
     void a_project_written_before_shapes_opens_as_the_same_region();
     void an_entry_with_no_recorded_hash_is_not_reported_as_changed();
+    void ground_is_kept_from_a_surview_that_would_measure_it();
 };
 
 void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
@@ -423,7 +430,7 @@ void TestProject::a_hole_of_three_corners_survives_the_round_trip()
     const ProjectLoad loaded = loadProject(path);
     QVERIFY2(loaded.failure.isEmpty(), qPrintable(loaded.failure));
     QCOMPARE(loaded.project.roi.shapes.size(), 2);
-    QVERIFY(loaded.project.roi.shapes.at(1).subtract);
+    QVERIFY(loaded.project.roi.shapes.at(1).isCut());
     QCOMPARE(loaded.project.roi.shapes.at(1).points.size(), 3);
     QVERIFY(loaded.project.roi.shapes.at(1) == saved.roi.shapes.at(1));
 
@@ -436,6 +443,48 @@ void TestProject::a_hole_of_three_corners_survives_the_round_trip()
     QVERIFY(saveProject(twoPath, degenerate).isEmpty());
     QVERIFY2(!loadProject(twoPath).project.roi.hasCuts(),
              "a two-corner ring was carried in as a hole");
+}
+
+void TestProject::ground_is_kept_from_a_surview_that_would_measure_it()
+{
+    // ⚑ A SurView from before ground reads a shape that is not a cut as an
+    // addition, so it would open a project with ground in it and measure the
+    // bench. The version is raised so that it refuses the file instead, in
+    // words. And a file from that SurView, version 2, still opens, its shapes
+    // added and cut as they were.
+    //
+    // Negative checks (2026-10-15): the version left at 2, red here; ground
+    // not written, red on the round trip (everything a session was) at shape 4.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("session.svproj"));
+    QVERIFY(saveProject(path, sampleProject(dir.path())).isEmpty());
+    QFile written(path);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(written.readAll()).object();
+    QVERIFY2(root[QStringLiteral("version")].toInt() >= 3,
+             "a SurView that knows no ground would open this file");
+
+    const QString older = dir.filePath(QStringLiteral("older.svproj"));
+    QFile file(older);
+    QVERIFY(file.open(QIODevice::WriteOnly | QIODevice::Text));
+    file.write(R"({
+        "format": "SurView DIC project",
+        "version": 2,
+        "region": {
+            "shapes": [
+                {"kind": "rectangle", "cut": false, "points": [[0, 0], [80, 50]]},
+                {"kind": "ellipse", "cut": true, "points": [[20, 10], [40, 30]]}
+            ],
+            "origin": 0
+        }
+    })");
+    file.close();
+    const ProjectLoad loaded = loadProject(older);
+    QVERIFY2(loaded.failure.isEmpty(), qPrintable(loaded.failure));
+    QCOMPARE(loaded.project.roi.shapes.size(), 2);
+    QCOMPARE(int(loaded.project.roi.shapes.at(0).role), int(RegionShape::Add));
+    QCOMPARE(int(loaded.project.roi.shapes.at(1).role), int(RegionShape::Cut));
 }
 
 void TestProject::a_project_written_before_shapes_opens_as_the_same_region()
@@ -466,11 +515,11 @@ void TestProject::a_project_written_before_shapes_opens_as_the_same_region()
     const RegionOfInterest &roi = loaded.project.roi;
     QCOMPARE(roi.shapes.size(), 2);
     QCOMPARE(roi.shapes.at(0).kind, RegionShape::Polygon);
-    QVERIFY(!roi.shapes.at(0).subtract);
+    QVERIFY(!roi.shapes.at(0).isCut());
     QCOMPARE(roi.shapes.at(0).points,
              (QVector<QPoint>{QPoint(10, 20), QPoint(90, 20), QPoint(95, 80), QPoint(10, 70)}));
     QCOMPARE(roi.shapes.at(1).kind, RegionShape::Polygon);
-    QVERIFY(roi.shapes.at(1).subtract);
+    QVERIFY(roi.shapes.at(1).isCut());
     QCOMPARE(roi.shapes.at(1).points,
              (QVector<QPoint>{QPoint(40, 40), QPoint(60, 40), QPoint(50, 55)}));
     QCOMPARE(roi.origin, RegionOfInterest::Detected);

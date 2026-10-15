@@ -196,12 +196,16 @@ void CorrelationRunner::run()
             // Membership only, so no image size: given one, engineRegion() adds
             // the whole image first (the masking convention, where only a cut
             // removes) and every pixel would count as ground.
+            //
+            // The ground is marked as shapes of the region (core/Roi.h), so it
+            // reaches every frame of a sequence by the same route as the region.
+            const RegionOfInterest ground = groundOf(m_roi);
             std::shared_ptr<OrderedRegion2D> fitOn;
             QRect fitBounds(0, 0, ref_img.width, ref_img.height);
-            if (m_ground.isValid()) {
-                fitOn = engineRegion(m_ground);
+            if (ground.isValid()) {
+                fitOn = engineRegion(ground);
                 record.fittedOn = SessionAlignmentRecord::Ground;
-                fitBounds = m_ground.bounds().intersected(fitBounds);
+                fitBounds = ground.bounds().intersected(fitBounds);
             } else if (m_roi.isValid()) {
                 fitOn = engineRegion(m_roi);
                 record.fittedOn = SessionAlignmentRecord::MeasuredRegion;

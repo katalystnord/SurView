@@ -459,6 +459,7 @@ private slots:
     void subsets_beside_a_cut_are_left_out_and_the_screen_says_so();
     void the_masking_settings_are_saved_with_the_project_and_come_back_with_it();
     void a_target_from_another_session_is_measured_once_the_screen_says_how();
+    void ground_is_marked_where_the_screen_says_and_the_run_is_aligned_on_it();
     void the_separate_sessions_switch_is_saved_with_the_project();
 
     void the_settings_window_is_on_the_file_menu_and_names_every_default();
@@ -684,7 +685,7 @@ void TestWorkspaceWalkthrough::a_region_drawn_on_screen_is_reported_in_the_proje
 
     const auto shape = drawn.first().first().value<RegionShape>();
     QCOMPARE(shape.points.size(), 4);
-    QVERIFY(!shape.subtract);
+    QVERIFY(!shape.isCut());
     const RegionOfInterest roi = window.roi();
     QCOMPARE(roi.shapes.size(), 1);
     QCOMPARE(roi.origin, RegionOfInterest::Drawn);
@@ -2679,7 +2680,7 @@ void TestWorkspaceWalkthrough::a_region_is_built_from_shapes_added_and_cut_in_or
     QVERIFY(viewport->isDrawingCut());
     clickPixels(viewport, {QPoint(70, 45), QPoint(160, 115)});
     QCOMPARE(window.roi().shapes.size(), 2);
-    QVERIFY(window.roi().shapes.at(1).subtract);
+    QVERIFY(window.roi().shapes.at(1).isCut());
 
     const QString line = projectLine(&window, QStringLiteral("Region of interest"));
     QVERIFY2(line.contains(QStringLiteral("1. + rectangle")) && line.contains(QStringLiteral("2. - ellipse")),
@@ -3415,7 +3416,7 @@ void TestWorkspaceWalkthrough::a_hole_can_be_cut_out_of_a_region_from_the_screen
     }
     byVisibleText<QPushButton>(viewport, QStringLiteral("Close shape"))->click();
     QCOMPARE(std::count_if(window.roi().shapes.begin(), window.roi().shapes.end(),
-                           [](const RegionShape &shape) { return shape.subtract; }),
+                           [](const RegionShape &shape) { return shape.isCut(); }),
              2);
     QVERIFY(!regionContains(window.roi(), 75, 100));
 
@@ -4268,6 +4269,102 @@ void TestWorkspaceWalkthrough::a_target_from_another_session_is_measured_once_th
     // The field lands before the run finishes; Run comes back when it has.
     QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
     QVERIFY(window.lastResult().alignment.isAligned());
+}
+
+void TestWorkspaceWalkthrough::ground_is_marked_where_the_screen_says_and_the_run_is_aligned_on_it()
+{
+    // Stationary ground is what a target from a separate session is aligned on
+    // by default (David, 2026-10-12). It is a third kind of shape beside add
+    // and cut (core/Roi.h), drawn from its own tool. Everything this case does
+    // is something the screen said: the tool says what turns it on, the
+    // switch's note names the tool, and the tree says what the ground is for.
+    //
+    // Negative checks (2026-10-15), each run and reverted, each red here: the
+    // tool live with the switch off; its tooltip not naming the switch; the
+    // note ignoring the ground, or not refreshed when the region changes; the
+    // tree never saying the ground is unused, or not refreshed when the switch
+    // turns; the viewport drawing ground as an addition; the folded summary
+    // ignoring the ground.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+
+    window.openReferenceImage(fixture(QStringLiteral("session_reference.tif")));
+    MessageReader warning;
+    warning.arm();
+    window.addTargetImages({fixture(QStringLiteral("session_target.tif"))});
+
+    QAction *markGround = actionLabelled(&window, QStringLiteral("Mark Ground"));
+    QVERIFY2(markGround, "nothing marks stationary ground");
+    // With one session there is nothing to align, and the tool says what
+    // would make it useful rather than going quietly dead.
+    QVERIFY(!markGround->isEnabled());
+    QVERIFY2(markGround->toolTip().contains(separateSessionsLabel()),
+             qPrintable(markGround->toolTip()));
+    // and on the status line, which a hover over a greyed tool is sure to show.
+    // Negative check: the status line without the reason, red here.
+    QVERIFY2(markGround->statusTip().contains(separateSessionsLabel()),
+             qPrintable(markGround->statusTip()));
+
+    CollapsibleSection *reference = sectionTitled(&window, QStringLiteral("Reference"));
+    if (reference->isCollapsed())
+        reference->findChild<QToolButton *>()->click();
+    byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
+    QVERIFY2(markGround->isEnabled(), "the switch is on and ground still cannot be marked");
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("Mark Ground")),
+             "the switch's note does not say how to mark ground");
+
+    // The specimen, then ground on the rig either side of it (the fixture's
+    // disc spans x 60 to 180).
+    auto *viewport = window.findChild<ImageViewport *>();
+    const auto click = [viewport](double x, double y) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, x, y));
+    };
+    // Ground first: it needs no region to be marked on. Negative check: the
+    // viewport refusing ground without a region, red here.
+    for (const QRect &band : {QRect(QPoint(3, 3), QPoint(46, 196)),
+                              QRect(QPoint(194, 3), QPoint(236, 196))}) {
+        actionLabelled(&window, QStringLiteral("Ground Rectangle"))->trigger();
+        QVERIFY(viewport->isDrawingGround());
+        click(band.left(), band.top());
+        click(band.right(), band.bottom());
+    }
+    QVERIFY(window.roi().hasGround());
+    QVERIFY2(projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("whole image")),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
+    actionLabelled(&window, QStringLiteral("Add Ellipse"))->trigger();
+    click(80, 60);
+    click(160, 140);
+    QCOMPARE(window.roi().shapes.size(), 3);
+    QVERIFY(window.roi().isValid());
+    QVERIFY(window.roi().hasGround());
+
+    // Listed, with the region, as ground.
+    const QString listed = projectLine(&window, QStringLiteral("Region of interest"));
+    QVERIFY2(listed.count(QStringLiteral("ground rectangle")) == 2, qPrintable(listed));
+    // And the note now says the specimen's own movement is measured in full.
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("measured in full")),
+             "the note does not say what marking ground bought");
+    QVERIFY(!somethingOnScreenSays(&window, QStringLiteral("rigid motion and uniform stretch")));
+    // Folded, the section says it too.
+    reference->findChild<QToolButton *>()->click();
+    QVERIFY2(visibleText(reference).contains(QStringLiteral("aligned on the ground marked")),
+             qPrintable(visibleText(reference)));
+    reference->findChild<QToolButton *>()->click();
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    QVERIFY(run->isEnabled());
+    run->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() >= 1; }, 120000));
+    QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
+    QCOMPARE(window.lastResult().alignment.fittedOn, SessionAlignmentRecord::Ground);
+
+    // Turned off, the ground stays, and says it is not being used.
+    byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
+    QVERIFY2(projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("not used")),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
 }
 
 void TestWorkspaceWalkthrough::the_separate_sessions_switch_is_saved_with_the_project()

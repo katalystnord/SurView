@@ -143,7 +143,10 @@ QVector<QPoint> RegionShape::handles() const
 
 QString RegionShape::describe() const
 {
-    const QString sign = subtract ? QStringLiteral("-") : QStringLiteral("+");
+    // Ground is spelled out rather than given a sign: it is not a third way of
+    // building the region, and a symbol would read as one.
+    const QString sign = isGround() ? tr("ground") : isCut() ? QStringLiteral("-")
+                                                             : QStringLiteral("+");
     switch (kind) {
     case Rectangle:
         return tr("%1 rectangle %2 x %3 px")
@@ -162,7 +165,7 @@ QString RegionShape::describe() const
 bool RegionOfInterest::isValid() const
 {
     for (const RegionShape &shape : shapes) {
-        if (!shape.subtract && shape.isValid())
+        if (shape.role == RegionShape::Add && shape.isValid())
             return true;
     }
     return false;
@@ -171,7 +174,25 @@ bool RegionOfInterest::isValid() const
 bool RegionOfInterest::hasCuts() const
 {
     for (const RegionShape &shape : shapes) {
-        if (shape.subtract && shape.isValid())
+        if (shape.isCut() && shape.isValid())
+            return true;
+    }
+    return false;
+}
+
+bool RegionOfInterest::hasGround() const
+{
+    for (const RegionShape &shape : shapes) {
+        if (shape.isGround() && shape.isValid())
+            return true;
+    }
+    return false;
+}
+
+bool RegionOfInterest::hasShapes() const
+{
+    for (const RegionShape &shape : shapes) {
+        if (shape.isValid())
             return true;
     }
     return false;
@@ -181,7 +202,7 @@ QRect RegionOfInterest::bounds() const
 {
     QRect box;
     for (const RegionShape &shape : shapes) {
-        if (!shape.subtract && shape.isValid())
+        if (shape.role == RegionShape::Add && shape.isValid())
             box = box.isNull() ? shape.bounds() : box.united(shape.bounds());
     }
     return box;
@@ -199,7 +220,7 @@ QString regionSummary(const RegionOfInterest &roi)
     QStringList parts;
     int counted = 0;
     for (const RegionShape &shape : roi.shapes) {
-        if (!shape.isValid())
+        if (!shape.isValid() || shape.isGround())
             continue;
         parts << shape.describe();
         counted++;
@@ -208,6 +229,36 @@ QString regionSummary(const RegionOfInterest &roi)
                         : tr("%1 shapes, applied in order: %2")
                               .arg(counted)
                               .arg(parts.join(QStringLiteral(", ")));
+}
+
+QString groundSummary(const RegionOfInterest &roi)
+{
+    QStringList parts;
+    for (const RegionShape &shape : roi.shapes) {
+        if (!shape.isValid() || !shape.isGround())
+            continue;
+        // "ground rectangle 40 x 30 px" less the word the line already starts with.
+        parts << shape.describe().section(QLatin1Char(' '), 1);
+    }
+    if (parts.isEmpty())
+        return QString();
+    return parts.size() == 1 ? tr("ground: 1 shape, %1").arg(parts.first())
+                             : tr("ground: %1 shapes, %2")
+                                   .arg(parts.size())
+                                   .arg(parts.join(QStringLiteral(", ")));
+}
+
+RegionOfInterest groundOf(const RegionOfInterest &roi)
+{
+    RegionOfInterest ground;
+    for (const RegionShape &shape : roi.shapes) {
+        if (!shape.isValid() || !shape.isGround())
+            continue;
+        RegionShape added = shape;
+        added.role = RegionShape::Add;
+        ground.shapes.append(added);
+    }
+    return ground;
 }
 
 QString wholeImageMeasuredNote()
@@ -251,10 +302,11 @@ bool regionContains(const RegionOfInterest &roi, int x, int y)
 {
     // The last shape containing the pixel decides. Walked from the end so the
     // first one found is that shape.
+    // Ground takes no part: it neither adds nor cuts (see RegionShape::Role).
     for (int i = roi.shapes.size() - 1; i >= 0; i--) {
         const RegionShape &shape = roi.shapes.at(i);
-        if (shapeContains(shape, x, y))
-            return !shape.subtract;
+        if (!shape.isGround() && shapeContains(shape, x, y))
+            return !shape.isCut();
     }
     return false;
 }
@@ -271,8 +323,8 @@ bool subsetReachesACut(const RegionOfInterest &roi, int x, int y, int subsetRadi
         for (int px = x - subsetRadius; px <= x + subsetRadius; px++) {
             for (int i = roi.shapes.size() - 1; i >= 0; i--) {
                 const RegionShape &shape = roi.shapes.at(i);
-                if (shapeContains(shape, px, py)) {
-                    if (shape.subtract)
+                if (!shape.isGround() && shapeContains(shape, px, py)) {
+                    if (shape.isCut())
                         return true;
                     break;
                 }
@@ -365,6 +417,8 @@ RegionOfInterest withRegionMoved(const RegionOfInterest &roi, const QPoint &by)
         return roi;
     RegionOfInterest moved = roi;
     for (RegionShape &shape : moved.shapes) {
+        if (shape.isGround())
+            continue;   // see the header: ground stays where it was drawn
         for (QPoint &point : shape.points)
             point += by;
     }
@@ -398,6 +452,22 @@ RegionOfInterest withShapeAdded(const RegionOfInterest &roi, const RegionShape &
     RegionOfInterest grown = roi;
     grown.shapes.append(shape);
     return asDrawn(grown);
+}
+
+RegionOfInterest withMeasuredShapesReplaced(const RegionOfInterest &roi,
+                                            const RegionOfInterest &replacement)
+{
+    RegionOfInterest replaced = replacement;
+    replaced.shapes.clear();
+    for (const RegionShape &shape : replacement.shapes) {
+        if (!shape.isGround())
+            replaced.shapes.append(shape);
+    }
+    for (const RegionShape &shape : roi.shapes) {
+        if (shape.isGround())
+            replaced.shapes.append(shape);
+    }
+    return replaced;
 }
 
 RegionOfInterest withShapeRemoved(const RegionOfInterest &roi, int shape)

@@ -521,7 +521,7 @@ void TestSequenceRunner::after_a_re_anchor_the_cuts_are_carried_with_the_specime
     specimen.points = {QPoint(6, 9), QPoint(226, 184)};
     RegionShape hole;
     hole.kind = RegionShape::Ellipse;
-    hole.subtract = true;
+    hole.role = RegionShape::Cut;
     hole.points = {QPoint(100, 80), QPoint(140, 120)};
     roi.shapes << specimen << hole;
 
@@ -613,7 +613,7 @@ void TestSequenceRunner::re_anchoring_does_not_change_the_answer_on_a_specimen_t
     specimen.points = {QPoint(6, 9), QPoint(226, 184)};
     RegionShape hole;
     hole.kind = RegionShape::Ellipse;
-    hole.subtract = true;
+    hole.role = RegionShape::Cut;
     hole.points = {QPoint(80, 60), QPoint(160, 140)};
     roi.shapes << specimen << hole;
 

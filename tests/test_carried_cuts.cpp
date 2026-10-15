@@ -61,7 +61,7 @@ RegionShape box(RegionShape::Kind kind, int left, int top, int right, int bottom
 {
     RegionShape shape;
     shape.kind = kind;
-    shape.subtract = cut;
+    shape.role = cut ? RegionShape::Cut : RegionShape::Add;
     shape.points = {QPoint(left, top), QPoint(right, bottom)};
     return shape;
 }
@@ -73,7 +73,7 @@ RegionOfInterest drawnRegion()
     RegionOfInterest roi;
     RegionShape pentagon;
     pentagon.kind = RegionShape::Polygon;
-    pentagon.subtract = true;
+    pentagon.role = RegionShape::Cut;
     pentagon.points = {QPoint(170, 40), QPoint(205, 52), QPoint(214, 90),
                        QPoint(181, 101), QPoint(163, 70)};
     roi.shapes << box(RegionShape::Rectangle, 6, 9, 232, 188, false)
@@ -122,7 +122,7 @@ int disagreements(const RegionOfInterest &drawn, const RegionOfInterest &carried
         const int px = qRound(x), py = qRound(y);
         for (int i = roi.shapes.size() - 1; i >= 0; i--) {
             if (shapeContains(roi.shapes.at(i), px, py))
-                return roi.shapes.at(i).subtract;
+                return roi.shapes.at(i).isCut();
         }
         return false;
     };
@@ -168,6 +168,7 @@ private slots:
     void nothing_banked_leaves_the_cuts_where_they_were_drawn();
     void a_crack_along_a_bending_specimen_bends_with_it();
     void a_fit_from_fewer_than_nine_points_is_not_trusted();
+    void ground_is_not_carried_and_cannot_refuse_a_frame();
 };
 
 void TestCarriedCuts::a_point_on_an_edge_is_carried_exactly_by_a_movement_affine_around_it()
@@ -217,7 +218,7 @@ void TestCarriedCuts::an_island_inside_a_cut_is_carried_with_it_and_the_order_is
 
     QCOMPARE(carried.region.shapes.size(), drawn.shapes.size());
     for (int i = 0; i < drawn.shapes.size(); i++)
-        QCOMPARE(carried.region.shapes.at(i).subtract, drawn.shapes.at(i).subtract);
+        QCOMPARE(int(carried.region.shapes.at(i).role), int(drawn.shapes.at(i).role));
 
     // The island's centre, carried, is ground again in the carried region.
     const QPointF island = deformed(109.5, 123.5);
@@ -340,7 +341,7 @@ void TestCarriedCuts::a_crack_along_a_bending_specimen_bends_with_it()
     RegionOfInterest drawn;
     RegionShape crack;
     crack.kind = RegionShape::Polygon;
-    crack.subtract = true;
+    crack.role = RegionShape::Cut;
     crack.points = {QPoint(40, 96), QPoint(200, 90), QPoint(200, 97), QPoint(40, 103)};
     drawn.shapes << box(RegionShape::Rectangle, 6, 9, 232, 188, false) << crack;
 
@@ -431,6 +432,23 @@ void TestCarriedCuts::a_fit_from_fewer_than_nine_points_is_not_trusted()
     QVERIFY(to.has_value());
     const QPointF truth = deformed(at.x(), at.y());
     QVERIFY(std::hypot(to->x() - truth.x(), to->y() - truth.y()) < 1e-3);
+}
+
+void TestCarriedCuts::ground_is_not_carried_and_cannot_refuse_a_frame()
+{
+    // ⚑ Ground (core/Roi.h) is no part of the mask, and lies off the specimen
+    // where no point is followed. Carried like a cut, it could not be fitted,
+    // and the whole frame would go unmasked over a shape that masks nothing.
+    // Negative check (2026-10-15): ground carried like a cut, red on the
+    // refusal, which names the ground shape.
+    RegionOfInterest drawn = drawnRegion();
+    RegionShape bench = box(RegionShape::Rectangle, 300, 10, 380, 60, false);
+    bench.role = RegionShape::Ground;
+    drawn.shapes.append(bench);
+
+    const CarriedCuts carried = carryCuts(drawn, followed(drawn), kStep);
+    QVERIFY2(carried.isValid(), qPrintable(carried.refusal));
+    QVERIFY2(carried.region.shapes.last() == bench, "the ground was moved");
 }
 
 QTEST_GUILESS_MAIN(TestCarriedCuts)

@@ -263,6 +263,8 @@ std::shared_ptr<opencorr::OrderedRegion2D> engineRegion(const RegionOfInterest &
         for (const RegionShape &shape : roi.shapes) {
             if (!shape.isValid())
                 continue;   // encloses nothing, so it adds and removes nothing
+            if (shape.isGround())
+                continue;   // not part of the region measured (core/Roi.h)
             std::unique_ptr<Shape2D> engineShape;
             if (shape.kind == RegionShape::Ellipse) {
                 // Inscribed in the box, its edge pixels on the boundary: the
@@ -278,7 +280,7 @@ std::shared_ptr<opencorr::OrderedRegion2D> engineRegion(const RegionOfInterest &
                 // boundary-inclusive rule covers the box's edge pixels.
                 engineShape = polygon(shape.handles());
             }
-            if (shape.subtract)
+            if (shape.isCut())
                 region->cut(std::move(engineShape));
             else
                 region->add(std::move(engineShape));

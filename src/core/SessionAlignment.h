@@ -52,8 +52,18 @@ struct SessionAlignmentRecord
 // The Analysis panel's switch, as it reads there and wherever it is named.
 QString separateSessionsLabel();
 
+// The toolbar tool that marks stationary ground (core/Roi.h), as it reads
+// there and wherever the screen names it.
+QString markGroundLabel();
+
 // The note under the switch: what it does, or what turning it on would allow.
-QString separateSessionsPanelNote(bool on);
+// On, it says what the camera move is fitted on, which depends on whether any
+// ground is marked, and names the tool that marks it.
+QString separateSessionsPanelNote(bool on, bool groundMarked = false);
+
+// Why the ground tool is unavailable: with one session there is nothing to
+// align, and the tool says which switch would change that.
+QString markGroundUnavailableNote();
 
 // Why re-anchoring is unavailable while the switch is on. A followed point sits
 // in a later frame's camera, which no alignment describes.
