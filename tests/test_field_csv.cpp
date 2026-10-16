@@ -27,9 +27,14 @@
 //   - the rejection reason dropped
 //   - a rejected point's negative status code written as its correlation
 //   - the provenance block left out
+//
+// NEGATIVE CHECK (2026-10-16), the session alignment: the header line left
+// out, an ordinary run's statement left empty, and the statement cut to the
+// report's first line (which drops the limitation), each red.
 
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
+#include "core/SessionAlignment.h"
 
 #include <QFile>
 #include <QTemporaryDir>
@@ -221,6 +226,7 @@ private slots:
     void the_file_says_what_an_empty_cell_means();
     void the_file_states_its_own_coordinate_frame();
     void the_file_carries_the_provenance_the_vtu_carries();
+    void the_file_says_how_the_target_was_aligned_to_the_reference();
 
     void a_result_with_no_points_is_refused_rather_than_written_empty();
     void a_path_that_cannot_be_written_is_reported_as_a_reason();
@@ -609,6 +615,28 @@ void TestFieldCsv::a_rejected_point_still_says_where_it_was_attempted()
     // the case is about the position surviving rather than about nothing being
     // empty anywhere.
     QVERIFY(cell(text, 1, QStringLiteral("u_px")).isEmpty());
+}
+
+void TestFieldCsv::the_file_says_how_the_target_was_aligned_to_the_reference()
+{
+    QTemporaryDir dir;
+    const QString plain = dir.filePath(QStringLiteral("plain.csv"));
+    QVERIFY(writeFieldCsv(plain, plainResult(), plainProvenance()).isEmpty());
+    QVERIFY2(contentsOf(plain).contains(QStringLiteral("session alignment: none")),
+             qPrintable(contentsOf(plain)));
+
+    CorrelationResult result = plainResult();
+    result.alignment.fittedOn = SessionAlignmentRecord::MeasuredRegion;
+    result.alignment.scale = 0.95;
+    result.alignment.targetWidth = 200;
+    result.alignment.targetHeight = 180;
+    const QString path = dir.filePath(QStringLiteral("aligned.csv"));
+    QVERIFY(writeFieldCsv(path, result, plainProvenance()).isEmpty());
+    const QString text = contentsOf(path);
+    // The statement and the limitation it carries, both in the header.
+    QVERIFY2(text.contains(QStringLiteral("0.95000"))
+                 && text.contains(QStringLiteral("uniform dilatation")),
+             qPrintable(text));
 }
 
 QTEST_MAIN(TestFieldCsv)

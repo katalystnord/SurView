@@ -46,6 +46,12 @@ struct SessionAlignmentRecord
     int groundPointsUsed = 0;   // of those, kept by the final fit
     double residualRms = 0.0;   // px, of the kept subsets about the fit
 
+    // The ground it was fitted on, as drawn: "4 shapes, rectangle 240 x 30 px,
+    // ...". Recorded when the run starts, as the region is, so the report and
+    // the files name the ground that was used rather than whatever is marked
+    // by the time anyone reads them. Empty unless fitted on ground.
+    QString ground;
+
     bool isAligned() const { return fittedOn != NotAligned; }
 };
 
@@ -75,3 +81,8 @@ QString alignmentLimitation(const SessionAlignmentRecord &alignment);
 
 // The run report's lines about the alignment; empty for an ordinary run.
 QStringList alignmentReport(const SessionAlignmentRecord &alignment);
+
+// What the exported files say about the alignment, in one statement: the
+// report's lines, or that there was none. Stated for an ordinary run too, so a
+// file that never mentions it cannot be mistaken for one that did.
+QString alignmentStatement(const SessionAlignmentRecord &alignment);

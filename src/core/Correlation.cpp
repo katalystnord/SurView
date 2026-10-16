@@ -205,6 +205,8 @@ void CorrelationRunner::run()
             if (ground.isValid()) {
                 fitOn = engineRegion(ground);
                 record.fittedOn = SessionAlignmentRecord::Ground;
+                // "ground: 4 shapes, ..." less the word the report already says.
+                record.ground = groundSummary(m_roi).section(QStringLiteral(": "), 1);
                 fitBounds = ground.bounds().intersected(fitBounds);
             } else if (m_roi.isValid()) {
                 fitOn = engineRegion(m_roi);

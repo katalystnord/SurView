@@ -2890,6 +2890,11 @@ void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
     for (const QString &line : maskingReport(result))
         log(QStringLiteral("  ") + line);
 
+    // How a target from a separate session was aligned, on what, and what that
+    // could not measure (core/SessionAlignment.h). Nothing for an ordinary run.
+    for (const QString &line : alignmentReport(result.alignment))
+        log(QStringLiteral("  ") + line);
+
     // What the second pass repaired. Stated whenever it ran, including when it
     // repaired nothing: a run with the pass off and a run with the pass on that
     // found nothing produce identical fields, and they mean different things.

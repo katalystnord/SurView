@@ -9,11 +9,13 @@ QString tr(const char *text)
     return QCoreApplication::translate("SessionAlignment", text);
 }
 
-QString fittedOnText(SessionAlignmentRecord::FittedOn on)
+QString fittedOnText(const SessionAlignmentRecord &alignment)
 {
-    switch (on) {
+    switch (alignment.fittedOn) {
     case SessionAlignmentRecord::Ground:
-        return tr("the ground marked as stationary");
+        return alignment.ground.isEmpty()
+            ? tr("the ground marked as stationary")
+            : tr("the ground marked as stationary (%1)").arg(alignment.ground);
     case SessionAlignmentRecord::MeasuredRegion:
         return tr("the region being measured, since no ground was marked");
     case SessionAlignmentRecord::WholeImage:
@@ -48,7 +50,7 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
                 "%4, turned %5 degrees, shifted (%6, %7) px.")
                  .arg(alignment.targetWidth)
                  .arg(alignment.targetHeight)
-                 .arg(fittedOnText(alignment.fittedOn))
+                 .arg(fittedOnText(alignment))
                  .arg(alignment.scale, 0, 'f', 5)
                  .arg(alignment.angleDegrees, 0, 'f', 4)
                  .arg(alignment.shiftX, 0, 'f', 3)
@@ -60,10 +62,22 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
                  .arg(alignment.groundPointsUsed)
                  .arg(alignment.groundPoints)
                  .arg(alignment.residualRms, 0, 'f', 4);
+    // The field is not in the target's pixels, which is where a reader holding
+    // the target image would otherwise look for it.
+    lines << tr("Positions and displacements are in the reference image's pixels, "
+                "with the camera move taken out.");
     const QString limitation = alignmentLimitation(alignment);
     if (!limitation.isEmpty())
         lines << limitation;
     return lines;
+}
+
+QString alignmentStatement(const SessionAlignmentRecord &alignment)
+{
+    if (!alignment.isAligned())
+        return tr("none: the reference and the target share one camera and one "
+                  "pixel grid.");
+    return alignmentReport(alignment).join(QLatin1Char(' '));
 }
 
 QString separateSessionsLabel()

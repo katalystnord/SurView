@@ -4360,6 +4360,11 @@ void TestWorkspaceWalkthrough::ground_is_marked_where_the_screen_says_and_the_ru
     QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() >= 1; }, 120000));
     QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
     QCOMPARE(window.lastResult().alignment.fittedOn, SessionAlignmentRecord::Ground);
+    // The log says how the target was aligned, and on which ground.
+    const QString logged = logView(&window)->toPlainText();
+    QVERIFY2(logged.contains(QStringLiteral("aligned on the ground marked as stationary"))
+                 && logged.contains(QStringLiteral("2 shapes, rectangle")),
+             qPrintable(logged));
 
     // Turned off, the ground stays, and says it is not being used.
     byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();

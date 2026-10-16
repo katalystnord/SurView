@@ -29,11 +29,18 @@
 //     appears. Confirmed against VTK 9.5 directly, in a standalone program, not
 //     inferred from this test. A writer trusted on its return value tells a
 //     user their measurement is saved when it is not.
+//
+// NEGATIVE CHECK (2026-10-16), the session alignment: the statement left out of
+// the file, the ground left out of it, and an ordinary run's statement left
+// empty, each red. NOT caught here: the statement cut to the report's first
+// line, since everything this case asks for is in that line; test_field_csv and
+// test_separate_sessions catch it.
 
 #include "core/Correlation.h"
 #include "core/FieldExport.h"
 #include "core/FieldMesh.h"
 #include "core/ImageRecord.h"
+#include "core/SessionAlignment.h"
 
 #include <QDir>
 #include <QFile>
@@ -164,6 +171,7 @@ private slots:
     void the_file_says_how_far_its_values_are_averaged();
     void a_result_with_nothing_in_it_is_refused_with_a_reason();
     void a_path_that_cannot_be_written_is_reported_rather_than_swallowed();
+    void the_file_says_how_the_target_was_aligned_to_the_reference();
 };
 
 void TestFieldExport::a_written_field_reads_back_as_the_points_and_cells_it_was_made_of()
@@ -465,6 +473,37 @@ void TestFieldExport::the_share_each_point_was_measured_on_travels_with_the_fiel
                  && text.contains(QStringLiteral("30 %"))
                  && text.contains(QStringLiteral("outer edge was not masked")),
              qPrintable(text));
+}
+
+void TestFieldExport::the_file_says_how_the_target_was_aligned_to_the_reference()
+{
+    // A field from two sessions is in the reference's pixels with the camera
+    // move taken out, and a reader in ParaView has no other way to learn that,
+    // or which ground the move was fitted on. Stated for an ordinary run too.
+    QTemporaryDir dir;
+    const QString plain = dir.filePath(QStringLiteral("plain.vtu"));
+    QCOMPARE(writeFieldVtu(plain, twoByTwo(), provenanceFor()), QString());
+    const QString none = fieldText(readBack(plain), "session_alignment");
+    QVERIFY2(none.contains(QStringLiteral("one camera")), qPrintable(none));
+
+    CorrelationResult result = twoByTwo();
+    SessionAlignmentRecord &a = result.alignment;
+    a.fittedOn = SessionAlignmentRecord::Ground;
+    a.ground = QStringLiteral("1 shape, rectangle 40 x 30 px");
+    a.scale = 1.07;
+    a.angleDegrees = 3.5;
+    a.shiftX = 12.25;
+    a.shiftY = -4.5;
+    a.targetWidth = 280;
+    a.targetHeight = 240;
+    const QString path = dir.filePath(QStringLiteral("aligned.vtu"));
+    QCOMPARE(writeFieldVtu(path, result, provenanceFor()), QString());
+    const QString stated = fieldText(readBack(path), "session_alignment");
+    QCOMPARE(stated, alignmentStatement(a));
+    QVERIFY2(stated.contains(QStringLiteral("rectangle 40 x 30 px"))
+                 && stated.contains(QStringLiteral("1.07000"))
+                 && stated.contains(QStringLiteral("280 x 240")),
+             qPrintable(stated));
 }
 
 QTEST_MAIN(TestFieldExport)

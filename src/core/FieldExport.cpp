@@ -1,7 +1,9 @@
 #include "core/FieldExport.h"
+
 #include "core/Masking.h"
 
 #include "core/FieldMesh.h"
+#include "core/SessionAlignment.h"
 #include "core/SpatialResolution.h"
 #include "core/StrainFit.h"
 
@@ -312,6 +314,10 @@ QString writeFieldVtu(const QString &path, const CorrelationResult &result,
 
     state(grid, "masking", maskingStatement(result));
 
+    // How a target from a separate session was brought onto the reference, and
+    // on what; or that it was not (core/SessionAlignment.h).
+    state(grid, "session_alignment", alignmentStatement(result.alignment));
+
     state(grid, "result",
           QObject::tr("%1 of %2 points solved in %3 s%4. Values that were not "
                       "measured are written as not-a-number, never as zero.")
@@ -446,6 +452,8 @@ QString writeFieldCsv(const QString &path, const CorrelationResult &result,
                      .arg(result.referenceNoise, 0, 'g', 4)
                      .arg(result.mostlyClipped));
     csvNote(out, QObject::tr("masking: %1").arg(maskingStatement(result)));
+    csvNote(out, QObject::tr("session alignment: %1")
+                     .arg(alignmentStatement(result.alignment)));
     csvNote(out, QObject::tr("%1 of %2 attempted points solved.")
                      .arg(result.converged)
                      .arg(result.total()));

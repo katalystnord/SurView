@@ -51,6 +51,15 @@
 // - The engine counting ground as an addition: NOT caught here, because every
 //   ground band lies outside the specimen's box and no point is placed there.
 //   The pixel-by-pixel case in test_roi_engine_boundary catches it.
+//
+// The report and the files (2026-10-16), each run and reverted:
+// - The ground left unrecorded by the run: the report case red, and the
+//   walkthrough's log assertion with it.
+// - The ground recorded but never named in the report: the report case red.
+// - The frame sentence dropped: the report case red.
+// - The files' statement reduced to the report's first line: the report case
+//   red (test_field_csv catches it too, by the limitation going missing).
+// - The ordinary run's statement left empty: the one-session case red.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -193,6 +202,8 @@ private slots:
     void a_sequence_across_sessions_refuses_reference_updating_before_measuring();
     void a_sequence_aligns_every_frame_on_the_ground_marked();
     void ground_marked_in_one_session_changes_nothing_measured();
+    void the_report_names_the_ground_it_was_aligned_on();
+    void a_run_in_one_session_states_that_nothing_was_aligned();
 };
 
 void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
@@ -417,6 +428,38 @@ void TestSeparateSessions::ground_marked_in_one_session_changes_nothing_measured
     const Outcome beside = run(withGround(specimenRegion()), QStringLiteral("session_reference.tif"),
                                QStringLiteral("session_reference.tif"), false);
     QCOMPARE(beside.result.total(), specimen.result.total());
+}
+
+void TestSeparateSessions::the_report_names_the_ground_it_was_aligned_on()
+{
+    // The report is the run's account of itself: which ground the camera move
+    // was fitted on, as drawn, and the frame the answers are given in. Four
+    // bands, two of them 240 x 30 px, so a summary of one shape cannot pass.
+    const Outcome o = run(withGround(specimenRegion()), QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    const QString report = alignmentReport(o.result.alignment).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("aligned on the ground marked as stationary"))
+                 && report.contains(QStringLiteral("4 shapes, rectangle 240 x 30 px")),
+             qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("reference image's pixels")), qPrintable(report));
+    // The files say all of it, in one statement.
+    const QString statement = alignmentStatement(o.result.alignment);
+    for (const QString &line : alignmentReport(o.result.alignment))
+        QVERIFY2(statement.contains(line), qPrintable(statement));
+}
+
+void TestSeparateSessions::a_run_in_one_session_states_that_nothing_was_aligned()
+{
+    // The files state the alignment whether or not there was one: a file that
+    // says nothing about it reads the same from a run that aligned and from a
+    // SurView that predates the switch.
+    const Outcome o = run(RegionOfInterest(), QStringLiteral("shift_reference.tif"),
+                          QStringLiteral("shift_target.tif"), false);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    QVERIFY(alignmentReport(o.result.alignment).isEmpty());
+    const QString statement = alignmentStatement(o.result.alignment);
+    QVERIFY2(statement.contains(QStringLiteral("one camera")), qPrintable(statement));
 }
 
 QTEST_MAIN(TestSeparateSessions)

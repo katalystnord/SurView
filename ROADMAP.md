@@ -801,7 +801,15 @@ Understood well enough to start, large enough to need their own care.
     listed "not used" first on its line, since the end of a line is what the dock
     elides. Project files are version 3, because a version 2 SurView would read
     ground as an addition and measure the bench.
-  - Still to do: the known length, the report and both files, the manual.
+  - **The report and both files, 2026-10-16.** Every frame's report says what
+    the target was aligned on, naming the ground shapes by size as they were
+    when the run started, the fitted move, the match counts, and that positions
+    and displacements are in the reference image's pixels with the camera move
+    taken out. The `.vtu` carries the same as `session_alignment` and the CSV as
+    a `session alignment:` header line, both stated as "none" for an ordinary
+    run, so a file that never mentions alignment cannot be mistaken for one that
+    did.
+  - Still to do: the known length, the manual.
     Ground marked over the specimen itself is used as drawn; the alignment's
     reweighting rejects some of it, and nothing says so yet.
 
