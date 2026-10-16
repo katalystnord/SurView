@@ -100,7 +100,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     github.com/katalystnord/SurView
   </div>
 </div>
-<div class="contents"><h2>Contents</h2><div class="part">Part I. What DIC measures</div><ol><li><span class="pg">3</span><a href="#the-idea">1. Two photographs and a question</a></li><li><span class="pg">6</span><a href="#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li><li><span class="pg">9</span><a href="#absence-not-zero">3. A rejected point is not a zero</a></li><li><span class="pg">11</span><a href="#coordinate-frame">4. One coordinate frame</a></li></ol><div class="part">Part II. Running a measurement</div><ol><li><span class="pg">13</span><a href="#region-and-holes">5. The region, and what a hole means</a></li><li><span class="pg">17</span><a href="#sequences">6. Sequences: order matters, reference matters</a></li><li><span class="pg">18</span><a href="#reference-updating">7. When the reference goes stale</a></li><li><span class="pg">20</span><a href="#recovery">8. Points that fail, and the pass that repairs them</a></li></ol><div class="part">Part III. How much to trust it</div><ol><li><span class="pg">23</span><a href="#two-questions">9. Two questions, never one score</a></li><li><span class="pg">26</span><a href="#reading-critically">10. Reading a field critically</a></li><li><span class="pg">28</span><a href="#known-answer">11. Checking against a known answer</a></li></ol><div class="part">Part IV. Beyond one field</div><ol><li><span class="pg">30</span><a href="#sequence-as-curve">12. Reading a sequence as a curve</a></li><li><span class="pg">33</span><a href="#leaving-the-application">13. The field leaving the application</a></li></ol><div class="part">Part V. Practice</div><ol><li><span class="pg">35</span><a href="#speckling">14. Speckling a specimen</a></li><li><span class="pg">37</span><a href="#subset-and-step">15. Choosing subset radius and grid step</a></li><li><span class="pg">39</span><a href="#lighting-and-imaging">16. Lighting and imaging</a></li></ol><div class="part">Reference</div><ol><li><span class="pg">41</span><a href="#glossary">Glossary</a></li><li><span class="pg">43</span><a href="#on-screen">Where to find it on screen</a></li><li><span class="pg">45</span><a href="#not-yet">What is not in this manual yet</a></li></ol></div>
+<div class="contents"><h2>Contents</h2><div class="part">Part I. What DIC measures</div><ol><li><span class="pg">3</span><a href="#the-idea">1. Two photographs and a question</a></li><li><span class="pg">6</span><a href="#displacement-and-strain">2. Displacement is measured, strain is fitted</a></li><li><span class="pg">9</span><a href="#absence-not-zero">3. A rejected point is not a zero</a></li><li><span class="pg">11</span><a href="#coordinate-frame">4. One coordinate frame</a></li></ol><div class="part">Part II. Running a measurement</div><ol><li><span class="pg">13</span><a href="#region-and-holes">5. The region, and what a hole means</a></li><li><span class="pg">17</span><a href="#sequences">6. Sequences: order matters, reference matters</a></li><li><span class="pg">18</span><a href="#reference-updating">7. When the reference goes stale</a></li><li><span class="pg">20</span><a href="#recovery">8. Points that fail, and the pass that repairs them</a></li></ol><div class="part">Part III. How much to trust it</div><ol><li><span class="pg">23</span><a href="#two-questions">9. Two questions, never one score</a></li><li><span class="pg">26</span><a href="#reading-critically">10. Reading a field critically</a></li><li><span class="pg">28</span><a href="#known-answer">11. Checking against a known answer</a></li></ol><div class="part">Part IV. Beyond one field</div><ol><li><span class="pg">30</span><a href="#sequence-as-curve">12. Reading a sequence as a curve</a></li><li><span class="pg">33</span><a href="#leaving-the-application">13. The field leaving the application</a></li><li><span class="pg">35</span><a href="#separate-sessions">14. A reference and a target from separate sessions</a></li></ol><div class="part">Part V. Practice</div><ol><li><span class="pg">38</span><a href="#speckling">15. Speckling a specimen</a></li><li><span class="pg">40</span><a href="#subset-and-step">16. Choosing subset radius and grid step</a></li><li><span class="pg">42</span><a href="#lighting-and-imaging">17. Lighting and imaging</a></li></ol><div class="part">Reference</div><ol><li><span class="pg">44</span><a href="#glossary">Glossary</a></li><li><span class="pg">46</span><a href="#on-screen">Where to find it on screen</a></li><li><span class="pg">48</span><a href="#not-yet">What is not in this manual yet</a></li></ol></div>
 
 <div class="part-body">
   <p class="kicker">Part I &middot; What DIC measures</p>
@@ -1462,12 +1462,165 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     </p>
   </div>
 
+  <h1 id="separate-sessions">14. A reference and a target from separate sessions</h1>
+  <p class="lede">
+    Not every target is photographed by a camera that stayed where it
+    was. A specimen is taken off the machine and photographed again a
+    week later; the camera is moved, refocused or replaced; a strip is
+    recovered from a structure and photographed on a bench. The target
+    then sees the scene larger or smaller, turned and shifted, and often
+    in an image of a different size. SurView measures such a pair, and
+    says plainly what the move between the sessions costs.
+  </p>
+
+  <h2>The camera move is taken out of the coordinates, never out of the pixels</h2>
+  <p>
+    Turn on <strong>Reference and target from separate sessions</strong>,
+    first in the Reference section of the Analysis panel. Each target is
+    then aligned to the reference before it is measured: features are
+    matched between the two images, the camera move is fitted to them as
+    a <strong>similarity</strong> (a scale, a turn and a shift), and the
+    fit is refined by correlating subsets, to a few thousandths of a pixel.
+  </p>
+  <p>
+    The move is then applied to <em>coordinates</em>. Every point starts
+    from it, is measured on the target exactly as the target was recorded,
+    and has its answer carried back into the reference's pixels. No image
+    is warped to match the other at any step. Warping one would put an
+    interpolation into the record before anything had been measured, and
+    the record is what everything else stands on. The run report and both
+    exported files say which frame the answers are in: positions and
+    displacements are in the reference image's pixels, with the camera
+    move taken out.
+  </p>
+  <p>
+    Each target is measured against the reference on its own. A point
+    followed from one target to the next would sit in that target's
+    camera, which no alignment describes, so with the switch on the
+    reference is never re-anchored (Chapter 7), and the panel greys that
+    control and says why beside it.
+  </p>
+
+  <h2>What the move is fitted on decides what can be measured</h2>
+  <p>
+    A similarity is a scale, a turn and a shift. A specimen's own rigid
+    motion is a turn and a shift, and its <strong>uniform
+    dilatation</strong>, the part of the strain that is the same in every
+    direction, looks to a camera exactly like a zoom. Fitted on the
+    specimen itself, the alignment cannot tell the two apart, and takes
+    all of it for the camera. The strain lost is a real strain, and every
+    point still correlates well, so nothing in the field gives the loss
+    away.
+  </p>
+  <p>
+    Measured on a pair made for the purpose, with the specimen strained
+    by 0.012 in x and -0.005 in y and the camera moved by a scale of 1.07,
+    a turn of 3.5 degrees and a shift: with the move fitted on stationary
+    ground, every strain term comes back within 3e-4 of the truth. Fitted
+    on the specimen, both normal strains come back short by the same
+    0.004, which is the dilatation, gone from both in equal measure.
+  </p>
+
+  <h2>Ground: mark what did not move</h2>
+  <p>
+    <strong>Mark Ground</strong> on the toolbar draws a rectangle, an
+    ellipse or a polygon over something that did not move between the
+    sessions: the bench, a fixture, the frame of the machine. Ground is
+    drawn in blue. It is not measured, it is not part of the region's
+    order (Chapter 5), it stays where it was drawn when the region is
+    dragged, and auto-detection keeps it. It needs no region at all: with
+    ground alone, the whole image is measured and the target is aligned
+    on the ground. Fitted on ground, the specimen's own movement is
+    measured in full, its rigid motion included.
+  </p>
+  <p>
+    The tool is live only with the switch on, and while it is not, it
+    says which switch would make it so. Ground marked with the switch off
+    stays on the reference and is listed in the project as <em>not
+    used</em>. Ground drawn over part of the specimen is used as drawn:
+    the fit sets aside subsets that disagree with the rest, but that is a
+    safeguard, not a substitute for keeping ground clear of everything
+    that moves.
+  </p>
+
+  <figure class="plate">
+    <img src="../assets/separate-sessions.png" alt="A speckled rig with a specimen disc on it. Two tall blue rectangles at the left and right edges mark stationary ground; a green ellipse marks the region measured on the disc, which carries a displacement field coloured from blue to red, 1.04 to 1.92 px.">
+    <figcaption>
+      <b>A target from a second session, aligned on ground.</b> The target
+      was photographed 7 per cent closer, turned 3.5 degrees and shifted,
+      in an image of another size. The two blue rectangles are ground
+      marked on the rig; the field on the disc is the specimen's own
+      movement, 1.04 to 1.92 px, in the reference's pixels, with the
+      camera move taken out.
+    </figcaption>
+  </figure>
+
+  <h2>No ground: a known length gives the scale</h2>
+  <p>
+    Sometimes there is nothing stationary in the picture at all; a strip
+    photographed on its own is the usual case. What is lost then is one
+    number, the camera's scale, and a <strong>known length</strong>
+    restores it: two points whose distance did not change between the
+    sessions, such as the ends of a scale bar, two fiducials, or two marks
+    on a part that does not deform. <strong>Mark Known Length</strong>,
+    in the Mark Ground menu, places it with two clicks on the reference.
+  </p>
+  <p>
+    Each end is found on the target by correlation, and the camera's
+    scale is taken from the ratio of the two lengths. Only the turn and
+    the shift are then fitted on the specimen, so its rigid motion is
+    still taken for the camera, and all of its strain is measured, the
+    dilatation included. On the same pair as above, every strain term
+    comes back within 3e-4 again.
+  </p>
+  <ul>
+    <li>
+      <strong>Its ends must be found.</strong> Each needs distinct marks
+      or pattern visible in both sessions, a subset radius clear of the
+      edge of both images. An end that does not correlate refuses the run,
+      naming the end, rather than measuring as though no length had been
+      marked.
+    </li>
+    <li>
+      <strong>A longer length is a better one.</strong> An error in
+      finding an end changes the measured dilatation by that error divided
+      by the length, and the run report states what 0.01 px at either end
+      does: over 250 px, 4e-5.
+    </li>
+    <li>
+      <strong>Ground comes first.</strong> Ground measures the scale
+      itself, from far more of the picture than two points, so with ground
+      marked the known length is listed and reported as not used.
+    </li>
+  </ul>
+
+  <h2>With neither, the result says what it could not measure</h2>
+  <p>
+    A run with no ground and no known length still aligns, on the region
+    measured or failing that on the whole image, and the switch's note,
+    the run report and both exported files say what that cost: the
+    specimen's rigid motion and its uniform dilatation are not measured.
+    Strain differences between directions, and shear, are measured
+    either way.
+  </p>
+
+  <div class="callout">
+    <p class="callout-label">What the alignment models</p>
+    <p>
+      The camera move is a similarity: a scale, a turn and a shift. A
+      camera that was also tilted between the sessions sees the scene in
+      perspective, which a similarity does not describe. The run report
+      gives the refined fit's residual, in pixels, about the subsets it
+      was fitted on, and a perspective change shows there first.
+    </p>
+  </div>
+
   
 </div>
 
 <div class="part-body">
   <p class="kicker">Part V &middot; Practice</p>
-  <h1 id="speckling">14. Speckling a specimen</h1>
+  <h1 id="speckling">15. Speckling a specimen</h1>
   <p class="lede">
     Chapter 1 explained why a speckle pattern is necessary at all: a
     featureless surface has no unique texture to lock onto. This chapter
@@ -1502,7 +1655,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
       subset. A pattern with speckles far larger than the subset gives
       each subset too little variation to be unique; a pattern with
       speckles far smaller can blur together at the imaging resolution
-      actually being used. Chapter 15 covers choosing the subset itself;
+      actually being used. Chapter 16 covers choosing the subset itself;
       the two decisions have to be made together, not in either order
       alone.
     </li>
@@ -1539,7 +1692,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     after the test is finished and cannot be repeated.
   </p>
 
-  <h1 id="subset-and-step">15. Choosing subset radius and grid step</h1>
+  <h1 id="subset-and-step">16. Choosing subset radius and grid step</h1>
   <p class="lede">
     Two numbers control almost every correlation: how large a patch of
     pixels each measurement point looks at, and how far apart the
@@ -1660,7 +1813,7 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     chosen weeks ago never reads as the standard one.
   </p>
 
-  <h1 id="lighting-and-imaging">16. Lighting and imaging</h1>
+  <h1 id="lighting-and-imaging">17. Lighting and imaging</h1>
   <p class="lede">
     Everything in Parts I through IV assumes the two photographs differ
     only by the deformation being studied. Lighting, focus, and camera
@@ -1784,6 +1937,16 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
     resembles the original subset in the reference. A measure of matching
     confidence, not of physical correctness.</dd>
 
+    <dt>Ground</dt>
+    <dd>Part of the scene that did not move between two sessions, such as
+    the bench or a fixture, marked on the reference so that a target from
+    the second session can be aligned on it. Not measured.</dd>
+
+    <dt>Known length</dt>
+    <dd>Two points whose distance did not change between two sessions,
+    such as the ends of a scale bar. Where no ground is marked, the
+    camera's scale is taken from it.</dd>
+
     <dt>Displacement field</dt>
     <dd>The measured movement, in pixels, at every point of the grid.</dd>
 
@@ -1859,6 +2022,9 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
       <tr><td>Plot a quantity against frame</td><td><strong>Plot</strong> panel</td></tr>
       <tr><td>See provenance for an imported image</td><td><strong>Record</strong> panel</td></tr>
       <tr><td>Export a field</td><td>File menu: <code>.vtu</code> for ParaView and FreeCAD, or <code>.csv</code></td></tr>
+      <tr><td>Measure a target photographed after the camera moved</td><td><strong>Analysis</strong> panel, "Reference" group: <strong>Reference and target from separate sessions</strong></td></tr>
+      <tr><td>Mark ground that did not move between the sessions</td><td>Toolbar: <strong>Mark Ground</strong> (rectangle, ellipse or polygon; with the switch above on)</td></tr>
+      <tr><td>Mark a length that did not change, where there is no ground</td><td>Toolbar: <strong>Mark Ground</strong> menu, <strong>Mark Known Length</strong>, then two clicks</td></tr>
     </tbody>
   </table>
 
@@ -1872,8 +2038,6 @@ dl.glossary dd { margin: 1mm 0 0; color: var(--text-dim); }
   <ul>
     <li>Stereo and out-of-plane (2.5D) measurement, and the camera
     calibration workflow it depends on.</li>
-    <li>Reading a quantity along a line, rather than only at one point or
-    between two extensometer anchors.</li>
     <li>Multi-view measurement from a single moved camera, for slow or
     static tests such as creep.</li>
     <li>Sparse point-marker tracking, alongside the dense speckle field.</li>

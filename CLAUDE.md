@@ -995,6 +995,49 @@ cut, which is where a reader now clicks, a corner is always within reach. A
 corner drag that ends with the region unchanged is a click and pins the reading,
 as the whole-region move already did.
 
+### A reference and a target from separate sessions (2026-10-12 to 2026-10-16)
+
+`CorrelationSettings::separateSessions`, "Reference and target from separate
+sessions", first in the Analysis panel's Reference section and saved with the
+project. The fork's `SessionAlignment2D` fits the camera move as a similarity
+(SIFT, RANSAC, then ICGN on subsets and a reweighted fit); `core/Correlation.cpp`
+seeds every point from it and carries every answer back into reference pixels.
+`core/SessionAlignment.h` holds every sentence the screen, the report and the
+files say about it. Manual chapter 14.
+
+- ⚑ **The move is applied to COORDINATES, never to pixels.** No image is
+  resampled at any step (tenet 10), and the report and both files say the
+  answers are in the reference's pixels with the camera move taken out.
+- ⚑ **WHAT IT IS FITTED ON DECIDES WHAT CAN BE MEASURED.** A similarity fitted
+  on the specimen takes up its rigid motion and its uniform dilatation, which
+  to a camera is a zoom: on the session fixture both normal strains read 0.004
+  short while every point correlates well. So, in order (David, 2026-10-12):
+  marked GROUND, where nothing is lost; else a KNOWN LENGTH, where only the
+  rigid motion is; else the specimen, with the loss stated by
+  `alignmentLimitation()` in the note, the report and both files.
+- **Ground is a third role of `RegionShape`** beside add and cut, so it is
+  drawn, listed, adjusted and saved by the region's own means, but every
+  membership, bounds, engine and carry path skips it, it does not move with
+  the region, and auto-detect keeps it (`withMeasuredShapesReplaced()`).
+- **The known length is a member of `RegionOfInterest`**, not a shape, for the
+  same reason ground is in the region: it then reaches the run, every frame of
+  a sequence, the screen and the project with no route of its own. The fork's
+  `setKnownLength()` correlates both ends and FIXES the scale; only the turn
+  and shift are fitted. Not used with ground marked, and said so. An end that
+  does not correlate refuses the run.
+- **Pair by pair.** Re-anchoring is refused across sessions, and ⚑ a sequence
+  must not hand a frame the points followed from the frame before
+  (`SequenceRunner`): it did, and every separate-sessions sequence of more than
+  one target stopped at frame 2 telling the reader to turn off reference
+  updating that was already off. Every case had used a single target, which is
+  the fixture-agrees-with-itself lesson once more.
+- Project files are version 3 for ground and version 4 for the known length,
+  each because an older SurView would open the file and measure something else.
+- **Two walkthrough traps**: importing a target of another size raises a MODAL
+  warning (`MessageReader` answers it), and a second MainWindow SHOWN beside a
+  first dies with GLX BadAccess under xvfb, so save-and-reopen cases leave the
+  second one unshown.
+
 ### The field leaving the application (2026-08-19)
 
 `Export Results (.vtu)` writes the measured field as a VTK unstructured grid,

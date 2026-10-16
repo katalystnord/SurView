@@ -830,9 +830,13 @@ Understood well enough to start, large enough to need their own care.
     followed point. Every case had used a single target. Each frame is now
     measured from the grid, which with the reference never re-anchored is where
     the followed points were anyway.
-  - Still to do: the manual.
-    Ground marked over the specimen itself is used as drawn; the alignment's
-    reweighting rejects some of it, and nothing says so yet.
+  - **The manual, 2026-10-16:** chapter 14, "A reference and a target from
+    separate sessions", with a figure of a run aligned on ground; the
+    on-screen table and the glossary name the switch, the ground and the known
+    length. And a section in CLAUDE.md for whoever changes the code next.
+  - Still open: ground drawn over the specimen itself is used as drawn, and
+    nothing says so yet; a homography, on ground only, for a camera that was
+    tilted between the sessions.
 
   ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
   `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero

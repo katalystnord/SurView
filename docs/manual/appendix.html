@@ -189,11 +189,12 @@ footer a:hover { color: var(--accent-strong); }
 <div class="toc-label">Part IV. Beyond one field</div><ol>
 <li><a href="part-4-beyond-one-field.html#sequence-as-curve">12. Reading a sequence as a curve</a></li>
 <li><a href="part-4-beyond-one-field.html#leaving-the-application">13. The field leaving the application</a></li>
+<li><a href="part-4-beyond-one-field.html#separate-sessions">14. A reference and a target from separate sessions</a></li>
 </ol>
 <div class="toc-label">Part V. Practice</div><ol>
-<li><a href="part-5-practice.html#speckling">14. Speckling a specimen</a></li>
-<li><a href="part-5-practice.html#subset-and-step">15. Choosing subset radius and grid step</a></li>
-<li><a href="part-5-practice.html#lighting-and-imaging">16. Lighting and imaging</a></li>
+<li><a href="part-5-practice.html#speckling">15. Speckling a specimen</a></li>
+<li><a href="part-5-practice.html#subset-and-step">16. Choosing subset radius and grid step</a></li>
+<li><a href="part-5-practice.html#lighting-and-imaging">17. Lighting and imaging</a></li>
 </ol>
 <div class="toc-label current-part">Reference</div><ol>
 <li><a href="appendix.html" class="current">Appendix</a></li>
@@ -230,6 +231,16 @@ footer a:hover { color: var(--accent-strong); }
     <dd>A number stating how closely a candidate match in the target
     resembles the original subset in the reference. A measure of matching
     confidence, not of physical correctness.</dd>
+
+    <dt>Ground</dt>
+    <dd>Part of the scene that did not move between two sessions, such as
+    the bench or a fixture, marked on the reference so that a target from
+    the second session can be aligned on it. Not measured.</dd>
+
+    <dt>Known length</dt>
+    <dd>Two points whose distance did not change between two sessions,
+    such as the ends of a scale bar. Where no ground is marked, the
+    camera's scale is taken from it.</dd>
 
     <dt>Displacement field</dt>
     <dd>The measured movement, in pixels, at every point of the grid.</dd>
@@ -306,6 +317,9 @@ footer a:hover { color: var(--accent-strong); }
       <tr><td>Plot a quantity against frame</td><td><strong>Plot</strong> panel</td></tr>
       <tr><td>See provenance for an imported image</td><td><strong>Record</strong> panel</td></tr>
       <tr><td>Export a field</td><td>File menu: <code>.vtu</code> for ParaView and FreeCAD, or <code>.csv</code></td></tr>
+      <tr><td>Measure a target photographed after the camera moved</td><td><strong>Analysis</strong> panel, "Reference" group: <strong>Reference and target from separate sessions</strong></td></tr>
+      <tr><td>Mark ground that did not move between the sessions</td><td>Toolbar: <strong>Mark Ground</strong> (rectangle, ellipse or polygon; with the switch above on)</td></tr>
+      <tr><td>Mark a length that did not change, where there is no ground</td><td>Toolbar: <strong>Mark Ground</strong> menu, <strong>Mark Known Length</strong>, then two clicks</td></tr>
     </tbody>
   </table>
 
@@ -319,8 +333,6 @@ footer a:hover { color: var(--accent-strong); }
   <ul>
     <li>Stereo and out-of-plane (2.5D) measurement, and the camera
     calibration workflow it depends on.</li>
-    <li>Reading a quantity along a line, rather than only at one point or
-    between two extensometer anchors.</li>
     <li>Multi-view measurement from a single moved camera, for slow or
     static tests such as creep.</li>
     <li>Sparse point-marker tracking, alongside the dense speckle field.</li>
