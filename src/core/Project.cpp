@@ -25,7 +25,11 @@ constexpr const char *kMagic = "SurView DIC project";
 // version 2 SurView reads any shape that is not a cut as an addition, and would
 // open a project with ground in it and measure the bench; with the version
 // raised it refuses the file instead. Version 2 files still open as they were.
-constexpr int kVersion = 3;
+//
+// 4 since 2026-10-16: the region may carry a KNOWN LENGTH. A version 3 SurView
+// would open the project without it and fit a separate session's camera scale
+// on the specimen, measuring a different strain; it refuses the file instead.
+constexpr int kVersion = 4;
 
 QString hashOf(const QString &path)
 {
@@ -126,6 +130,14 @@ QString saveProject(const QString &path, const Project &project)
     // without it, a detected region would stop saying what it cannot represent.
     if (!project.roi.limitation.isEmpty())
         roi[QStringLiteral("limitation")] = project.roi.limitation;
+    // Its two ends, when one is marked. Version 4: a version 3 SurView would
+    // open the project without it and fit the camera's scale on the specimen.
+    if (project.roi.knownLength.marked) {
+        const KnownLength &known = project.roi.knownLength;
+        roi[QStringLiteral("knownLength")] =
+            QJsonArray{QJsonArray{known.a.x(), known.a.y()},
+                       QJsonArray{known.b.x(), known.b.y()}};
+    }
     root[QStringLiteral("region")] = roi;
 
     root[QStringLiteral("settings")] = correlationSettingsToJson(project.settings);
@@ -262,6 +274,14 @@ ProjectLoad loadProject(const QString &path)
         }
     }
     out.project.roi.limitation = roi[QStringLiteral("limitation")].toString();
+    if (roi.contains(QStringLiteral("knownLength"))) {
+        const QVector<QPoint> ends = pointsOf(roi[QStringLiteral("knownLength")].toArray());
+        if (ends.size() == 2) {
+            out.project.roi.knownLength.marked = true;
+            out.project.roi.knownLength.a = ends.at(0);
+            out.project.roi.knownLength.b = ends.at(1);
+        }
+    }
     out.project.roi.origin =
         RegionOfInterest::Origin(roi[QStringLiteral("origin")].toInt());
 

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <QPoint>
 #include <QString>
 #include <QStringList>
 
@@ -52,6 +53,17 @@ struct SessionAlignmentRecord
     // by the time anyone reads them. Empty unless fitted on ground.
     QString ground;
 
+    // The known length (core/Roi.h): whether one was marked, whether the
+    // camera's scale was taken from it, and what it measured. It is used only
+    // when the fit is not on ground, which measures the scale itself.
+    bool knownLengthMarked = false;
+    bool knownLengthUsed = false;
+    QPoint knownLengthA;
+    QPoint knownLengthB;
+    double knownLengthReference = 0.0;   // px, in the reference
+    double knownLengthTarget = 0.0;      // px, in the target
+    double knownLengthCorrelation = 0.0; // the poorer of its two ends
+
     bool isAligned() const { return fittedOn != NotAligned; }
 };
 
@@ -62,10 +74,15 @@ QString separateSessionsLabel();
 // there and wherever the screen names it.
 QString markGroundLabel();
 
+// The menu entry that marks a known length, and the one that removes it.
+QString markKnownLengthLabel();
+QString removeKnownLengthLabel();
+
 // The note under the switch: what it does, or what turning it on would allow.
 // On, it says what the camera move is fitted on, which depends on whether any
 // ground is marked, and names the tool that marks it.
-QString separateSessionsPanelNote(bool on, bool groundMarked = false);
+QString separateSessionsPanelNote(bool on, bool groundMarked = false,
+                                  bool knownLengthMarked = false);
 
 // Why the ground tool is unavailable: with one session there is nothing to
 // align, and the tool says which switch would change that.

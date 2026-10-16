@@ -60,6 +60,17 @@
 // - The files' statement reduced to the report's first line: the report case
 //   red (test_field_csv catches it too, by the limitation going missing).
 // - The ordinary run's statement left empty: the one-session case red.
+//
+// The known length (2026-10-16), each run and reverted:
+// - Never handed to the engine: the known-length case red, knownLengthUsed false.
+// - Handed to it with ground marked as well: the not-used case red.
+// - Its length measured as |dx| + |dy|: the known-length case red on the length.
+// - The limitation, the used line or the not-used line left as before: the
+//   case naming each red.
+// - The refusal without the tool's name: the refusal case red.
+// - A sequence handing a separate session the points followed from the frame
+//   before (the defect found by writing the sequence case): the sequence case
+//   red at frame 2, as it was before the fix.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -111,6 +122,18 @@ RegionOfInterest withGround(RegionOfInterest roi)
         ground.role = RegionShape::Ground;
         roi.shapes.append(ground);
     }
+    return roi;
+}
+
+// Two points on the rig, either side of the specimen, whose distance the move
+// between sessions did not change. 246.1 px apart, so a length a reader could
+// well mark on a scale bar.
+RegionOfInterest withKnownLength(RegionOfInterest roi, QPoint a = QPoint(22, 24),
+                                 QPoint b = QPoint(214, 178))
+{
+    roi.knownLength.marked = true;
+    roi.knownLength.a = a;
+    roi.knownLength.b = b;
     return roi;
 }
 
@@ -204,6 +227,11 @@ private slots:
     void ground_marked_in_one_session_changes_nothing_measured();
     void the_report_names_the_ground_it_was_aligned_on();
     void a_run_in_one_session_states_that_nothing_was_aligned();
+    void aligned_on_the_specimen_with_a_known_length_the_dilatation_is_measured();
+    void a_known_length_is_not_used_where_ground_is_marked();
+    void a_known_length_whose_end_cannot_be_found_refuses_the_run();
+    void a_sequence_carries_the_known_length_to_every_frame();
+    void a_sequence_across_sessions_measures_every_frame_not_only_the_first();
 };
 
 void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
@@ -460,6 +488,129 @@ void TestSeparateSessions::a_run_in_one_session_states_that_nothing_was_aligned(
     QVERIFY(alignmentReport(o.result.alignment).isEmpty());
     const QString statement = alignmentStatement(o.result.alignment);
     QVERIFY2(statement.contains(QStringLiteral("one camera")), qPrintable(statement));
+}
+
+void TestSeparateSessions::aligned_on_the_specimen_with_a_known_length_the_dilatation_is_measured()
+{
+    // No ground: the fit is on the specimen, as in the dilatation case above,
+    // but the camera's scale is taken from a length that did not change. Only
+    // the specimen's rigid motion is then taken for the camera, and every
+    // strain term comes back, the uniform dilatation the other case loses
+    // among them.
+    const Outcome o = run(withKnownLength(specimenRegion()), QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    const SessionAlignmentRecord &a = o.result.alignment;
+    QCOMPARE(a.fittedOn, SessionAlignmentRecord::MeasuredRegion);
+    QVERIFY(a.knownLengthUsed);
+    QVERIFY2(std::abs(a.scale - 1.07) < 1e-4, qPrintable(QString::number(a.scale, 'f', 6)));
+    QVERIFY2(std::abs(a.knownLengthReference - 246.13) < 0.01,
+             qPrintable(QString::number(a.knownLengthReference, 'f', 3)));
+    QVERIFY2(std::abs(a.knownLengthTarget / a.knownLengthReference - 1.07) < 1e-4,
+             qPrintable(QString::number(a.knownLengthTarget, 'f', 3)));
+
+    const Means m = measure(o.result);
+    const QString strain = QStringLiteral("exx %1 eyy %2 exy %3")
+                               .arg(m.exx, 0, 'f', 5).arg(m.eyy, 0, 'f', 5).arg(m.exy, 0, 'f', 5);
+    QVERIFY(m.strained > 10);
+    QVERIFY2(std::abs(m.exx - kE11) < 3e-4, qPrintable(strain));
+    QVERIFY2(std::abs(m.eyy - kE22) < 3e-4, qPrintable(strain));
+    QVERIFY2(std::abs(m.exy - (kE12 + kE21) / 2) < 3e-4, qPrintable(strain));
+
+    // What is said: the rigid motion is still the camera's, the strain is not.
+    const QString limitation = alignmentLimitation(a);
+    QVERIFY2(limitation.contains(QStringLiteral("rigid motion"))
+                 && limitation.contains(QStringLiteral("known length"))
+                 && !limitation.contains(QStringLiteral("are not measured: both")),
+             qPrintable(limitation));
+    const QString report = alignmentReport(a).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("(22, 24) to (214, 178)"))
+                 && report.contains(QStringLiteral("246.1 px in the reference")),
+             qPrintable(report));
+}
+
+void TestSeparateSessions::a_known_length_is_not_used_where_ground_is_marked()
+{
+    // Ground measures the scale itself, from far more of the picture than two
+    // points. The length is left out, and the report says it was.
+    const Outcome o = run(withKnownLength(withGround(specimenRegion())),
+                          QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    const SessionAlignmentRecord &a = o.result.alignment;
+    QCOMPARE(a.fittedOn, SessionAlignmentRecord::Ground);
+    QVERIFY(a.knownLengthMarked);
+    QVERIFY(!a.knownLengthUsed);
+    const QString report = alignmentReport(a).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("known length")) && report.contains(QStringLiteral("not used")),
+             qPrintable(report));
+}
+
+void TestSeparateSessions::a_known_length_whose_end_cannot_be_found_refuses_the_run()
+{
+    // An end too near the edge for its subset: refused, in words that name the
+    // tool that moves it, never measured as though it had not been marked.
+    const Outcome o = run(withKnownLength(specimenRegion(), QPoint(3, 3)),
+                          QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.contains(QStringLiteral("known length"))
+                 && o.failure.contains(markKnownLengthLabel()),
+             qPrintable(o.failure));
+    QCOMPARE(o.result.total(), 0);
+}
+
+void TestSeparateSessions::a_sequence_carries_the_known_length_to_every_frame()
+{
+    CorrelationSettings s = settings();
+    s.separateSessions = true;
+    SequenceRunner runner(s, withKnownLength(specimenRegion()),
+                          fixture(QStringLiteral("session_reference.tif")),
+                          {fixture(QStringLiteral("session_target.tif")),
+                           fixture(QStringLiteral("session_target.tif"))},
+                          ReferenceUpdatePolicy());
+    QVector<CorrelationResult> frames;
+    QString failure;
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&frames](int, const CorrelationResult &r) { frames.append(r); });
+    QObject::connect(&runner, &SequenceRunner::failed,
+                     [&failure](const QString &reason) { failure = reason; });
+    runner.run();
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QCOMPARE(frames.size(), 2);
+    for (const CorrelationResult &frame : frames)
+        QVERIFY(frame.alignment.knownLengthUsed);
+}
+
+void TestSeparateSessions::a_sequence_across_sessions_measures_every_frame_not_only_the_first()
+{
+    // ⚑ Found 2026-10-16 by the known-length sequence case: from the second
+    // frame on, a sequence handed the run the points as followed from the
+    // frame before, and a run across sessions refuses a followed point, so
+    // every sequence of more than one target stopped at frame 2 telling the
+    // reader to turn off reference updating that was already off. Every case
+    // before this one ran a single target.
+    CorrelationSettings s = settings();
+    s.separateSessions = true;
+    SequenceRunner runner(s, withGround(specimenRegion()),
+                          fixture(QStringLiteral("session_reference.tif")),
+                          {fixture(QStringLiteral("session_target.tif")),
+                           fixture(QStringLiteral("session_target.tif")),
+                           fixture(QStringLiteral("session_target.tif"))},
+                          ReferenceUpdatePolicy());
+    QVector<CorrelationResult> frames;
+    QString failure;
+    QObject::connect(&runner, &SequenceRunner::frameFinished,
+                     [&frames](int, const CorrelationResult &r) { frames.append(r); });
+    QObject::connect(&runner, &SequenceRunner::failed,
+                     [&failure](const QString &reason) { failure = reason; });
+    runner.run();
+    QVERIFY2(failure.isEmpty(), qPrintable(failure));
+    QCOMPARE(frames.size(), 3);
+    for (const CorrelationResult &frame : frames) {
+        QCOMPARE(frame.alignment.fittedOn, SessionAlignmentRecord::Ground);
+        const Means m = measure(frame);
+        QVERIFY2(m.displacementError < 0.01, qPrintable(QString::number(m.displacementError, 'f', 5)));
+    }
 }
 
 QTEST_MAIN(TestSeparateSessions)

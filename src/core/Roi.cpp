@@ -231,6 +231,21 @@ QString regionSummary(const RegionOfInterest &roi)
                               .arg(parts.join(QStringLiteral(", ")));
 }
 
+double KnownLength::length() const
+{
+    return std::hypot(double(b.x() - a.x()), double(b.y() - a.y()));
+}
+
+QString KnownLength::describe() const
+{
+    return tr("known length %1 px, (%2, %3) to (%4, %5)")
+        .arg(length(), 0, 'f', 1)
+        .arg(a.x())
+        .arg(a.y())
+        .arg(b.x())
+        .arg(b.y());
+}
+
 QString groundSummary(const RegionOfInterest &roi)
 {
     QStringList parts;
@@ -467,6 +482,7 @@ RegionOfInterest withMeasuredShapesReplaced(const RegionOfInterest &roi,
         if (shape.isGround())
             replaced.shapes.append(shape);
     }
+    replaced.knownLength = roi.knownLength;
     return replaced;
 }
 

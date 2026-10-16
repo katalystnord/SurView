@@ -226,7 +226,27 @@ void CorrelationRunner::run()
             SessionAlignment2D aligner(m_settings.subsetRadius, alignStep, threads);
             aligner.setImages(ref_img, tar_img);
             aligner.setGround(fitOn.get());
+
+            // The known length gives the scale where the fit cannot: not on
+            // ground, which measures the scale itself from far more than two points.
+            const KnownLength &known = m_roi.knownLength;
+            record.knownLengthMarked = known.isValid();
+            if (known.isValid() && record.fittedOn != SessionAlignmentRecord::Ground) {
+                record.knownLengthA = known.a;
+                record.knownLengthB = known.b;
+                record.knownLengthReference = known.length();
+                aligner.setKnownLength(Point2D(float(known.a.x()), float(known.a.y())),
+                                       Point2D(float(known.b.x()), float(known.b.y())));
+            }
             const AlignmentResult fit = aligner.compute();
+            if (fit.known_length_used) {
+                record.knownLengthUsed = true;
+                record.knownLengthTarget = std::hypot(
+                    double(fit.known_length_target[1].x - fit.known_length_target[0].x),
+                    double(fit.known_length_target[1].y - fit.known_length_target[0].y));
+                record.knownLengthCorrelation =
+                    std::min(fit.known_length_zncc[0], fit.known_length_zncc[1]);
+            }
 
             record.matches = fit.matches;
             record.inliers = fit.inliers;
@@ -234,6 +254,25 @@ void CorrelationRunner::run()
             record.groundPointsUsed = fit.refined_used;
             record.residualRms = fit.residual_rms;
 
+            if (fit.status == AlignmentStatus::known_length_unmeasured) {
+                // Which end, in the reader's own coordinates; a subset that cannot
+                // be placed reads as a status code rather than a correlation.
+                const int end = fit.known_length_zncc[0] >= 0.9f ? 1 : 0;
+                const QPoint at = end == 0 ? known.a : known.b;
+                const float zncc = fit.known_length_zncc[end];
+                emit failed(tr("The known length could not be measured on the target: "
+                               "its end at (%1, %2) %3. Each end must sit on distinct "
+                               "pattern or a mark seen in both sessions, a subset "
+                               "radius clear of the edge of both images; %4 marks it "
+                               "again.")
+                                .arg(at.x())
+                                .arg(at.y())
+                                .arg(zncc > 0.f
+                                         ? tr("correlated at %1, below 0.9").arg(zncc, 0, 'f', 3)
+                                         : tr("could not be correlated there"))
+                                .arg(markKnownLengthLabel()));
+                return;
+            }
             if (fit.status != AlignmentStatus::ok) {
                 const QString why = fit.status == AlignmentStatus::too_few_ground_points
                     ? tr("only %1 of %2 subsets correlated and agreed with the camera "

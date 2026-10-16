@@ -81,6 +81,37 @@ struct RegionShape
     }
 };
 
+// Two points on the reference whose distance did not change between two
+// sessions: the ends of a scale bar, two fiducials, two marks on a part that
+// does not deform. Where no ground can be marked, a target from a separate
+// session is aligned on the specimen itself, and the fit then takes up the
+// specimen's uniform dilatation as though the camera had zoomed; a known length
+// gives the camera's scale from elsewhere, so that dilatation is measured
+// (core/SessionAlignment.h).
+//
+// ⚑ Like ground, it is no part of the region measured, and stays where it was
+// marked whatever happens to the region: it is marked on what did not change.
+struct KnownLength
+{
+    bool marked = false;
+    QPoint a;
+    QPoint b;
+
+    // Marked, with two distinct ends.
+    bool isValid() const { return marked && a != b; }
+
+    // In reference pixels.
+    double length() const;
+
+    // "known length 50.0 px, (13, 17) to (43, 57)"
+    QString describe() const;
+
+    bool operator==(const KnownLength &other) const
+    {
+        return marked == other.marked && a == other.a && b == other.b;
+    }
+};
+
 struct RegionOfInterest
 {
     // How this region came to exist. Carried with it and reported rather than
@@ -99,6 +130,11 @@ struct RegionOfInterest
     // from it carries that sentence with it. Empty when there is nothing to
     // qualify.
     QString limitation;
+
+    // A length that did not change between two sessions, when one is marked.
+    // Carried here, beside the ground, so it reaches the run, every frame of a
+    // sequence, the screen and the project by the region's own route.
+    KnownLength knownLength;
 
     // At least one valid shape that ADDS. A region of nothing but cuts encloses
     // nothing, since every pixel starts outside.

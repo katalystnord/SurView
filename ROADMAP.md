@@ -809,7 +809,28 @@ Understood well enough to start, large enough to need their own care.
     a `session alignment:` header line, both stated as "none" for an ordinary
     run, so a file that never mentions alignment cannot be mistaken for one that
     did.
-  - Still to do: the known length, the manual.
+  - **The known length, 2026-10-16.** Mark Known Length, in the Mark Ground
+    menu: two clicks on the ends of a length that did not change between the
+    sessions (a scale bar, two fiducials). Where no ground is marked, the fork's
+    `SessionAlignment2D::setKnownLength()` (`455450c`) correlates both ends on
+    the target and takes the camera's scale from the ratio of the two lengths,
+    fitting only the turn and the shift on the specimen. On the session
+    fixture every strain term then comes back within 3e-4, the dilatation the
+    specimen fit otherwise loses included; only the rigid motion is still taken
+    for the camera, and the limitation says exactly that. The report gives the
+    length in both images, the poorer end's correlation, and what each 0.01 px
+    of error at an end does to the dilatation. With ground marked it is listed
+    and reported as not used. An end that does not correlate refuses the run,
+    naming the end and the tool. Saved in the region, so project files are
+    version 4.
+  - ⚑ **Found on the way: a separate-sessions sequence of more than one target
+    stopped at frame 2**, telling the reader to turn off reference updating that
+    was already off. A sequence hands every frame after the first the points as
+    followed from the frame before, and a run across sessions rightly refuses a
+    followed point. Every case had used a single target. Each frame is now
+    measured from the grid, which with the reference never re-anchored is where
+    the followed points were anyway.
+  - Still to do: the manual.
     Ground marked over the specimen itself is used as drawn; the alignment's
     reweighting rejects some of it, and nothing says so yet.
 

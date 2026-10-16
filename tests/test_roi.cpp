@@ -146,6 +146,7 @@ private slots:
     void moving_the_region_leaves_the_ground_where_it_was_drawn();
     void the_ground_is_its_own_shapes_and_described_apart();
     void a_detected_region_replaces_what_is_measured_and_keeps_the_ground();
+    void a_known_length_stays_where_it_was_marked_and_describes_itself();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -1139,6 +1140,45 @@ void TestRoi::a_detected_region_replaces_what_is_measured_and_keeps_the_ground()
     QVERIFY(after.shapes.at(1) == drawn.shapes.at(1));
     QVERIFY(after.origin == RegionOfInterest::Detected);
     QCOMPARE(after.limitation, detected.limitation);
+}
+
+void TestRoi::a_known_length_stays_where_it_was_marked_and_describes_itself()
+{
+    // Negative checks (2026-10-16): auto-detection dropping it, and its length
+    // measured as |dx| + |dy|, each red here.
+    //
+    // Marked on what did not change between two sessions, like ground, so it
+    // stays where it was marked whatever happens to the region measured. A
+    // 3-4-5 triangle's hypotenuse offset from the origin, so the length is
+    // exact and neither end is the origin.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 10), QPoint(60, 40))};
+    roi.knownLength.marked = true;
+    roi.knownLength.a = QPoint(13, 17);
+    roi.knownLength.b = QPoint(43, 57);
+    QVERIFY(roi.knownLength.isValid());
+    QCOMPARE(roi.knownLength.length(), 50.0);
+    QCOMPARE(roi.knownLength.describe(),
+             QStringLiteral("known length 50.0 px, (13, 17) to (43, 57)"));
+
+    QVERIFY2(withRegionMoved(roi, QPoint(7, -3)).knownLength == roi.knownLength,
+             "the known length moved with the specimen");
+    RegionOfInterest detected;
+    detected.shapes = {box(RegionShape::Rectangle, QPoint(5, 5), QPoint(50, 50))};
+    QVERIFY2(withMeasuredShapesReplaced(roi, detected).knownLength == roi.knownLength,
+             "auto-detection erased the known length");
+
+    // It is not part of the region measured, and does not make one.
+    RegionOfInterest alone;
+    alone.knownLength = roi.knownLength;
+    QVERIFY(!alone.isValid());
+    QVERIFY(!regionContains(alone, 13, 17));
+
+    KnownLength point;
+    point.marked = true;
+    point.a = point.b = QPoint(4, 4);
+    QVERIFY2(!point.isValid(), "two clicks in one place make no length");
+    QVERIFY(!KnownLength().isValid());
 }
 
 QTEST_MAIN(TestRoi)

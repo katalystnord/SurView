@@ -115,6 +115,11 @@ Project sampleProject(const QString &dir)
     island.kind = RegionShape::Rectangle;
     island.points = {QPoint(48, 52), QPoint(45, 43)};
     project.roi.shapes.append(island);
+    // A known length with its second end first in both axes, so a file that
+    // swapped the ends or the axes reads back as a different one.
+    project.roi.knownLength.marked = true;
+    project.roi.knownLength.a = QPoint(171, 12);
+    project.roi.knownLength.b = QPoint(23, 88);
 
     project.referenceUpdate.enabled = true;
     project.referenceUpdate.znccThreshold = 0.85;
@@ -184,6 +189,7 @@ private slots:
     void a_project_written_before_shapes_opens_as_the_same_region();
     void an_entry_with_no_recorded_hash_is_not_reported_as_changed();
     void ground_is_kept_from_a_surview_that_would_measure_it();
+    void a_known_length_is_kept_from_a_surview_that_would_ignore_it();
 };
 
 void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
@@ -210,6 +216,8 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
                                 .arg(loaded.project.roi.shapes.at(i).describe(),
                                      saved.roi.shapes.at(i).describe())));
     QCOMPARE(loaded.project.roi.origin, saved.roi.origin);
+    QVERIFY2(loaded.project.roi.knownLength == saved.roi.knownLength,
+             qPrintable(loaded.project.roi.knownLength.describe()));
 
     // Every setting, not a subset: a project that restores the region but
     // silently resets the solver measures something different from what was
@@ -485,6 +493,34 @@ void TestProject::ground_is_kept_from_a_surview_that_would_measure_it()
     QCOMPARE(loaded.project.roi.shapes.size(), 2);
     QCOMPARE(int(loaded.project.roi.shapes.at(0).role), int(RegionShape::Add));
     QCOMPARE(int(loaded.project.roi.shapes.at(1).role), int(RegionShape::Cut));
+}
+
+void TestProject::a_known_length_is_kept_from_a_surview_that_would_ignore_it()
+{
+    // Negative checks (2026-10-16): the version left at 3, red here; the known
+    // length not written, and its ends swapped on the way in, each red on the
+    // round trip (everything a session was).
+    //
+    // A SurView from before the known length opens a version 3 file and fits
+    // the camera's scale on the specimen, measuring a different strain from
+    // the one this project was set up to measure. The version is raised so it
+    // refuses the file instead; a project with no known length reads back
+    // with none.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("session.svproj"));
+    QVERIFY(saveProject(path, sampleProject(dir.path())).isEmpty());
+    QFile written(path);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(written.readAll()).object();
+    QVERIFY2(root[QStringLiteral("version")].toInt() >= 4,
+             "a SurView that knows no known length would open this file");
+
+    Project plain = sampleProject(dir.path());
+    plain.roi.knownLength = KnownLength();
+    const QString plainPath = dir.filePath(QStringLiteral("plain.svproj"));
+    QVERIFY(saveProject(plainPath, plain).isEmpty());
+    QVERIFY(!loadProject(plainPath).project.roi.knownLength.marked);
 }
 
 void TestProject::a_project_written_before_shapes_opens_as_the_same_region()

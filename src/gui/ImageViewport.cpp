@@ -562,7 +562,7 @@ void ImageViewport::updateRoiBar()
 void ImageViewport::showRoi(const RegionOfInterest &roi)
 {
     // Ground alone is still something to draw and adjust (core/Roi.h).
-    m_roiShown = roi.hasShapes() ? roi : RegionOfInterest();
+    m_roiShown = roi.hasShapes() || roi.knownLength.isValid() ? roi : RegionOfInterest();
     refreshRoiGeometry();
     // The region moves the grid, so it moves where a subset can be previewed.
     refreshSettingsPreview();
@@ -591,7 +591,8 @@ void ImageViewport::refreshRoiGeometry()
     if (drawing && box && m_roiPlaced.size() == 1 && m_roiCursorValid)
         pending.points.append(m_roiCursor);
 
-    if (m_roiShown.shapes.isEmpty() && pending.points.isEmpty()) {
+    if (m_roiShown.shapes.isEmpty() && !m_roiShown.knownLength.isValid()
+        && pending.points.isEmpty()) {
         if (m_roiActorAdded) {
             m_renderer->RemoveActor(m_roiActor);
             m_roiActorAdded = false;
@@ -688,6 +689,19 @@ void ImageViewport::refreshRoiGeometry()
             handle(corner, colour);
     }
 
+    // The known length as a dimension line: the length, and a tick across each
+    // end, in the ground's blue, since it is marked on what did not change.
+    // Ticks rather than handles, because its ends cannot be dragged.
+    if (m_roiShown.knownLength.isValid()) {
+        const KnownLength &known = m_roiShown.knownLength;
+        const QPointF a(known.a), b(known.b);
+        outline({a, b}, false, stationary);
+        const QPointF along = (b - a) / known.length();
+        const QPointF across(-along.y() * 6.0, along.x() * 6.0);
+        outline({a - across, a + across}, false, stationary);
+        outline({b - across, b + across}, false, stationary);
+    }
+
     if (drawing) {
         for (const QPoint &corner : m_roiPlaced)
             handle(corner, inProgress);
@@ -754,14 +768,22 @@ void ImageViewport::buildGaugeBar()
     m_gaugeBar = new QFrame(this);
     m_gaugeBar->setStyleSheet(m_roiBar->styleSheet());
 
-    auto *row = new QHBoxLayout(m_gaugeBar);
-    row->setContentsMargins(12, 8, 12, 8);
-    row->setSpacing(10);
+    // ⚑ The text above, the buttons on a row of their own below it, as the
+    // region bar has them. Side by side, a viewport a few hundred pixels wide
+    // squeezed the text into a column one word wide and clipped the buttons'
+    // own labels ("Indo anchc"). Found by screenshot, 2026-10-16.
+    auto *stack = new QVBoxLayout(m_gaugeBar);
+    stack->setContentsMargins(12, 8, 12, 8);
+    stack->setSpacing(6);
 
     m_gaugeBarText = new QLabel(m_gaugeBar);
     m_gaugeBarText->setWordWrap(true);
-    row->addWidget(m_gaugeBarText, 1);
-    row->addSpacing(6);
+    stack->addWidget(m_gaugeBarText);
+
+    auto *row = new QHBoxLayout;
+    row->setSpacing(10);
+    stack->addLayout(row);
+    row->addStretch(1);
 
     m_gaugeUndo = new QPushButton(tr("Undo anchor"), m_gaugeBar);
     connect(m_gaugeUndo, &QPushButton::clicked, this, [this] {
@@ -802,7 +824,16 @@ void ImageViewport::updateGaugeBar()
         return;
 
     m_gaugeUndo->setEnabled(!m_gaugeAnchors.isEmpty());
-    if (m_placingProbe) {
+    if (m_placingKnown) {
+        m_gaugeBarText->setText(
+            m_gaugeAnchors.isEmpty()
+                ? tr("Known length: click one END of a length that did not change "
+                     "between the sessions, such as a scale bar or two fiducials. The "
+                     "camera's scale is taken from it.")
+                : tr("Now click the OTHER end. Put both on a distinct mark or pattern "
+                     "seen in both sessions: each end is found on the target by "
+                     "correlation."));
+    } else if (m_placingProbe) {
         m_gaugeBarText->setText(
             m_gaugeAnchors.isEmpty()
                 ? tr("Line probe: click the START of the line on the specimen. "
@@ -833,6 +864,14 @@ void ImageViewport::beginProbePlacement()
     beginExtensometerPlacement();
 }
 
+void ImageViewport::beginKnownLengthPlacement()
+{
+    if (!m_hasImage || m_gaugePlacing)
+        return;
+    m_placingKnown = true;
+    beginExtensometerPlacement();
+}
+
 void ImageViewport::beginExtensometerPlacement()
 {
     if (!m_hasImage || m_gaugePlacing)
@@ -860,6 +899,7 @@ void ImageViewport::cancelExtensometerPlacement()
         return;
     m_gaugePlacing = false;
     m_placingProbe = false;
+    m_placingKnown = false;
     m_gaugeAnchors.clear();
     m_gaugeCursorValid = false;
     if (m_gaugeBar)
@@ -1220,7 +1260,7 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
                 if (a == b) {
                     m_gaugeAnchors.removeLast();
                     m_gaugeBarText->setText(
-                        m_placingProbe
+                        m_placingProbe || m_placingKnown
                             ? tr("Both ends landed on the same pixel, so the line "
                                  "would have no length. Click the end further away.")
                             : tr("Both anchors landed on the same pixel, so the gauge "
@@ -1231,13 +1271,20 @@ void ImageViewport::mousePressEvent(QMouseEvent *event)
                     return;
                 }
                 const bool probe = m_placingProbe;
+                const bool known = m_placingKnown;
                 m_gaugePlacing = false;
                 m_placingProbe = false;
+                m_placingKnown = false;
                 m_gaugeAnchors.clear();
                 m_gaugeCursorValid = false;
                 m_gaugeBar->hide();
                 unsetCursor();
-                if (probe)
+                // The placement drawn away: nothing else redraws it for a known
+                // length, and its first end was left on the picture in amber.
+                refreshGaugeGeometry();
+                if (known)
+                    emit knownLengthPlaced(a, b);
+                else if (probe)
                     emit probePlaced(a.x(), a.y(), b.x(), b.y());
                 else
                     emit extensometerPlaced(a.x(), a.y(), b.x(), b.y());

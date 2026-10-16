@@ -33,12 +33,21 @@ QString alignmentLimitation(const SessionAlignmentRecord &alignment)
     if (alignment.fittedOn != SessionAlignmentRecord::MeasuredRegion
         && alignment.fittedOn != SessionAlignmentRecord::WholeImage)
         return QString();
+    if (alignment.knownLengthUsed) {
+        return tr("The camera move was fitted on the specimen itself, with its scale "
+                  "taken from the known length, so the specimen's rigid motion is not "
+                  "measured: it was taken for the camera. Its strain is measured, the "
+                  "uniform dilatation included. %1 on the toolbar marks ground that did "
+                  "not move, so that the rigid motion is measured too.")
+            .arg(markGroundLabel());
+    }
     return tr("The camera move was fitted on the specimen itself, so the specimen's "
               "rigid motion and its uniform dilatation (the part of the strain that "
               "is the same in every direction) are not measured: both were taken "
               "for the camera. Strain differences between directions and shear are "
               "measured. %1 on the toolbar marks ground that did not move, so that "
-              "all of it is measured.").arg(markGroundLabel());
+              "all of it is measured; where there is none, a known length from the "
+              "same menu restores the dilatation.").arg(markGroundLabel());
 }
 
 QStringList alignmentReport(const SessionAlignmentRecord &alignment)
@@ -62,6 +71,25 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
                  .arg(alignment.groundPointsUsed)
                  .arg(alignment.groundPoints)
                  .arg(alignment.residualRms, 0, 'f', 4);
+    if (alignment.knownLengthUsed) {
+        // A length L found to within e px at each end moves the scale by at most
+        // e / L either way, and the dilatation with it: arithmetic, not an estimate.
+        lines << tr("Camera scale taken from the known length, (%1, %2) to "
+                    "(%3, %4): %5 px in the reference, %6 px in the target, its ends "
+                    "correlating at %7 or better. Each 0.01 px of error in finding "
+                    "either end changes the measured dilatation by at most %8.")
+                     .arg(alignment.knownLengthA.x())
+                     .arg(alignment.knownLengthA.y())
+                     .arg(alignment.knownLengthB.x())
+                     .arg(alignment.knownLengthB.y())
+                     .arg(alignment.knownLengthReference, 0, 'f', 1)
+                     .arg(alignment.knownLengthTarget, 0, 'f', 1)
+                     .arg(alignment.knownLengthCorrelation, 0, 'f', 4)
+                     .arg(0.01 / alignment.knownLengthTarget, 0, 'g', 2);
+    } else if (alignment.knownLengthMarked) {
+        lines << tr("The known length marked was not used: the camera move was fitted "
+                    "on ground, which measures the scale itself.");
+    }
     // The field is not in the target's pixels, which is where a reader holding
     // the target image would otherwise look for it.
     lines << tr("Positions and displacements are in the reference image's pixels, "
@@ -90,6 +118,16 @@ QString markGroundLabel()
     return tr("Mark Ground");
 }
 
+QString markKnownLengthLabel()
+{
+    return tr("Mark Known Length");
+}
+
+QString removeKnownLengthLabel()
+{
+    return tr("Remove Known Length");
+}
+
 QString markGroundUnavailableNote()
 {
     return tr("Ground is what a target from a separate session is aligned on. Turn "
@@ -97,7 +135,7 @@ QString markGroundUnavailableNote()
         .arg(separateSessionsLabel());
 }
 
-QString separateSessionsPanelNote(bool on, bool groundMarked)
+QString separateSessionsPanelNote(bool on, bool groundMarked, bool knownLengthMarked)
 {
     if (!on) {
         return tr("Off: the reference and every target share one camera and one "
@@ -110,13 +148,26 @@ QString separateSessionsPanelNote(bool on, bool groundMarked)
                            "measured as it was recorded, with nothing resampled.");
     if (groundMarked) {
         return tr("%1 The camera move is fitted on the ground marked, so the "
-                  "specimen's own movement is measured in full.").arg(how);
+                  "specimen's own movement is measured in full.%2").arg(how)
+            .arg(knownLengthMarked
+                     ? tr(" The known length marked is not needed and not used.")
+                     : QString());
+    }
+    if (knownLengthMarked) {
+        return tr("%1 With no stationary ground marked, the camera move is fitted on "
+                  "what is being measured, with its scale taken from the known length "
+                  "marked: the specimen's rigid motion is taken up and its strain is "
+                  "measured. %2 on the toolbar marks ground that did not move, such "
+                  "as the bench or a fixture, so that the rigid motion is measured too.")
+            .arg(how, markGroundLabel());
     }
     return tr("%1 With no stationary ground marked, the camera move is fitted on what "
               "is being measured, which takes up the specimen's own rigid motion "
               "and uniform stretch; the report says so. %2 on the toolbar marks "
-              "ground that did not move, such as the bench or a fixture.")
-        .arg(how, markGroundLabel());
+              "ground that did not move, such as the bench or a fixture; where there "
+              "is none, %3 in the same menu marks a length that did not change, "
+              "which restores the stretch.")
+        .arg(how, markGroundLabel(), markKnownLengthLabel());
 }
 
 QString separateSessionsReanchorNote()

@@ -67,7 +67,11 @@ void SequenceRunner::run()
         runner.setReferenceIsTheOriginal(currentReference == m_referencePath);
         runner.setCarriedCuts(carried);
 
-        if (!tracked.isEmpty()) {
+        // ⚑ Never across separate sessions: a followed point sits in an earlier
+        // frame's camera, which the run refuses, and with the reference never
+        // re-anchored there it is only the grid again. Each frame is measured
+        // from the grid instead.
+        if (!tracked.isEmpty() && !m_settings.separateSessions) {
             // Measured where the points have been followed TO. Identical to the
             // grid until the first re-anchor, and taking the same path either
             // way means the seeded path is the one every sequence exercises

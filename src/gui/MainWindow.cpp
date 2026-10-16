@@ -194,6 +194,8 @@ MainWindow::MainWindow(QWidget *parent)
     connect(m_viewport, &ImageViewport::extensometerPlaced, this,
             &MainWindow::onExtensometerPlaced);
     connect(m_viewport, &ImageViewport::probePlaced, this, &MainWindow::onProbePlaced);
+    connect(m_viewport, &ImageViewport::knownLengthPlaced, this,
+            &MainWindow::onKnownLengthPlaced);
     connect(m_viewport, &ImageViewport::fieldChannelChanged, this,
             [this](FieldChannel) { updateProfileContext(); });
     connect(m_viewport, &ImageViewport::extensometerPlacingChanged, this,
@@ -371,6 +373,24 @@ void MainWindow::createActions()
     m_actMarkGround = new QAction(QIcon(groundIcon), markGroundLabel(), this);
     m_actMarkGround->setMenu(groundMenu);
 
+    // ⚑ In the ground's own menu, since it answers the same need where no
+    // ground can be marked: what the camera's scale is (core/Roi.h).
+    m_actMarkKnownLength = new QAction(markKnownLengthLabel(), this);
+    m_actMarkKnownLength->setStatusTip(
+        tr("Click the two ends of a length that did not change between the sessions, "
+           "such as a scale bar or two fiducials. Where no ground is marked, the "
+           "camera's scale is taken from it, so the specimen's uniform stretch is "
+           "measured."));
+    connect(m_actMarkKnownLength, &QAction::triggered, this,
+            [this] { m_viewport->beginKnownLengthPlacement(); });
+    m_actRemoveKnownLength = new QAction(removeKnownLengthLabel(), this);
+    m_actRemoveKnownLength->setStatusTip(tr("Take the known length off the reference"));
+    connect(m_actRemoveKnownLength, &QAction::triggered, this,
+            &MainWindow::removeKnownLength);
+    groundMenu->addSeparator();
+    groundMenu->addAction(m_actMarkKnownLength);
+    groundMenu->addAction(m_actRemoveKnownLength);
+
     m_actRemoveShape = new QAction(tr("Remove Shape"), this);
     m_actRemoveShape->setStatusTip(
         tr("Take the shape selected in the project list out of the region"));
@@ -523,6 +543,9 @@ void MainWindow::createMenus()
     cutSub->addActions(m_actCutShape);
     QMenu *groundSub = analysisMenu->addMenu(m_actMarkGround->icon(), markGroundLabel());
     groundSub->addActions(m_actGroundShape);
+    groundSub->addSeparator();
+    groundSub->addAction(m_actMarkKnownLength);
+    groundSub->addAction(m_actRemoveKnownLength);
     analysisMenu->addAction(m_actRemoveShape);
     analysisMenu->addAction(m_actAutoRoi);
     analysisMenu->addAction(m_actClearRoi);
@@ -1416,7 +1439,8 @@ void MainWindow::updateReferenceUpdateControls()
     const bool across = m_separateSessions->isChecked();
     m_reanchorEnabled->setEnabled(!across);
     m_reanchorUnavailable->setVisible(across);
-    m_separateSessionsNote->setText(separateSessionsPanelNote(across, m_roi.hasGround()));
+    m_separateSessionsNote->setText(
+        separateSessionsPanelNote(across, m_roi.hasGround(), m_roi.knownLength.isValid()));
 
     const bool on = m_reanchorEnabled->isChecked() && !across;
     m_reanchorThreshold->setEnabled(on);
@@ -1570,7 +1594,9 @@ void MainWindow::updateSectionSummaries()
     m_referenceSection->setSummary(
         settings.separateSessions
             ? (m_roi.hasGround() ? tr("separate sessions, aligned on the ground marked")
-                                 : tr("separate sessions, each target aligned to the reference"))
+               : m_roi.knownLength.isValid()
+                   ? tr("separate sessions, scale from the known length")
+                   : tr("separate sessions, each target aligned to the reference"))
             : policy.enabled
                   ? tr("re-anchors below %1% still tracking").arg(int(policy.percentile * 100.0))
                   : tr("always the original reference"));
@@ -1745,6 +1771,36 @@ void MainWindow::onShapeDrawn(const RegionShape &shape)
             .arg(shape.describe())
             .arg(m_roi.shapes.size())
             .arg(m_roi.shapes.size()));
+}
+
+void MainWindow::onKnownLengthPlaced(const QPoint &a, const QPoint &b)
+{
+    KnownLength known;
+    known.marked = true;
+    known.a = a;
+    known.b = b;
+    if (!known.isValid())
+        return;
+    const bool replaced = m_roi.knownLength.isValid();
+    m_roi.knownLength = known;
+    showRoiInProject();
+    discardStaleResult();
+    updateActionStates();
+    log(tr("Marked %1%2. Where no ground is marked, a target from a separate session "
+           "takes its camera scale from it.")
+            .arg(known.describe())
+            .arg(replaced ? tr(", in place of the one marked before") : QString()));
+}
+
+void MainWindow::removeKnownLength()
+{
+    if (!m_roi.knownLength.marked)
+        return;
+    m_roi.knownLength = KnownLength();
+    showRoiInProject();
+    discardStaleResult();
+    updateActionStates();
+    log(tr("Known length removed."));
 }
 
 int MainWindow::selectedShapeIndex() const
@@ -2135,7 +2191,7 @@ void MainWindow::displayRecord(const ImageRecord &record)
     // over an image that shares that grid and withheld from one that does not:
     // an outline over a differently sized picture would point at pixels it was
     // never about.
-    const bool sameGrid = m_roi.hasShapes() && record.isValid()
+    const bool sameGrid = (m_roi.hasShapes() || m_roi.knownLength.isValid()) && record.isValid()
                           && record.width == m_referenceRecord.width
                           && record.height == m_referenceRecord.height;
     if (sameGrid)
@@ -2425,7 +2481,7 @@ void MainWindow::showRoiInProject()
         updateSectionSummaries();
     }
 
-    if (!m_roi.hasShapes()) {
+    if (!m_roi.hasShapes() && !m_roi.knownLength.isValid()) {
         m_roiItem->setText(0, tr("Region of interest - none (whole image)"));
         m_roiItem->setToolTip(0, QString());
         qDeleteAll(m_roiItem->takeChildren());
@@ -2465,6 +2521,8 @@ void MainWindow::showRoiInProject()
                             .arg(m_roi.originText());
     if (grounds > 0)
         summary += grounds == 1 ? tr(", 1 ground") : tr(", %1 ground").arg(grounds);
+    if (m_roi.knownLength.isValid())
+        summary += tr(", known length");
     m_roiItem->setText(0, summary);
     const bool groundInUse = m_separateSessions && m_separateSessions->isChecked();
 
@@ -2508,14 +2566,41 @@ void MainWindow::showRoiInProject()
         line->setText(0, tr("Ground unused: separate sessions off"));
         line->setToolTip(0, markGroundUnavailableNote());
     }
-    QStringList gestures{tr("Drag a corner to move it")};
+    // The known length, not numbered: it is not a shape and has no place in
+    // the order. Whether it is used comes first on the line, as for ground,
+    // and why not on a line of its own.
+    if (m_roi.knownLength.isValid()) {
+        const bool used = groundInUse && !m_roi.hasGround();
+        auto *line = new QTreeWidgetItem(m_roiItem);
+        line->setText(0, used ? m_roi.knownLength.describe()
+                              : tr("not used: %1").arg(m_roi.knownLength.describe()));
+        line->setToolTip(0, tr("A length that did not change between the sessions. "
+                               "Where no ground is marked, a target from a separate "
+                               "session takes its camera scale from it. %1 takes it "
+                               "off.").arg(removeKnownLengthLabel()));
+        if (!used) {
+            auto *why = new QTreeWidgetItem(m_roiItem);
+            why->setText(0, groundInUse
+                                ? tr("Known length unused: the ground gives the scale")
+                                : tr("Known length unused: separate sessions off"));
+            why->setToolTip(0, groundInUse
+                                   ? tr("Ground measures the camera's scale itself, from "
+                                        "far more of the picture than two points.")
+                                   : markGroundUnavailableNote());
+        }
+    }
+    QStringList gestures;
+    if (m_roi.hasShapes())
+        gestures << tr("Drag a corner to move it");
     // Ground does not move with the region (core/Roi.h), so with nothing but
     // ground there is no region to drag.
     if (m_roi.isValid())
         gestures << tr("Drag inside it to move the whole region");
-    gestures << tr("Double-click a polygon edge to add a corner")
-             << tr("Right-click a polygon corner to take it out")
-             << tr("Select a shape above, then Analysis > Remove Shape");
+    if (m_roi.hasShapes()) {
+        gestures << tr("Double-click a polygon edge to add a corner")
+                 << tr("Right-click a polygon corner to take it out")
+                 << tr("Select a shape above, then Analysis > Remove Shape");
+    }
     for (const QString &gesture : gestures) {
         auto *line = new QTreeWidgetItem(m_roiItem);
         line->setText(0, gesture);
@@ -2536,6 +2621,8 @@ void MainWindow::showRoiInProject()
     notes << regionSummary(m_roi);
     if (m_roi.hasGround())
         notes << groundSummary(m_roi);
+    if (m_roi.knownLength.isValid())
+        notes << m_roi.knownLength.describe();
     notes << tr("Selects the point centres that get measured. Each subset still "
                 "reaches up to its radius beyond the boundary, so pixels just "
                 "outside it contribute to the points near its edge.");
@@ -2627,15 +2714,15 @@ void MainWindow::detectRoi()
 
 void MainWindow::clearRoi()
 {
-    if (!m_roi.hasShapes())
+    if (!m_roi.hasShapes() && !m_roi.knownLength.marked)
         return;
 
     discardStaleResult();
-    const bool hadGround = m_roi.hasGround();
+    const bool hadGround = m_roi.hasGround() || m_roi.knownLength.marked;
     m_roi = RegionOfInterest();
     showRoiInProject();
-    log(hadGround ? tr("Region of interest and the ground marked cleared - the next run "
-                       "measures the whole image.")
+    log(hadGround ? tr("Region of interest and what was marked for separate sessions "
+                       "cleared - the next run measures the whole image.")
                   : tr("Region of interest cleared - the next run measures the whole image."));
     statusBar()->showMessage(tr("Region of interest cleared"), 4000);
     updateActionStates();
@@ -3310,7 +3397,8 @@ void MainWindow::updateActionStates()
         hasImage ? tr("Propose a region by segmenting the speckled area")
                  : tr("Import an image first"));
 
-    m_actClearRoi->setEnabled(m_roi.hasShapes() && !running && !drawing);
+    m_actClearRoi->setEnabled((m_roi.hasShapes() || m_roi.knownLength.marked) && !running
+                              && !drawing);
     // A cut needs a region to cut from, so the action is dead until there is
     // one -- and says so through being disabled rather than by failing when
     // pressed.
@@ -3328,6 +3416,9 @@ void MainWindow::updateActionStates()
     m_actMarkGround->setEnabled(canGround);
     for (QAction *ground : m_actGroundShape)
         ground->setEnabled(canGround);
+    const bool placing = m_viewport && m_viewport->isPlacingExtensometer();
+    m_actMarkKnownLength->setEnabled(canGround && !placing);
+    m_actRemoveKnownLength->setEnabled(m_roi.knownLength.marked && !running && !drawing);
     // ⚑ The status bar too, and with the reason: a greyed tool's tooltip is
     // not shown on every platform, and the status line is what a hover is
     // certain to change. Found by screenshot, where hovering the greyed tool
@@ -3335,7 +3426,9 @@ void MainWindow::updateActionStates()
     const QString groundPurpose =
         tr("Draw a rectangle, ellipse or polygon over ground that did not move "
            "between the two sessions, such as the bench or a fixture: a target from "
-           "a separate session is aligned on it. Ground is not measured.");
+           "a separate session is aligned on it. Ground is not measured. Where there is "
+           "none, %1 in its menu marks a length that did not change.")
+            .arg(markKnownLengthLabel());
     m_actMarkGround->setStatusTip(across ? groundPurpose
                                          : tr("%1 %2").arg(markGroundUnavailableNote(),
                                                            groundPurpose));

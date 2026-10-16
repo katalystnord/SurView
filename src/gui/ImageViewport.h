@@ -110,6 +110,10 @@ public:
     // A line probe is placed with the same two clicks. While placing, the bar
     // asks for the line's ends rather than a gauge's anchors.
     void beginProbePlacement();
+    // And a known length (core/Roi.h): two points whose distance did not
+    // change between two sessions. The bar asks for its ends.
+    void beginKnownLengthPlacement();
+    bool isPlacingKnownLength() const { return m_gaugePlacing && m_placingKnown; }
     // Draw the probe, with a tick at each place it is sampled for a grid of
     // `step`. An invalid probe draws nothing.
     void showProbe(const LineProbe &probe, int step);
@@ -237,6 +241,7 @@ signals:
     // draws it; the project owns it and gives it a name.
     void extensometerPlaced(double ax, double ay, double bx, double by);
     void extensometerPlacingChanged(bool placing);
+    void knownLengthPlaced(const QPoint &a, const QPoint &b);
     // Both ends of a line probe have been placed, in image pixels.
     void probePlaced(double ax, double ay, double bx, double by);
 
@@ -458,6 +463,7 @@ private:
     bool m_gaugeCursorValid = false;
     QVector<Extensometer> m_gaugesShown;
     bool m_placingProbe = false;     // the two clicks are a probe, not a gauge
+    bool m_placingKnown = false;     // the two clicks are a known length
     LineProbe m_probeShown;
     QVector<QPointF> m_probeSamples;
     vtkNew<vtkPolyData> m_probeGeometry;

@@ -119,6 +119,8 @@ private slots:
     void onRoiDrawn(const RegionOfInterest &roi);
     void detectRoi();
     void onShapeDrawn(const RegionShape &shape);
+    void onKnownLengthPlaced(const QPoint &a, const QPoint &b);
+    void removeKnownLength();
     void removeSelectedShape();
     // The shape selected in the project list, as its index in the region, or
     // -1 when no shape is selected.
@@ -440,6 +442,8 @@ private:
     QAction *m_actAddToRegion = nullptr;
     QAction *m_actCutFromRegion = nullptr;
     QAction *m_actMarkGround = nullptr;
+    QAction *m_actMarkKnownLength = nullptr;
+    QAction *m_actRemoveKnownLength = nullptr;
     QVector<QAction *> m_actAddShape;
     QVector<QAction *> m_actCutShape;
     QVector<QAction *> m_actGroundShape;

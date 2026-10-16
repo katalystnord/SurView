@@ -460,6 +460,7 @@ private slots:
     void the_masking_settings_are_saved_with_the_project_and_come_back_with_it();
     void a_target_from_another_session_is_measured_once_the_screen_says_how();
     void ground_is_marked_where_the_screen_says_and_the_run_is_aligned_on_it();
+    void a_known_length_is_marked_where_the_screen_says_and_gives_the_scale();
     void the_separate_sessions_switch_is_saved_with_the_project();
 
     void the_settings_window_is_on_the_file_menu_and_names_every_default();
@@ -4370,6 +4371,94 @@ void TestWorkspaceWalkthrough::ground_is_marked_where_the_screen_says_and_the_ru
     byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
     QVERIFY2(projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("not used")),
              qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
+}
+
+void TestWorkspaceWalkthrough::a_known_length_is_marked_where_the_screen_says_and_gives_the_scale()
+{
+    // Negative checks (2026-10-16), each red here: the run never handed it to
+    // the engine; the viewport emitting a gauge instead; the switch's note
+    // without the known-length branch; the tree not saying it is unused beside
+    // ground; the report's line about it removed; Remove Known Length enabled
+    // with nothing to remove.
+    //
+    // With no ground to mark, the screen names the known length, the tool is
+    // found where it says, its bar says what to click, and the run takes the
+    // camera's scale from it. Everything here is something the screen says.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("session_reference.tif")));
+    MessageReader warning;
+    warning.arm();
+    window.addTargetImages({fixture(QStringLiteral("session_target.tif"))});
+
+    QAction *mark = actionLabelled(&window, markKnownLengthLabel());
+    QVERIFY2(mark, "nothing marks a known length");
+    QVERIFY(!mark->isEnabled());
+    CollapsibleSection *reference = sectionTitled(&window, QStringLiteral("Reference"));
+    if (reference->isCollapsed())
+        reference->findChild<QToolButton *>()->click();
+    byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
+    QVERIFY(mark->isEnabled());
+    // The note names it, and the tool it lives under.
+    QVERIFY2(somethingOnScreenSays(&window, markKnownLengthLabel())
+                 && somethingOnScreenSays(&window, QStringLiteral("in the same menu")),
+             "the switch's note does not say where a known length is marked");
+    QVERIFY2(actionLabelled(&window, QStringLiteral("Mark Ground"))->menu()->actions().contains(mark),
+             "the note says the known length is in the ground's menu, and it is not");
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    const auto click = [viewport](double x, double y) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, x, y));
+    };
+    actionLabelled(&window, QStringLiteral("Add Ellipse"))->trigger();
+    click(80, 60);
+    click(160, 140);
+    QVERIFY(window.roi().isValid());
+
+    mark->trigger();
+    QVERIFY(viewport->isPlacingKnownLength());
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("did not change between the sessions")),
+             "the bar does not say what a known length is");
+    click(22, 24);
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("click the OTHER end")),
+             "the bar does not ask for the second end");
+    click(214, 178);
+    QVERIFY(!viewport->isPlacingKnownLength());
+    QVERIFY(window.roi().knownLength.isValid());
+    const QString listed = projectLine(&window, QStringLiteral("Region of interest"));
+    QVERIFY2(listed.contains(QStringLiteral("known length 246.1 px, (22, 24) to (214, 178)"))
+                 && !listed.contains(QStringLiteral("not used: known length")),
+             qPrintable(listed));
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("scale taken from the known length")),
+             "the switch's note does not say the known length is in use");
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    run->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() >= 1; }, 120000));
+    QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
+    QVERIFY(window.lastResult().alignment.knownLengthUsed);
+    QVERIFY2(logView(&window)->toPlainText().contains(QStringLiteral("Camera scale taken from the known length")),
+             qPrintable(logView(&window)->toPlainText()));
+
+    // Ground marked as well: listed as not used, and why.
+    actionLabelled(&window, QStringLiteral("Ground Rectangle"))->trigger();
+    click(3, 3);
+    click(46, 196);
+    const QString withGround = projectLine(&window, QStringLiteral("Region of interest"));
+    QVERIFY2(withGround.contains(QStringLiteral("not used: known length"))
+                 && withGround.contains(QStringLiteral("the ground gives the scale")),
+             qPrintable(withGround));
+
+    // And it comes off where it went on.
+    QAction *remove = actionLabelled(&window, removeKnownLengthLabel());
+    QVERIFY(remove && remove->isEnabled());
+    remove->trigger();
+    QVERIFY(!window.roi().knownLength.marked);
+    QVERIFY(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("known length")));
+    QVERIFY(!remove->isEnabled());
 }
 
 void TestWorkspaceWalkthrough::the_separate_sessions_switch_is_saved_with_the_project()
