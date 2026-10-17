@@ -55,6 +55,7 @@
 #include <QPushButton>
 #include <QScrollArea>
 #include <QSignalSpy>
+#include <QStatusBar>
 #include <QTest>
 #include <QTimer>
 #include <QMessageBox>
@@ -4366,10 +4367,95 @@ void TestWorkspaceWalkthrough::ground_is_marked_where_the_screen_says_and_the_ru
     QVERIFY2(logged.contains(QStringLiteral("aligned on the ground marked as stationary"))
                  && logged.contains(QStringLiteral("2 shapes, rectangle")),
              qPrintable(logged));
+    QVERIFY2(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("Ground inside region")),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
 
-    // Turned off, the ground stays, and says it is not being used.
+    // ⚑ Ground too narrow for the alignment's subsets (2026-10-17, found by
+    // screenshot: such ground was refused only after a run, as "0 of 0
+    // subsets"). The bands are 44 and 43 px wide; a 61 px subset fits neither,
+    // and the tree says so as soon as the radius asks for it, and stops once
+    // it no longer does. Negative checks, each red here: the line never
+    // written; the tree not refreshed when the radius changes.
+    QVERIFY(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("subsets needed")));
+    auto *radius = controlLabelled<QSpinBox>(&window, QStringLiteral("Subset radius"));
+    const int radiusWas = radius->value();
+    radius->setValue(30);
+    QVERIFY2(projectLine(&window, QStringLiteral("Region of interest"))
+                 .contains(QStringLiteral("Ground fits 0 of 6 subsets needed")),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
+    // Run anyway: refused in words about the ground's size, and the status bar
+    // does not go on saying it is aligning (found by screenshot: the progress
+    // line, "aligning the two sessions - 0 of 1 points", outlived the run).
+    // Negative checks, each red here: the message not cleared on failure; a
+    // one-step stage counted in points.
+    {
+        QStringList shown;
+        // Disconnected before `shown` goes out of scope, or later messages
+        // write into a list that no longer exists (it crashed the case).
+        const QMetaObject::Connection watching =
+            QObject::connect(window.statusBar(), &QStatusBar::messageChanged,
+                             [&shown](const QString &m) { shown << m; });
+        MessageReader refusal;
+        refusal.arm();
+        QAction *runNow = actionLabelled(&window, QStringLiteral("Run Correlation"));
+        runNow->trigger();
+        const bool answered = QTest::qWaitFor([&refusal] { return !refusal.text().isEmpty(); }, 60000);
+        const bool finished = QTest::qWaitFor([&window] {
+            return actionLabelled(&window, QStringLiteral("Run Correlation"))->isEnabled();
+        }, 60000);
+        QObject::disconnect(watching);
+        QVERIFY(answered && finished);
+        QVERIFY2(refusal.text().contains(QStringLiteral("subsets lying wholly on the ground")),
+                 qPrintable(refusal.text()));
+        QVERIFY2(!window.statusBar()->currentMessage().contains(QStringLiteral("aligning")),
+                 qPrintable(window.statusBar()->currentMessage()));
+        QVERIFY2(shown.contains(QStringLiteral("aligning the two sessions")),
+                 qPrintable(shown.join(QStringLiteral(" | "))));
+        QVERIFY2(!shown.join(QLatin1Char('|')).contains(QStringLiteral("of 1 points")),
+                 qPrintable(shown.join(QStringLiteral(" | "))));
+    }
+    radius->setValue(radiusWas);
+    QVERIFY(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("subsets needed")));
+
+    // ⚑ Ground drawn over the specimen (2026-10-17): said in the tree as it is
+    // drawn, in a count a reader can check against the box, and after a run
+    // the log says where the alignment found the ground moving. 51 x 51 px,
+    // wholly inside the measured ellipse, and wide enough to hold the 33 px
+    // subsets the alignment correlates (a box narrower than one holds none, and
+    // only the overlap can be said of it). Negative checks, each red here: the
+    // tree line never written; written with the switch off as well; the
+    // report's moved-ground line removed.
+    actionLabelled(&window, QStringLiteral("Ground Rectangle"))->trigger();
+    click(95, 75);
+    click(145, 125);
+    // At this window size a screen pixel is under 1.5 image pixels, so a
+    // corner can land one pixel off where it was aimed; the count is pinned
+    // exactly in test_roi, and here it is the count of the box actually drawn.
+    const qint64 inside = groundInsideRegion(window.roi()).insideRegion;
+    QVERIFY2(inside > 2400 && inside < 2800, qPrintable(QString::number(inside)));
+    const QString overlapping = projectLine(&window, QStringLiteral("Region of interest"));
+    QVERIFY2(overlapping.contains(QStringLiteral("Ground inside region: %1 px").arg(inside)),
+             qPrintable(overlapping));
+    run->trigger();
+    // The second run's own alignment line, not text an earlier line could hold.
+    QVERIFY(QTest::qWaitFor([&window] {
+        return logView(&window)->toPlainText().count(QStringLiteral("feature matches")) >= 2;
+    }, 120000));
+    QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
+    const QString relogged = logView(&window)->toPlainText();
+    QVERIFY2(relogged.contains(QStringLiteral("ground subsets were left out of the fit"))
+                 || relogged.contains(QStringLiteral("ground subset was left out of the fit")),
+             qPrintable(relogged));
+    QVERIFY2(relogged.contains(QStringLiteral("%1 px of the ground marked lies inside the region measured")
+                                   .arg(inside)),
+             qPrintable(relogged));
+
+    // Turned off, the ground stays, and says it is not being used, and an
+    // overlap that no alignment will use is no longer worth a line.
     byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
     QVERIFY2(projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("not used")),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
+    QVERIFY2(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("Ground inside region")),
              qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
 }
 
@@ -4442,6 +4528,16 @@ void TestWorkspaceWalkthrough::a_known_length_is_marked_where_the_screen_says_an
     QVERIFY(window.lastResult().alignment.knownLengthUsed);
     QVERIFY2(logView(&window)->toPlainText().contains(QStringLiteral("Camera scale taken from the known length")),
              qPrintable(logView(&window)->toPlainText()));
+    QVERIFY(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("in the region")));
+
+    // Marked again with an end on the specimen: the tree says so as it is
+    // marked (2026-10-17). Negative check: the line never written, red here.
+    mark->trigger();
+    click(22, 24);
+    click(130, 104);
+    QVERIFY2(projectLine(&window, QStringLiteral("Region of interest"))
+                 .contains(QStringLiteral("Known length: an end is in the region")),
+             qPrintable(projectLine(&window, QStringLiteral("Region of interest"))));
 
     // Ground marked as well: listed as not used, and why.
     actionLabelled(&window, QStringLiteral("Ground Rectangle"))->trigger();

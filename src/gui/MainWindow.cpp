@@ -1408,6 +1408,10 @@ QWidget *MainWindow::createAnalysisPanel()
     // And so does the square drawn at that radius.
     connect(m_subsetRadius, &QSpinBox::valueChanged, this,
             &MainWindow::updateSettingsPreview);
+    // And the tree's count of the subsets the ground can hold for an alignment,
+    // which depends on both, so a stale count is never shown beside new settings.
+    connect(m_subsetRadius, &QSpinBox::valueChanged, this, &MainWindow::showRoiInProject);
+    connect(m_gridStep, &QSpinBox::valueChanged, this, &MainWindow::showRoiInProject);
 
     updateSolverConstraints();
     updateStrainAdvice();
@@ -2566,6 +2570,35 @@ void MainWindow::showRoiInProject()
         line->setText(0, tr("Ground unused: separate sessions off"));
         line->setToolTip(0, markGroundUnavailableNote());
     }
+    // ⚑ Ground drawn over the region measured is said while it is drawn, not
+    // only in the report afterwards: it is taken as stationary and measured as
+    // moving, which is right only for a stretch of bench measured on purpose.
+    if (m_roi.hasGround() && groundInUse) {
+        const GroundOverlap overlap = groundInsideRegion(m_roi);
+        // Ground too small to hold the alignment's subsets: refused after the
+        // fact otherwise, with nothing on screen to predict it. Found by
+        // screenshot, drawing ground narrower than one subset.
+        if (m_referenceRecord.width > 0 && m_subsetRadius && m_gridStep) {
+            const QSize image(m_referenceRecord.width, m_referenceRecord.height);
+            const QRect fitBounds = groundOf(m_roi).bounds().intersected(QRect(QPoint(0, 0), image));
+            const int radius = m_subsetRadius->value();
+            const int fits = groundSubsetCount(m_roi, radius,
+                                               alignmentStep(m_gridStep->value(), fitBounds), image);
+            if (fits < kMinGroundSubsets) {
+                auto *line = new QTreeWidgetItem(m_roiItem);
+                line->setText(0, tr("Ground fits %1 of %2 subsets needed")
+                                     .arg(fits).arg(kMinGroundSubsets));
+                line->setToolTip(0, tooFewGroundSubsetsNote(fits, radius));
+                line->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+            }
+        }
+        if (overlap.insideRegion > 0) {
+            auto *line = new QTreeWidgetItem(m_roiItem);
+            line->setText(0, tr("Ground inside region: %1 px").arg(overlap.insideRegion));
+            line->setToolTip(0, groundOverlapNote());
+            line->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+        }
+    }
     // The known length, not numbered: it is not a shape and has no place in
     // the order. Whether it is used comes first on the line, as for ground,
     // and why not on a line of its own.
@@ -2578,6 +2611,14 @@ void MainWindow::showRoiInProject()
                                "Where no ground is marked, a target from a separate "
                                "session takes its camera scale from it. %1 takes it "
                                "off.").arg(removeKnownLengthLabel()));
+        const int inside = knownLengthEndsInsideRegion(m_roi);
+        if (used && inside > 0) {
+            auto *warn = new QTreeWidgetItem(m_roiItem);
+            warn->setText(0, inside == 1 ? tr("Known length: an end is in the region")
+                                         : tr("Known length: both ends are in the region"));
+            warn->setToolTip(0, knownLengthInsideNote());
+            warn->setIcon(0, style()->standardIcon(QStyle::SP_MessageBoxWarning));
+        }
         if (!used) {
             auto *why = new QTreeWidgetItem(m_roiItem);
             why->setText(0, groundInUse
@@ -2923,15 +2964,13 @@ void MainWindow::onFrameProgress(int frame, int frameCount, int done, int total,
     const double withinFrame = double(done) / double(total);
     m_progress->setValue(int(100.0 * (frame + withinFrame) / frameCount));
 
+    // A stage of one step (aligning two sessions) is not a count of points,
+    // and "0 of 1 points" read as a run that had found one point to measure.
+    const QString where = total == 1 ? stage
+                                     : tr("%1 - %2 of %3 points").arg(stage).arg(done).arg(total);
     statusBar()->showMessage(
-        frameCount == 1
-            ? tr("%1 - %2 of %3 points").arg(stage).arg(done).arg(total)
-            : tr("Frame %1 of %2, %3 - %4 of %5 points")
-                  .arg(frame + 1)
-                  .arg(frameCount)
-                  .arg(stage)
-                  .arg(done)
-                  .arg(total));
+        frameCount == 1 ? where
+                        : tr("Frame %1 of %2, %3").arg(frame + 1).arg(frameCount).arg(where));
 }
 
 void MainWindow::logFrameResult(int frame, const CorrelationResult &result)
@@ -3206,6 +3245,8 @@ void MainWindow::onCorrelationFailed(const QString &reason)
     log(tr("Correlation failed: %1").arg(reason));
     QMessageBox::warning(this, tr("Correlation failed"), reason);
     m_stageLabel->setText(tr("Correlation failed"));
+    // The last progress line describes work that has stopped.
+    statusBar()->clearMessage();
     tearDownWorker();
 }
 

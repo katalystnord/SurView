@@ -1,8 +1,10 @@
 #pragma once
 
 #include <QPoint>
+#include <QRect>
 #include <QString>
 #include <QStringList>
+#include <QVector>
 
 // A reference and a target photographed in separate sessions: what the run
 // recorded about bringing one camera's view onto the other's, and what the
@@ -21,6 +23,14 @@
 // strain, lost while every point still reads plausibly. That is allowed (David,
 // 2026-10-12: a recovered strip has no ground at all) only because the result
 // states it, which is what alignmentLimitation() is for.
+// A ground subset the fit left out: it correlated, but was found away from
+// where the camera move puts it. Far from the fit, it is ground that moved.
+struct MovedGround
+{
+    QPoint at;            // its centre, reference pixels
+    double offset = 0.0;  // px in the target, from where the fit puts it
+};
+
 struct SessionAlignmentRecord
 {
     enum FittedOn {
@@ -53,6 +63,17 @@ struct SessionAlignmentRecord
     // by the time anyone reads them. Empty unless fitted on ground.
     QString ground;
 
+    // Fitted on ground only: every ground subset that correlated and was left
+    // out of the fit, so the report can say WHERE ground disagreed with it, not
+    // only that a count fell short. Those near the fit are the fit's own noise
+    // tail; those far from it sat on something that moved.
+    QVector<MovedGround> groundMoved;
+
+    // The ground marked, and how much of it lies inside the region measured
+    // (core/Roi.h, groundInsideRegion()), counted when the run starts.
+    qint64 groundPixels = 0;
+    qint64 groundInsideRegion = 0;
+
     // The known length (core/Roi.h): whether one was marked, whether the
     // camera's scale was taken from it, and what it measured. It is used only
     // when the fit is not on ground, which measures the scale itself.
@@ -63,9 +84,23 @@ struct SessionAlignmentRecord
     double knownLengthReference = 0.0;   // px, in the reference
     double knownLengthTarget = 0.0;      // px, in the target
     double knownLengthCorrelation = 0.0; // the poorer of its two ends
+    int knownLengthEndsInside = 0;       // ends inside the region measured
 
     bool isAligned() const { return fittedOn != NotAligned; }
 };
+
+// The fewest ground subsets the alignment refines on: the engine's own minimum
+// (SessionAlignment2D::setMinimums, which SurView leaves at its default).
+inline constexpr int kMinGroundSubsets = 6;
+
+// The step of the alignment's lattice of ground subsets: the run's own grid
+// step, widened only as far as keeps a large fitting area to a few thousand of
+// them. One rule for the run and for what the screen predicts about it.
+int alignmentStep(int gridStep, const QRect &fitBounds);
+
+// Why ground that holds too few whole subsets cannot align a target: said in
+// the project tree while it is drawn, and in a run refused for it.
+QString tooFewGroundSubsetsNote(int count, int subsetRadius);
 
 // The Analysis panel's switch, as it reads there and wherever it is named.
 QString separateSessionsLabel();
@@ -83,6 +118,11 @@ QString removeKnownLengthLabel();
 // ground is marked, and names the tool that marks it.
 QString separateSessionsPanelNote(bool on, bool groundMarked = false,
                                   bool knownLengthMarked = false);
+
+// Beside a ground shape that overlaps the region measured, and beside a known
+// length with an end inside it: what that does, and how to put it right.
+QString groundOverlapNote();
+QString knownLengthInsideNote();
 
 // Why the ground tool is unavailable: with one session there is nothing to
 // align, and the tool says which switch would change that.

@@ -147,6 +147,9 @@ private slots:
     void the_ground_is_its_own_shapes_and_described_apart();
     void a_detected_region_replaces_what_is_measured_and_keeps_the_ground();
     void a_known_length_stays_where_it_was_marked_and_describes_itself();
+    void ground_inside_the_region_measured_is_counted_pixel_by_pixel();
+    void a_known_length_end_inside_the_region_measured_is_counted();
+    void the_ground_subsets_counted_are_the_lattice_the_alignment_lays_out();
 };
 
 void TestRoi::a_region_needs_three_corners_to_enclose_anything()
@@ -1179,6 +1182,126 @@ void TestRoi::a_known_length_stays_where_it_was_marked_and_describes_itself()
     point.a = point.b = QPoint(4, 4);
     QVERIFY2(!point.isValid(), "two clicks in one place make no length");
     QVERIFY(!KnownLength().isValid());
+}
+
+void TestRoi::ground_inside_the_region_measured_is_counted_pixel_by_pixel()
+{
+    // Negative checks (2026-10-17), each red here: the overlap ignoring cuts;
+    // the ground counted from its first shape only. A guard for a region with
+    // nothing added was equivalent (regionContains() is false everywhere in
+    // one), stayed green when removed, and was taken out.
+    //
+    // Ground is used as stationary and the region as moving, so a pixel that is
+    // both is one of the two drawn wrong, or the reader measuring a stretch of
+    // bench on purpose: either way it is counted and said, never left to be
+    // noticed. Lopsided in both axes, with a cut over part of the overlap and a
+    // second ground shape wholly outside, so neither a bounding-box guess nor a
+    // count that forgets the cut can land on the answer.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 20), QPoint(49, 39))};
+    RegionShape ground = box(RegionShape::Rectangle, QPoint(40, 30), QPoint(69, 34));
+    ground.role = RegionShape::Ground;
+    roi.shapes.append(ground);
+    RegionShape far = box(RegionShape::Rectangle, QPoint(100, 5), QPoint(106, 7));
+    far.role = RegionShape::Ground;
+    roi.shapes.append(far);
+
+    // 30 x 5 + 7 x 3 = 171 px of ground; 10 x 5 of the first inside the box.
+    GroundOverlap overlap = groundInsideRegion(roi);
+    QCOMPARE(overlap.groundPixels, qint64(171));
+    QCOMPARE(overlap.insideRegion, qint64(50));
+
+    // A cut over half the overlap: what it removes is not measured.
+    RegionShape cut = box(RegionShape::Rectangle, QPoint(45, 25), QPoint(49, 39));
+    cut.role = RegionShape::Cut;
+    roi.shapes.insert(1, cut);
+    overlap = groundInsideRegion(roi);
+    QCOMPARE(overlap.insideRegion, qint64(25));
+
+    // With nothing added the whole image is measured, ground and all, by
+    // design (RegionOfInterest::hasGround), and there is nothing to say.
+    RegionOfInterest onlyGround;
+    onlyGround.shapes = {ground};
+    QCOMPARE(groundInsideRegion(onlyGround).insideRegion, qint64(0));
+    QCOMPARE(groundInsideRegion(onlyGround).groundPixels, qint64(150));
+}
+
+void TestRoi::a_known_length_end_inside_the_region_measured_is_counted()
+{
+    // Negative check (2026-10-17): only the first end counted, red here.
+    //
+    // A known length is taken as unchanged, so an end on the specimen being
+    // strained hands the specimen's own stretch to the camera's zoom.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(10, 20), QPoint(49, 39))};
+    roi.knownLength.marked = true;
+    roi.knownLength.a = QPoint(5, 25);    // outside, left of the box
+    roi.knownLength.b = QPoint(49, 39);   // the box's own last pixel: inside
+    QCOMPARE(knownLengthEndsInsideRegion(roi), 1);
+    roi.knownLength.a = QPoint(12, 38);
+    QCOMPARE(knownLengthEndsInsideRegion(roi), 2);
+    roi.knownLength.b = QPoint(50, 39);   // one past the box
+    QCOMPARE(knownLengthEndsInsideRegion(roi), 1);
+
+    RegionOfInterest whole;              // nothing added: nothing to say
+    whole.knownLength = roi.knownLength;
+    QCOMPARE(knownLengthEndsInsideRegion(whole), 0);
+    roi.knownLength.marked = false;
+    QCOMPARE(knownLengthEndsInsideRegion(roi), 0);
+}
+
+void TestRoi::the_ground_subsets_counted_are_the_lattice_the_alignment_lays_out()
+{
+    // The alignment correlates subsets lying WHOLLY on the ground, on a lattice
+    // from r + 1 every step px (fork SessionAlignment2D), so ground narrower than
+    // one subset gives it nothing at all, and the run is refused after the
+    // fact. Counted here so the screen can say so while the ground is drawn.
+    //
+    // Negative checks (2026-10-17), each red here: a pixel counted as ground
+    // only when the FIRST ground shape holds it; the lattice running one
+    // position past the engine's; the lattice starting at r rather than r + 1.
+    //
+    // Two ground boxes side by side, 20 px wide each, 50 px tall: neither holds
+    // a 33 px subset alone, together they do. Radius 16, lattice 17, 22, ...:
+    // x centres need 116 to 123 (117, 122), y centres 96 to 113 (97, 102,
+    // 107, 112), so 2 x 4 = 8. Lopsided in x and y so a swapped axis cannot pass.
+    RegionOfInterest roi;
+    roi.shapes = {box(RegionShape::Rectangle, QPoint(0, 0), QPoint(60, 60))};
+    for (const auto &[a, b] : {std::pair{QPoint(100, 80), QPoint(119, 129)},
+                               std::pair{QPoint(120, 80), QPoint(139, 129)}}) {
+        RegionShape ground = box(RegionShape::Rectangle, a, b);
+        ground.role = RegionShape::Ground;
+        roi.shapes.append(ground);
+    }
+    const QSize image(240, 200);
+    QCOMPARE(groundSubsetCount(roi, 16, 5, image), 8);
+    // At a 10 px step: x 117 only, y 97 and 107.
+    QCOMPARE(groundSubsetCount(roi, 16, 10, image), 2);
+    // A smaller subset fits more: radius 8, centres x 108 to 131, y 88 to 121,
+    // lattice from 9 every 5: x 109 ... 129 (5), y 89 ... 119 (7).
+    QCOMPARE(groundSubsetCount(roi, 8, 5, image), 35);
+
+    // One box alone, 20 x 50: no 33 px subset lies wholly on it.
+    roi.shapes.removeLast();
+    QCOMPARE(groundSubsetCount(roi, 16, 5, image), 0);
+
+    // And the image's edge: the lattice stops a subset short of it, as the
+    // engine's does. A box against the right edge, 240 wide image: x centres
+    // stop below 240 - 16 - 1 = 223.
+    RegionOfInterest edge;
+    RegionShape strip = box(RegionShape::Rectangle, QPoint(190, 0), QPoint(239, 199));
+    strip.role = RegionShape::Ground;
+    edge.shapes = {strip};
+    // x: 206 to 222 on the lattice 17 + 5k: 207, 212, 217, 222 (4);
+    // y: 17 to 182: 17 ... 182 (34).
+    QCOMPARE(groundSubsetCount(edge, 16, 5, image), 4 * 34);
+    // ⚑ At a 2 px step the lattice lands ON both limits, 17 and 223, which the
+    // 5 px lattice never reaches, so a lattice one pixel too long or starting
+    // one pixel early is seen (both stayed green at 5 px). x 207 ... 221 (8),
+    // y 17 ... 181 (83).
+    QCOMPARE(groundSubsetCount(edge, 16, 2, image), 8 * 83);
+
+    QCOMPARE(groundSubsetCount(RegionOfInterest(), 16, 5, image), 0);
 }
 
 QTEST_MAIN(TestRoi)

@@ -468,10 +468,27 @@ footer a:hover { color: var(--accent-strong); }
     The tool is live only with the switch on, and while it is not, it
     says which switch would make it so. Ground marked with the switch off
     stays on the reference and is listed in the project as <em>not
-    used</em>. Ground drawn over part of the specimen is used as drawn:
-    the fit sets aside subsets that disagree with the rest, but that is a
-    safeguard, not a substitute for keeping ground clear of everything
-    that moves.
+    used</em>.
+  </p>
+  <p>
+    The fit is refined on subsets lying <em>wholly</em> on the ground,
+    each the run's own subset size, so ground must be wider than one
+    subset, and needs room for at least six of them. The project tree
+    counts them as the ground is drawn and warns when there are too few
+    ("Ground fits 0 of 6 subsets needed"), following the subset radius
+    as it changes.
+  </p>
+  <p>
+    Ground drawn over the region measured is warned of in the tree too,
+    in pixels ("Ground inside region"), since it is then taken as
+    stationary and measured as moving at once; that is right only for a
+    stretch of bench measured on purpose. After a run, the report names
+    every ground subset the fit set aside as not following the camera
+    move, how far from the fit each was found against the subsets it
+    kept, and where the farthest one is. Set aside 1.5 px from a fit good
+    to 0.002 px, ground moved; it is not ground, and should be taken out
+    of what is marked. The fit's setting aside is a safeguard, not a
+    substitute for keeping ground clear of everything that moves.
   </p>
 
   <figure class="plate">
@@ -505,6 +522,12 @@ footer a:hover { color: var(--accent-strong); }
     comes back within 3e-4 again.
   </p>
   <ul>
+    <li>
+      <strong>Its ends must be on something that did not deform.</strong>
+      Its length is taken as unchanged, so an end on the specimen hands
+      the specimen's stretch along it to the camera's zoom; the tree warns
+      of an end inside the region measured.
+    </li>
     <li>
       <strong>Its ends must be found.</strong> Each needs distinct marks
       or pattern visible in both sessions, a subset radius clear of the

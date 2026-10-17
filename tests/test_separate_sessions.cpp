@@ -71,6 +71,12 @@
 // - A sequence handing a separate session the points followed from the frame
 //   before (the defect found by writing the sequence case): the sequence case
 //   red at frame 2, as it was before the fix.
+//
+// Ground that moved, and ground or a known length over the specimen
+// (2026-10-17), each run and reverted, each red here: the moved subsets never
+// recorded; recorded with the kept ones among them; the farthest taken as the
+// first; the overlap, or the known length's ends inside, never recorded; each
+// of the three report lines removed.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -232,6 +238,10 @@ private slots:
     void a_known_length_whose_end_cannot_be_found_refuses_the_run();
     void a_sequence_carries_the_known_length_to_every_frame();
     void a_sequence_across_sessions_measures_every_frame_not_only_the_first();
+    void ground_that_moved_is_reported_by_where_it_is_and_how_far();
+    void ground_clear_of_the_specimen_reports_nothing_moved_and_no_overlap();
+    void a_known_length_end_on_the_specimen_is_said();
+    void ground_too_narrow_for_a_subset_is_refused_saying_why();
 };
 
 void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
@@ -611,6 +621,129 @@ void TestSeparateSessions::a_sequence_across_sessions_measures_every_frame_not_o
         const Means m = measure(frame);
         QVERIFY2(m.displacementError < 0.01, qPrintable(QString::number(m.displacementError, 'f', 5)));
     }
+}
+
+void TestSeparateSessions::ground_that_moved_is_reported_by_where_it_is_and_how_far()
+{
+    // Ground marked over the specimen as well as the rig: a box on the disc,
+    // which moved 1.3 px and stretched between the sessions. The fit still
+    // rests on the rig, since the refinement leaves out what the camera move
+    // does not describe, but the reader marked moving ground as stationary
+    // and is told so, with WHERE: the run names the subsets left out, how far
+    // from the fit each was found, and the farthest by its position.
+    RegionOfInterest roi = withGround(specimenRegion());
+    const QRect onDisc(QPoint(84, 66), QPoint(136, 134));
+    RegionShape moved = box(RegionShape::Rectangle, onDisc.left(), onDisc.top(),
+                            onDisc.right(), onDisc.bottom());
+    moved.role = RegionShape::Ground;
+    roi.shapes.append(moved);
+
+    const Outcome o = run(roi, QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    const SessionAlignmentRecord &a = o.result.alignment;
+    QCOMPARE(a.fittedOn, SessionAlignmentRecord::Ground);
+    const Means m = measure(o.result);
+    QVERIFY2(std::abs(m.exx - kE11) < 3e-4 && std::abs(m.eyy - kE22) < 3e-4,
+             qPrintable(QStringLiteral("%1 %2").arg(m.exx).arg(m.eyy)));
+
+    int far = 0;
+    MovedGround farthest;
+    for (const MovedGround &g : a.groundMoved) {
+        if (g.offset > farthest.offset)
+            farthest = g;
+        if (g.offset <= 0.1)
+            continue;
+        far++;
+        QVERIFY2(onDisc.contains(g.at),
+                 qPrintable(QStringLiteral("(%1, %2) reported %3 px off, on the rig")
+                                .arg(g.at.x()).arg(g.at.y()).arg(g.offset)));
+    }
+    QVERIFY2(far >= 4, qPrintable(QString::number(far)));
+    // Only what the fit left out: none of the subsets it kept.
+    QVERIFY(a.groundMoved.size() + a.groundPointsUsed <= a.groundPoints);
+    // The specimen moved 1.3 px and the target camera magnifies by 1.07.
+    QVERIFY2(farthest.offset > 1.0 && onDisc.contains(farthest.at),
+             qPrintable(QString::number(farthest.offset)));
+
+    const QString report = alignmentReport(a).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("%1 ground subsets were left out of the fit")
+                                 .arg(a.groundMoved.size())),
+             qPrintable(report));
+    QVERIFY2(report.contains(QStringLiteral("the farthest, %1 px from it, at (%2, %3)")
+                                 .arg(farthest.offset, 0, 'f', 2)
+                                 .arg(farthest.at.x()).arg(farthest.at.y())),
+             qPrintable(report));
+    QVERIFY2(report.contains(markGroundLabel()), qPrintable(report));
+
+    // And it overlaps the region measured, counted before anything correlated.
+    QVERIFY2(a.groundInsideRegion > 0 && a.groundInsideRegion < a.groundPixels,
+             qPrintable(QStringLiteral("%1 of %2").arg(a.groundInsideRegion).arg(a.groundPixels)));
+    QVERIFY2(report.contains(QStringLiteral("%1 px of the ground marked lies inside the region measured")
+                                 .arg(a.groundInsideRegion)),
+             qPrintable(report));
+}
+
+void TestSeparateSessions::ground_clear_of_the_specimen_reports_nothing_moved_and_no_overlap()
+{
+    // The rig alone: whatever the refinement leaves out sits within a
+    // hundredth of a pixel or so of the fit, nothing overlaps, and the report
+    // has nothing to warn about.
+    const Outcome o = run(withGround(specimenRegion()), QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    const SessionAlignmentRecord &a = o.result.alignment;
+    for (const MovedGround &g : a.groundMoved)
+        QVERIFY2(g.offset < 0.1, qPrintable(QString::number(g.offset)));
+    QVERIFY(a.groundMoved.size() + a.groundPointsUsed <= a.groundPoints);
+    QCOMPARE(a.groundInsideRegion, qint64(0));
+    QVERIFY(a.groundPixels > 0);
+    const QString report = alignmentReport(a).join(QLatin1Char('\n'));
+    QVERIFY2(!report.contains(QStringLiteral("inside the region measured")), qPrintable(report));
+}
+
+void TestSeparateSessions::a_known_length_end_on_the_specimen_is_said()
+{
+    // A known length is taken as unchanged, so an end on the specimen hands
+    // the specimen's stretch along it to the camera's zoom. One end on the rig,
+    // one inside the region measured.
+    const Outcome o = run(withKnownLength(specimenRegion(), QPoint(22, 24), QPoint(130, 104)),
+                          QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    QVERIFY(o.result.alignment.knownLengthUsed);
+    QCOMPARE(o.result.alignment.knownLengthEndsInside, 1);
+    const QString report = alignmentReport(o.result.alignment).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("An end of the known length lies inside the region measured")),
+             qPrintable(report));
+
+    const Outcome clear = run(withKnownLength(specimenRegion()), QStringLiteral("session_reference.tif"),
+                              QStringLiteral("session_target.tif"), true);
+    QCOMPARE(clear.result.alignment.knownLengthEndsInside, 0);
+    QVERIFY(!alignmentReport(clear.result.alignment).join(QLatin1Char('\n'))
+                 .contains(QStringLiteral("of the known length lies inside")));
+}
+
+void TestSeparateSessions::ground_too_narrow_for_a_subset_is_refused_saying_why()
+{
+    // Ground 30 x 40 px, under 33 px subsets: no subset lies wholly on it, so
+    // the alignment has nothing to correlate. Found by screenshot, where the
+    // refusal read "only 0 of 0 subsets correlated and agreed", which is true
+    // and says nothing about why. Negative check: the size branch removed, red
+    // here on the wording.
+    RegionOfInterest roi = specimenRegion();
+    RegionShape narrow = box(RegionShape::Rectangle, 10, 10, 39, 49);
+    narrow.role = RegionShape::Ground;
+    roi.shapes.append(narrow);
+    const Outcome o = run(roi, QStringLiteral("session_reference.tif"),
+                          QStringLiteral("session_target.tif"), true);
+    QVERIFY2(o.failure.contains(QStringLiteral("only subsets lying wholly on the ground"))
+                 && o.failure.contains(QStringLiteral("each 33 px across"))
+                 && o.failure.contains(QStringLiteral("the ground marked holds 0")),
+             qPrintable(o.failure));
+    QCOMPARE(groundSubsetCount(roi, settings().subsetRadius,
+                               alignmentStep(settings().gridStep, narrow.bounds()), QSize(240, 200)),
+             0);
 }
 
 QTEST_MAIN(TestSeparateSessions)

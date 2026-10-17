@@ -17,8 +17,8 @@
 
 SURVIEW_OPENCORR_REMOTE=https://github.com/katalystnord/OpenCorr.git
 SURVIEW_OPENCORR_BRANCH=surview-dev
-SURVIEW_OPENCORR_PIN=455450c8a423fc234ca5f59287d10fb047df968c
+SURVIEW_OPENCORR_PIN=0dd4f37e75ac9f545ed084f5111deecf89916de0
 
 # What the pinned commit is, in words, so a reader knows what they are on
 # without resolving the SHA:
-SURVIEW_OPENCORR_PIN_NOTE=session-alignment-known-length
+SURVIEW_OPENCORR_PIN_NOTE=session-alignment-perspective

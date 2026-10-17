@@ -3,6 +3,7 @@
 #include <QMetaType>
 #include <QPoint>
 #include <QRect>
+#include <QSize>
 #include <QString>
 #include <QVector>
 
@@ -171,6 +172,35 @@ QString groundSummary(const RegionOfInterest &roi);
 // The ground marked, as a region of its own whose shapes all ADD: what the
 // alignment is fitted on. Invalid when no ground is marked.
 RegionOfInterest groundOf(const RegionOfInterest &roi);
+
+// Ground is used as stationary and the region as moving, so a pixel that is both
+// is either drawn wrong or a stretch of bench measured on purpose, and is said
+// either way. Counted pixel by pixel through the same membership the region is
+// drawn with: the ground marked (any ground shape), and how much of it the
+// region measures. With nothing added the whole image is measured, ground and
+// all, by design (hasGround()), and none of it is counted as inside.
+struct GroundOverlap
+{
+    qint64 groundPixels = 0;
+    qint64 insideRegion = 0;
+};
+GroundOverlap groundInsideRegion(const RegionOfInterest &roi);
+
+// How many subsets the alignment of a separate session can correlate on the
+// ground marked: positions on its lattice (from r + 1, every alignStep px,
+// stopping a subset short of the image's far edges, as the engine's
+// SessionAlignment2D lays it out) whose WHOLE subset lies on the ground. Ground
+// narrower than a subset holds none, and a run fitted on it is refused; this is
+// what lets the screen say so while the ground is drawn. Before the camera
+// move is known, so a position whose subset would leave the TARGET is still
+// counted: an upper bound, exact for a target that sees all the ground.
+int groundSubsetCount(const RegionOfInterest &roi, int subsetRadius, int alignStep,
+                      QSize image);
+
+// How many ends of the known length (0, 1 or 2) lie inside the region measured.
+// A known length is taken as unchanged, so an end on the specimen hands the
+// specimen's stretch along it to the camera's zoom. 0 with no region drawn.
+int knownLengthEndsInsideRegion(const RegionOfInterest &roi);
 
 // What a field measured with no region drawn has to say about itself, in the
 // one wording the field bar, the run report and the tests share.

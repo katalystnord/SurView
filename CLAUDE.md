@@ -1025,6 +1025,17 @@ files say about it. Manual chapter 14.
   `setKnownLength()` correlates both ends and FIXES the scale; only the turn
   and shift are fitted. Not used with ground marked, and said so. An end that
   does not correlate refuses the run.
+- ⚑ **Ground drawn wrong is said, before and after a run** (2026-10-17). The
+  tree warns, live, of ground inside the region measured, of a known length
+  with an end inside it, and of ground with room for fewer than six alignment
+  subsets: `groundSubsetCount()` walks the engine's own lattice (from r + 1,
+  every `alignmentStep()` px) and counts subsets lying WHOLLY on the ground,
+  which is what the refinement correlates. Ground narrower than one subset
+  holds none, and was refused only after a run, as "0 of 0 subsets". After a
+  run, the report names every ground subset the fit set aside and how far
+  from the fit each was found (fork `9bbae4d` reports them all), so a reader
+  can see WHERE ground moved; the range is given against the kept subsets'
+  rms rather than judged against a threshold invented here.
 - **Pair by pair.** Re-anchoring is refused across sessions, and ⚑ a sequence
   must not hand a frame the points followed from the frame before
   (`SequenceRunner`): it did, and every separate-sessions sequence of more than

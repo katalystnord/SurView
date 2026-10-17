@@ -2,6 +2,9 @@
 
 #include <QCoreApplication>
 
+#include <algorithm>
+#include <cmath>
+
 namespace {
 
 QString tr(const char *text)
@@ -24,6 +27,27 @@ QString fittedOnText(const SessionAlignmentRecord &alignment)
         break;
     }
     return QString();
+}
+
+QString percentOf(qint64 part, qint64 whole)
+{
+    if (whole <= 0)
+        return QString();
+    const double share = 100.0 * double(part) / double(whole);
+    // A share that is not zero never rounds to "0 %", nor one short of all to 100.
+    if (share > 0 && share < 1)
+        return tr("under 1 %");
+    if (share < 100 && share > 99)
+        return tr("over 99 %");
+    return tr("%1 %").arg(share, 0, 'f', 0);
+}
+
+// How ground drawn wrong is put right, in the tree's own words for the same
+// actions (MainWindow::showRoiInProject).
+QString groundRemedy()
+{
+    return tr("drag its corners clear, or select it in the project tree and use "
+              "Analysis > Remove Shape, then %1 again").arg(markGroundLabel());
 }
 
 }  // namespace
@@ -71,6 +95,49 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
                  .arg(alignment.groundPointsUsed)
                  .arg(alignment.groundPoints)
                  .arg(alignment.residualRms, 0, 'f', 4);
+    if (alignment.fittedOn == SessionAlignmentRecord::Ground) {
+        if (!alignment.groundMoved.isEmpty()) {
+            // Every subset left out, with the range of how far: those near the
+            // fit are its own noise tail, those far from it moved, and the
+            // reader sees which from the numbers rather than from a threshold
+            // invented here. The farthest is named by position, since where the
+            // ground moved is the question the count alone cannot answer.
+            MovedGround farthest = alignment.groundMoved.first();
+            double nearest = farthest.offset;
+            for (const MovedGround &g : alignment.groundMoved) {
+                if (g.offset > farthest.offset)
+                    farthest = g;
+                nearest = std::min(nearest, g.offset);
+            }
+            const QString found = alignment.groundMoved.size() == 1
+                ? tr("1 ground subset was left out of the fit, found %1 px from it")
+                      .arg(farthest.offset, 0, 'f', 2)
+                : tr("%1 ground subsets were left out of the fit, found %2 to %3 px "
+                     "from it")
+                      .arg(alignment.groundMoved.size())
+                      .arg(nearest, 0, 'f', 2)
+                      .arg(farthest.offset, 0, 'f', 2);
+            lines << tr("%1 against %2 px rms for the %3 kept; the farthest, %4 px "
+                        "from it, at (%5, %6). Ground found far from the fit moved "
+                        "between the sessions and is not ground: %7.")
+                         .arg(found)
+                         .arg(alignment.residualRms, 0, 'f', 4)
+                         .arg(alignment.groundPointsUsed)
+                         .arg(farthest.offset, 0, 'f', 2)
+                         .arg(farthest.at.x())
+                         .arg(farthest.at.y())
+                         .arg(groundRemedy());
+        }
+        if (alignment.groundInsideRegion > 0) {
+            lines << tr("%1 px of the ground marked lies inside the region measured "
+                        "(%2 of the ground): it is taken as stationary for the "
+                        "alignment and measured as moving. If that part is the "
+                        "specimen, it is not ground: %3.")
+                         .arg(alignment.groundInsideRegion)
+                         .arg(percentOf(alignment.groundInsideRegion, alignment.groundPixels))
+                         .arg(groundRemedy());
+        }
+    }
     if (alignment.knownLengthUsed) {
         // A length L found to within e px at each end moves the scale by at most
         // e / L either way, and the dilatation with it: arithmetic, not an estimate.
@@ -86,6 +153,16 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
                      .arg(alignment.knownLengthTarget, 0, 'f', 1)
                      .arg(alignment.knownLengthCorrelation, 0, 'f', 4)
                      .arg(0.01 / alignment.knownLengthTarget, 0, 'g', 2);
+        if (alignment.knownLengthEndsInside > 0) {
+            lines << (alignment.knownLengthEndsInside == 1
+                          ? tr("An end of the known length lies inside the region measured. "
+                               "Its length is taken as unchanged, so any stretch of the "
+                               "specimen along it was taken for the camera's zoom.")
+                          : tr("Both ends of the known length lie inside the region "
+                               "measured. Its length is taken as unchanged, so any "
+                               "stretch of the specimen along it was taken for the "
+                               "camera's zoom."));
+        }
     } else if (alignment.knownLengthMarked) {
         lines << tr("The known length marked was not used: the camera move was fitted "
                     "on ground, which measures the scale itself.");
@@ -108,6 +185,24 @@ QString alignmentStatement(const SessionAlignmentRecord &alignment)
     return alignmentReport(alignment).join(QLatin1Char(' '));
 }
 
+int alignmentStep(int gridStep, const QRect &fitBounds)
+{
+    const double area = double(fitBounds.width()) * double(fitBounds.height());
+    return std::max(gridStep, int(std::ceil(std::sqrt(area / 4000.0))));
+}
+
+QString tooFewGroundSubsetsNote(int count, int subsetRadius)
+{
+    const int side = 2 * subsetRadius + 1;
+    return tr("The alignment correlates only subsets lying wholly on the ground, "
+              "each %1 px across, the run's own subset size, and needs at least %2 "
+              "of them; the ground marked holds %3. Mark wider ground, or more of "
+              "it, or make the subset radius smaller.")
+        .arg(side)
+        .arg(kMinGroundSubsets)
+        .arg(count);
+}
+
 QString separateSessionsLabel()
 {
     return tr("Reference and target from separate sessions");
@@ -126,6 +221,24 @@ QString markKnownLengthLabel()
 QString removeKnownLengthLabel()
 {
     return tr("Remove Known Length");
+}
+
+QString groundOverlapNote()
+{
+    return tr("Part of the ground marked lies inside the region measured, so it is "
+              "taken as stationary for the alignment and measured as moving. Right "
+              "for a stretch of bench measured on purpose; if it is the specimen, "
+              "it is not ground: %1. The report names any ground the alignment "
+              "found moving.").arg(groundRemedy());
+}
+
+QString knownLengthInsideNote()
+{
+    return tr("The known length's length is taken as unchanged between the "
+              "sessions. With an end inside the region measured, any stretch of the "
+              "specimen along it is taken for the camera's zoom. Mark it on "
+              "something that did not deform: a scale bar, two fiducials on the "
+              "rig. %1 takes it off.").arg(removeKnownLengthLabel());
 }
 
 QString markGroundUnavailableNote()

@@ -837,9 +837,29 @@ Understood well enough to start, large enough to need their own care.
     separate sessions", with a figure of a run aligned on ground; the
     on-screen table and the glossary name the switch, the ground and the known
     length. And a section in CLAUDE.md for whoever changes the code next.
-  - Still open: ground drawn over the specimen itself is used as drawn, and
-    nothing says so yet; a homography, on ground only, for a camera that was
-    tilted between the sessions.
+  - **Ground over the specimen, 2026-10-17.** Said in two ways, because
+    either can happen without the other. While drawing, the project tree
+    counts the ground pixels inside the region measured ("Ground inside region:
+    2601 px"), and a known length with an end inside it ("Known
+    length: an end is in the region"); the run report and both files say the
+    same. After a run on ground, the report names every ground subset the
+    fit left out, how far from the fit each was found against the kept ones'
+    rms, and the farthest by position: on the session fixture with a box of
+    ground on the disc, 8 subsets at 1.36 to 1.59 px against 0.0018 px rms.
+    Fork `9bbae4d` reports every refinement subset for this.
+    ⚑ Ground narrower than one subset holds no refinement subset at all.
+    Found by writing the walkthrough, then by screenshot: such ground was
+    refused only after a run, as "only 0 of 0 subsets correlated". Now the
+    tree counts, on the alignment's own lattice, the subsets the ground can
+    hold ("Ground fits 0 of 6 subsets needed"), following the subset radius
+    and grid step, and the refusal says what a ground subset is and how big.
+    And the status bar no longer outlives a failed run ("aligning the two
+    sessions - 0 of 1 points", a one-step stage counted as points).
+  - Still open: a homography, on ground only, for a camera that was tilted
+    between the sessions. The engine half is built (fork `0dd4f37`): a
+    homography fitted through the ground with second-order subsets, and
+    unasked, the same homography as a check on every similarity. The SurView
+    half is next.
 
   ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
   `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero

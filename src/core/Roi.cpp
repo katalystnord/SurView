@@ -2,6 +2,7 @@
 
 #include <algorithm>
 #include <cmath>
+#include <vector>
 
 #include <QCoreApplication>
 #include <QStringList>
@@ -274,6 +275,95 @@ RegionOfInterest groundOf(const RegionOfInterest &roi)
         ground.shapes.append(added);
     }
     return ground;
+}
+
+GroundOverlap groundInsideRegion(const RegionOfInterest &roi)
+{
+    GroundOverlap overlap;
+    QRect area;
+    for (const RegionShape &shape : roi.shapes) {
+        if (shape.isValid() && shape.isGround())
+            area = area.united(shape.bounds());
+    }
+    if (area.isEmpty())
+        return overlap;
+    // No guard for a region with nothing added: regionContains() is false
+    // everywhere in one, which is exactly "none of it measured as inside".
+    for (int y = area.top(); y <= area.bottom(); y++) {
+        for (int x = area.left(); x <= area.right(); x++) {
+            bool ground = false;
+            for (const RegionShape &shape : roi.shapes) {
+                if (shape.isGround() && shapeContains(shape, x, y)) {
+                    ground = true;
+                    break;
+                }
+            }
+            if (!ground)
+                continue;
+            overlap.groundPixels++;
+            if (regionContains(roi, x, y))
+                overlap.insideRegion++;
+        }
+    }
+    return overlap;
+}
+
+int groundSubsetCount(const RegionOfInterest &roi, int subsetRadius, int alignStep,
+                      QSize image)
+{
+    if (subsetRadius < 0 || alignStep <= 0 || image.isEmpty())
+        return 0;
+    QRect area;
+    for (const RegionShape &shape : roi.shapes) {
+        if (shape.isValid() && shape.isGround())
+            area = area.united(shape.bounds());
+    }
+    area = area.intersected(QRect(QPoint(0, 0), image));
+    if (area.isEmpty())
+        return 0;
+
+    // A summed-area table of ground pixels over the ground's own box, so each
+    // lattice position is four lookups rather than a walk over its subset.
+    const int w = area.width(), h = area.height();
+    std::vector<int> sum(size_t(w + 1) * size_t(h + 1), 0);
+    const auto at = [&sum, w](int x, int y) -> int & { return sum[size_t(y) * size_t(w + 1) + size_t(x)]; };
+    for (int y = 0; y < h; y++) {
+        int row = 0;
+        for (int x = 0; x < w; x++) {
+            const int px = area.left() + x, py = area.top() + y;
+            for (const RegionShape &shape : roi.shapes) {
+                if (shape.isGround() && shapeContains(shape, px, py)) {
+                    row++;
+                    break;
+                }
+            }
+            at(x + 1, y + 1) = at(x + 1, y) + row;
+        }
+    }
+
+    const int r = subsetRadius, side = 2 * r + 1;
+    int count = 0;
+    for (int y = r + 1; y < image.height() - r - 1; y += alignStep) {
+        for (int x = r + 1; x < image.width() - r - 1; x += alignStep) {
+            const int x0 = x - r - area.left(), y0 = y - r - area.top();
+            if (x0 < 0 || y0 < 0 || x0 + side > w || y0 + side > h)
+                continue;
+            const int inside = at(x0 + side, y0 + side) - at(x0, y0 + side)
+                             - at(x0 + side, y0) + at(x0, y0);
+            if (inside == side * side)
+                count++;
+        }
+    }
+    return count;
+}
+
+int knownLengthEndsInsideRegion(const RegionOfInterest &roi)
+{
+    const KnownLength &known = roi.knownLength;
+    if (!known.isValid())
+        return 0;
+    return int(regionContains(roi, known.a.x(), known.a.y()))
+         + int(regionContains(roi, known.b.x(), known.b.y()));
 }
 
 QString wholeImageMeasuredNote()

@@ -207,6 +207,9 @@ void CorrelationRunner::run()
                 record.fittedOn = SessionAlignmentRecord::Ground;
                 // "ground: 4 shapes, ..." less the word the report already says.
                 record.ground = groundSummary(m_roi).section(QStringLiteral(": "), 1);
+                const GroundOverlap overlap = groundInsideRegion(m_roi);
+                record.groundPixels = overlap.groundPixels;
+                record.groundInsideRegion = overlap.insideRegion;
                 fitBounds = ground.bounds().intersected(fitBounds);
             } else if (m_roi.isValid()) {
                 fitOn = engineRegion(m_roi);
@@ -218,9 +221,7 @@ void CorrelationRunner::run()
 
             // The refinement's subsets: the run's own grid step, widened only
             // as far as keeps a large image to a few thousand of them.
-            const double area = double(fitBounds.width()) * double(fitBounds.height());
-            const int alignStep = std::max(m_settings.gridStep,
-                                           int(std::ceil(std::sqrt(area / 4000.0))));
+            const int alignStep = alignmentStep(m_settings.gridStep, fitBounds);
 
             emit progress(0, 1, tr("aligning the two sessions"));
             SessionAlignment2D aligner(m_settings.subsetRadius, alignStep, threads);
@@ -246,6 +247,7 @@ void CorrelationRunner::run()
                     double(fit.known_length_target[1].y - fit.known_length_target[0].y));
                 record.knownLengthCorrelation =
                     std::min(fit.known_length_zncc[0], fit.known_length_zncc[1]);
+                record.knownLengthEndsInside = knownLengthEndsInsideRegion(m_roi);
             }
 
             record.matches = fit.matches;
@@ -253,6 +255,15 @@ void CorrelationRunner::run()
             record.groundPoints = fit.refined_points;
             record.groundPointsUsed = fit.refined_used;
             record.residualRms = fit.residual_rms;
+            if (record.fittedOn == SessionAlignmentRecord::Ground) {
+                for (size_t i = 0; i < fit.refined_centre.size(); i++) {
+                    if (fit.refined_kept[i] || !std::isfinite(fit.refined_residual[i]))
+                        continue;
+                    record.groundMoved.append({QPoint(qRound(fit.refined_centre[i].x),
+                                                      qRound(fit.refined_centre[i].y)),
+                                               double(fit.refined_residual[i])});
+                }
+            }
 
             if (fit.status == AlignmentStatus::known_length_unmeasured) {
                 // Which end, in the reader's own coordinates; a subset that cannot
@@ -271,6 +282,16 @@ void CorrelationRunner::run()
                                          ? tr("correlated at %1, below 0.9").arg(zncc, 0, 'f', 3)
                                          : tr("could not be correlated there"))
                                 .arg(markKnownLengthLabel()));
+                return;
+            }
+            if (fit.status == AlignmentStatus::too_few_ground_points
+                && record.fittedOn == SessionAlignmentRecord::Ground
+                && fit.refined_points < kMinGroundSubsets) {
+                // Not a failure to correlate: the ground cannot hold enough
+                // subsets to try, which is a matter of its size and is said so.
+                emit failed(tr("The target could not be aligned to the reference. %1")
+                                .arg(tooFewGroundSubsetsNote(fit.refined_points,
+                                                             m_settings.subsetRadius)));
                 return;
             }
             if (fit.status != AlignmentStatus::ok) {
