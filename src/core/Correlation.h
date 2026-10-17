@@ -68,6 +68,12 @@ struct CorrelationSettings
     // default: one session, one pixel grid, is the ordinary case.
     bool   separateSessions = false;
 
+    // The camera also TILTED between the sessions: the move is fitted as a
+    // homography rather than a similarity. On ground only, since fitted on the
+    // specimen a homography would take up every uniform strain; a run asking
+    // for it with no ground marked is refused. Off by default.
+    bool   perspective = false;
+
     // --- the second pass at points that failed ------------------------------
     // How forgiving the run is about repairing points the first solve could not
     // measure well. On by default; see core/Recovery.h for why, and for why

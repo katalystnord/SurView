@@ -79,15 +79,34 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
     if (!alignment.isAligned())
         return {};
     QStringList lines;
-    lines << tr("Target from a separate session (%1 x %2 px), aligned on %3: scale "
-                "%4, turned %5 degrees, shifted (%6, %7) px.")
-                 .arg(alignment.targetWidth)
-                 .arg(alignment.targetHeight)
-                 .arg(fittedOnText(alignment))
-                 .arg(alignment.scale, 0, 'f', 5)
-                 .arg(alignment.angleDegrees, 0, 'f', 4)
-                 .arg(alignment.shiftX, 0, 'f', 3)
-                 .arg(alignment.shiftY, 0, 'f', 3);
+    if (alignment.perspective) {
+        const double *h = alignment.homography;
+        lines << tr("Target from a separate session (%1 x %2 px), aligned on %3, as a "
+                    "camera tilted between the sessions: its scale runs from %4 to %5 "
+                    "across the region measured, and it turns the region's centre by "
+                    "%6 degrees.")
+                     .arg(alignment.targetWidth)
+                     .arg(alignment.targetHeight)
+                     .arg(fittedOnText(alignment))
+                     .arg(alignment.scaleLeast, 0, 'f', 5)
+                     .arg(alignment.scaleMost, 0, 'f', 5)
+                     .arg(alignment.angleDegrees, 0, 'f', 3);
+        lines << tr("Homography from reference to target pixels: [%1 %2 %3; %4 %5 %6; "
+                    "%7 %8 1].")
+                     .arg(h[0], 0, 'g', 9).arg(h[1], 0, 'g', 9).arg(h[2], 0, 'g', 9)
+                     .arg(h[3], 0, 'g', 9).arg(h[4], 0, 'g', 9).arg(h[5], 0, 'g', 9)
+                     .arg(h[6], 0, 'g', 9).arg(h[7], 0, 'g', 9);
+    } else {
+        lines << tr("Target from a separate session (%1 x %2 px), aligned on %3: scale "
+                    "%4, turned %5 degrees, shifted (%6, %7) px.")
+                     .arg(alignment.targetWidth)
+                     .arg(alignment.targetHeight)
+                     .arg(fittedOnText(alignment))
+                     .arg(alignment.scale, 0, 'f', 5)
+                     .arg(alignment.angleDegrees, 0, 'f', 4)
+                     .arg(alignment.shiftX, 0, 'f', 3)
+                     .arg(alignment.shiftY, 0, 'f', 3);
+    }
     lines << tr("Alignment: %1 feature matches, %2 agreeing; refined on %3 of %4 "
                 "correlated subsets, %5 px rms about the fit. No image was resampled.")
                  .arg(alignment.matches)
@@ -96,6 +115,26 @@ QStringList alignmentReport(const SessionAlignmentRecord &alignment)
                  .arg(alignment.groundPoints)
                  .arg(alignment.residualRms, 0, 'f', 4);
     if (alignment.fittedOn == SessionAlignmentRecord::Ground) {
+        if (!alignment.perspective && alignment.perspectiveDeparture >= 0) {
+            // Always given on ground, so a level camera is seen to be level: the
+            // reader judges the number against the movement measured rather than
+            // against a threshold invented here.
+            lines << tr("A perspective fit through the same ground departs from this one "
+                        "by up to %1 px over the region measured. Where that is not small "
+                        "beside the movement being measured, the camera tilted between the "
+                        "sessions: \"%2\" in the Reference section fits the tilt.")
+                         .arg(alignment.perspectiveDeparture, 0, 'f', 3)
+                         .arg(perspectiveLabel());
+        }
+        if (alignment.perspective && alignment.shapeOrder < 2) {
+            // The figures are the tilted test pair's, held to the run by
+            // first_order_subsets_under_a_tilt_are_cautioned.
+            lines << tr("First-order subsets cannot follow the camera's tilt across a "
+                        "subset, which curves it: on a test pair whose scale runs 5 % "
+                        "across the picture, they measured the specimen 0.024 px off on "
+                        "average where second-order subsets measured 0.005 px. Second "
+                        "order is the Correlation section's shape function.");
+        }
         if (!alignment.groundMoved.isEmpty()) {
             // Every subset left out, with the range of how far: those near the
             // fit are its own noise tail, those far from it moved, and the
@@ -206,6 +245,29 @@ QString tooFewGroundSubsetsNote(int count, int subsetRadius)
 QString separateSessionsLabel()
 {
     return tr("Reference and target from separate sessions");
+}
+
+QString perspectiveLabel()
+{
+    return tr("Camera tilted between the sessions (perspective)");
+}
+
+QString perspectiveNote(bool separateSessions, bool groundMarked, bool on)
+{
+    if (!separateSessions)
+        return QString();
+    if (!groundMarked) {
+        return tr("Perspective needs ground marked: fitted on the specimen, it would "
+                  "take up every uniform strain as the camera's. %1 on the toolbar "
+                  "marks it.").arg(markGroundLabel());
+    }
+    if (on) {
+        return tr("On: the camera move is fitted as a homography on the ground, so a "
+                  "camera that tilted, and sees the scene larger at one side than the "
+                  "other, is described. Use the second-order shape function with it.");
+    }
+    return tr("Off: the camera move is a scale, a turn and a shift. The run report says "
+              "how far a perspective fit through the same ground departs from it.");
 }
 
 QString markGroundLabel()

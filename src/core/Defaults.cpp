@@ -164,6 +164,7 @@ QVector<SettingLine> settingLines(const RunDefaults &defaults)
          strainMeasureName(o.strainMeasure)},
         {reference, separateSessionsLabel(), onOff(s.separateSessions),
          onOff(o.separateSessions)},
+        {reference, perspectiveLabel(), onOff(s.perspective), onOff(o.perspective)},
         {reference, QObject::tr("Re-anchor the reference when tracking degrades"),
          onOff(p.enabled), onOff(op.enabled)},
         {reference, QObject::tr("Correlation a point must keep"),
@@ -198,6 +199,7 @@ QJsonObject correlationSettingsToJson(const CorrelationSettings &s)
     settings[QStringLiteral("maskAtCuts")] = s.maskAtCuts;
     settings[QStringLiteral("minValidShare")] = s.minValidShare;
     settings[QStringLiteral("separateSessions")] = s.separateSessions;
+    settings[QStringLiteral("perspective")] = s.perspective;
     settings[QStringLiteral("strainEnabled")] = s.strainEnabled;
     settings[QStringLiteral("strainRadius")] = s.strainRadius;
     settings[QStringLiteral("strainMinPoints")] = s.strainMinPoints;
@@ -224,6 +226,7 @@ CorrelationSettings correlationSettingsFromJson(const QJsonObject &settings)
     s.minValidShare = settings[QStringLiteral("minValidShare")].toDouble(s.minValidShare);
     s.separateSessions =
         settings[QStringLiteral("separateSessions")].toBool(s.separateSessions);
+    s.perspective = settings[QStringLiteral("perspective")].toBool(s.perspective);
     s.strainEnabled = settings[QStringLiteral("strainEnabled")].toBool(s.strainEnabled);
     s.strainRadius = settings[QStringLiteral("strainRadius")].toDouble(s.strainRadius);
     s.strainMinPoints = settings[QStringLiteral("strainMinPoints")].toInt(s.strainMinPoints);

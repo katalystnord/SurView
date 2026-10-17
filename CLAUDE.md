@@ -1036,14 +1036,28 @@ files say about it. Manual chapter 14.
   from the fit each was found (fork `9bbae4d` reports them all), so a reader
   can see WHERE ground moved; the range is given against the kept subsets'
   rms rather than judged against a threshold invented here.
+- **A camera that also tilted** (2026-10-17): `CorrelationSettings::perspective`,
+  under the sessions switch. The fork fits a homography on ground (refinement
+  with SECOND-order subsets: under a tilt the camera's warp curves across a
+  subset, and first-order ones moved the fit by 0.021 px against 0.0017) and the
+  run seeds and carries back through it; the camera move is a `Homography2D`
+  always, a similarity being one with no tilt. ⚑ On ground only, refused
+  without: on the specimen a homography takes up every uniform strain. Unasked,
+  every run on ground still fits one as a CHECK and the report gives how far it
+  departs from the similarity over the region (0.0005 px level, about 7 px on the
+  tilted fixture), which is how a reader learns of a tilt from one run. The
+  switch is never greyed for want of ground, because a project's settings are
+  applied before its region; its note says so instead. Project files version 5.
 - **Pair by pair.** Re-anchoring is refused across sessions, and ⚑ a sequence
   must not hand a frame the points followed from the frame before
   (`SequenceRunner`): it did, and every separate-sessions sequence of more than
   one target stopped at frame 2 telling the reader to turn off reference
   updating that was already off. Every case had used a single target, which is
   the fixture-agrees-with-itself lesson once more.
-- Project files are version 3 for ground and version 4 for the known length,
-  each because an older SurView would open the file and measure something else.
+- Project files are version 3 for ground, 4 for the known length and 5 for
+  perspective, each because an older SurView would open the file and measure
+  something else. ⚑ A project holding only ground or a known length (no added
+  shape) reopened as nothing until 2026-10-17: the open path tested `isValid()`.
 - **Two walkthrough traps**: importing a target of another size raises a MODAL
   warning (`MessageReader` answers it), and a second MainWindow SHOWN beside a
   first dies with GLX BadAccess under xvfb, so save-and-reopen cases leave the

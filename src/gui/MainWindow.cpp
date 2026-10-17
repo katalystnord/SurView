@@ -690,6 +690,7 @@ void MainWindow::applySettings(const CorrelationSettings &settings,
 
     m_reanchorEnabled->setChecked(policy.enabled);
     m_separateSessions->setChecked(settings.separateSessions);
+    m_perspective->setChecked(settings.perspective);
     m_reanchorThreshold->setValue(policy.znccThreshold);
     m_reanchorShare->setValue(int(qRound(policy.percentile * 100.0)));
 
@@ -816,7 +817,10 @@ bool MainWindow::openProjectFrom(const QString &path)
         openReferenceImage(loaded.project.referencePath);
     if (!loaded.project.targetPaths.isEmpty())
         addTargetImages(loaded.project.targetPaths);
-    if (loaded.project.roi.isValid())
+    // ⚑ Any shape, ground included, or a known length: ground and a known
+    // length each need no region (the whole image is measured), and a test of
+    // isValid(), which takes an added shape, reopened either as nothing.
+    if (loaded.project.roi.hasShapes() || loaded.project.roi.knownLength.isValid())
         onRoiDrawn(loaded.project.roi);
 
     log(tr("Opened project %1.").arg(QFileInfo(path).fileName()));
@@ -1243,6 +1247,21 @@ QWidget *MainWindow::createAnalysisPanel()
     referenceColumn->addWidget(m_separateSessions);
     m_separateSessionsNote = new NoteLabel;
     referenceColumn->addWidget(m_separateSessionsNote);
+    // A camera that also tilted: beneath the switch it qualifies, live whenever
+    // that switch is on. ⚑ Not greyed for want of ground: a project's settings
+    // are applied before its region, so a rule that unticked it without ground
+    // would untick it on every open. The note says when ground is missing, and
+    // a run refuses without it, so nothing hidden is ever in force.
+    // Indented under the switch it qualifies, in a column of its own: margins
+    // on a checkbox itself move nothing (found by screenshot).
+    auto *perspectiveColumn = new QVBoxLayout;
+    perspectiveColumn->setContentsMargins(22, 4, 0, 0);
+    m_perspective = new QCheckBox(perspectiveLabel());
+    m_perspective->setChecked(CorrelationSettings().perspective);
+    perspectiveColumn->addWidget(m_perspective);
+    m_perspectiveNote = new NoteLabel;
+    perspectiveColumn->addWidget(m_perspectiveNote);
+    referenceColumn->addLayout(perspectiveColumn);
     referenceColumn->addSpacing(8);
 
     auto *referenceNote = new QLabel(
@@ -1391,6 +1410,10 @@ QWidget *MainWindow::createAnalysisPanel()
             &MainWindow::updateReferenceUpdateControls);
     connect(m_separateSessions, &QCheckBox::toggled, this,
             &MainWindow::onSeparateSessionsToggled);
+    connect(m_perspective, &QCheckBox::toggled, this, [this] {
+        updateReferenceUpdateControls();
+        updateSectionSummaries();
+    });
     updateReferenceUpdateControls();
 
     connect(m_strainEnabled, &QCheckBox::toggled, this,
@@ -1445,6 +1468,10 @@ void MainWindow::updateReferenceUpdateControls()
     m_reanchorUnavailable->setVisible(across);
     m_separateSessionsNote->setText(
         separateSessionsPanelNote(across, m_roi.hasGround(), m_roi.knownLength.isValid()));
+    m_perspective->setEnabled(across);
+    const QString perspective = perspectiveNote(across, m_roi.hasGround(), m_perspective->isChecked());
+    m_perspectiveNote->setText(perspective);
+    m_perspectiveNote->setVisible(!perspective.isEmpty());
 
     const bool on = m_reanchorEnabled->isChecked() && !across;
     m_reanchorThreshold->setEnabled(on);
@@ -1597,7 +1624,9 @@ void MainWindow::updateSectionSummaries()
     const ReferenceUpdatePolicy policy = currentReferencePolicy();
     m_referenceSection->setSummary(
         settings.separateSessions
-            ? (m_roi.hasGround() ? tr("separate sessions, aligned on the ground marked")
+            ? (m_roi.hasGround() ? (settings.perspective
+                                        ? tr("separate sessions, tilted, aligned on the ground marked")
+                                        : tr("separate sessions, aligned on the ground marked"))
                : m_roi.knownLength.isValid()
                    ? tr("separate sessions, scale from the known length")
                    : tr("separate sessions, each target aligned to the reference"))
@@ -1906,6 +1935,7 @@ CorrelationSettings MainWindow::currentSettings() const
     settings.maskAtCuts = m_maskAtCuts->isChecked();
     settings.minValidShare = m_minValidShare->value() / 100.0;
     settings.separateSessions = m_separateSessions && m_separateSessions->isChecked();
+    settings.perspective = m_perspective && m_perspective->isChecked();
 
     settings.strainEnabled = m_strainEnabled->isChecked();
     settings.strainRadius = m_strainRadius->value();

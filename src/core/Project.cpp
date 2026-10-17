@@ -29,7 +29,11 @@ constexpr const char *kMagic = "SurView DIC project";
 // 4 since 2026-10-16: the region may carry a KNOWN LENGTH. A version 3 SurView
 // would open the project without it and fit a separate session's camera scale
 // on the specimen, measuring a different strain; it refuses the file instead.
-constexpr int kVersion = 4;
+//
+// 5 since 2026-10-17: the run may fit a separate session's camera as TILTED
+// (CorrelationSettings::perspective). A version 4 SurView would ignore the
+// setting and fit a similarity to a tilted camera; it refuses the file instead.
+constexpr int kVersion = 5;
 
 QString hashOf(const QString &path)
 {

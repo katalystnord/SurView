@@ -68,6 +68,9 @@ Project sampleProject(const QString &dir)
     project.settings.strainRadius = 33.0;
     project.settings.strainMinPoints = 8;
     project.settings.strainMeasure = StrainMeasure::GreenLagrange;
+    // Separate sessions with a tilted camera: both off by default.
+    project.settings.separateSessions = true;
+    project.settings.perspective = true;
 
     // Deliberately every field different from its default, so a field the
     // writer forgot cannot pass by coming back as the default it never left.
@@ -190,6 +193,7 @@ private slots:
     void an_entry_with_no_recorded_hash_is_not_reported_as_changed();
     void ground_is_kept_from_a_surview_that_would_measure_it();
     void a_known_length_is_kept_from_a_surview_that_would_ignore_it();
+    void a_tilted_camera_is_kept_from_a_surview_that_would_fit_a_similarity();
 };
 
 void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
@@ -228,6 +232,8 @@ void TestProject::everything_a_session_was_comes_back_when_it_is_opened()
     QCOMPARE(loaded.project.settings.gridStep, saved.settings.gridStep);
     QCOMPARE(loaded.project.settings.maxIterations, saved.settings.maxIterations);
     QCOMPARE(loaded.project.settings.convergence, saved.settings.convergence);
+    QCOMPARE(loaded.project.settings.separateSessions, saved.settings.separateSessions);
+    QCOMPARE(loaded.project.settings.perspective, saved.settings.perspective);
     QCOMPARE(loaded.project.settings.strainEnabled, saved.settings.strainEnabled);
     QCOMPARE(loaded.project.settings.strainRadius, saved.settings.strainRadius);
     QCOMPARE(loaded.project.settings.strainMinPoints, saved.settings.strainMinPoints);
@@ -521,6 +527,23 @@ void TestProject::a_known_length_is_kept_from_a_surview_that_would_ignore_it()
     const QString plainPath = dir.filePath(QStringLiteral("plain.svproj"));
     QVERIFY(saveProject(plainPath, plain).isEmpty());
     QVERIFY(!loadProject(plainPath).project.roi.knownLength.marked);
+}
+
+void TestProject::a_tilted_camera_is_kept_from_a_surview_that_would_fit_a_similarity()
+{
+    // A SurView from before the perspective fit opens a version 4 file, ignores
+    // the setting it does not know, and fits a similarity to a tilted camera:
+    // a different measurement from the one this project was set up to make.
+    // The version is raised so it refuses the file instead.
+    QTemporaryDir dir;
+    QVERIFY(dir.isValid());
+    const QString path = dir.filePath(QStringLiteral("tilted.svproj"));
+    QVERIFY(saveProject(path, sampleProject(dir.path())).isEmpty());
+    QFile written(path);
+    QVERIFY(written.open(QIODevice::ReadOnly));
+    const QJsonObject root = QJsonDocument::fromJson(written.readAll()).object();
+    QVERIFY2(root[QStringLiteral("version")].toInt() >= 5,
+             "a SurView that fits only a similarity would open this file");
 }
 
 void TestProject::a_project_written_before_shapes_opens_as_the_same_region()

@@ -379,6 +379,8 @@ private:
     // A target from a separate session, and the re-anchoring it rules out.
     QCheckBox *m_separateSessions = nullptr;
     NoteLabel *m_separateSessionsNote = nullptr;
+    QCheckBox *m_perspective = nullptr;
+    NoteLabel *m_perspectiveNote = nullptr;
     NoteLabel *m_reanchorUnavailable = nullptr;
 
     QCheckBox *m_recoveryEnabled = nullptr;

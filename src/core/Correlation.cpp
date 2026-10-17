@@ -187,7 +187,9 @@ void CorrelationRunner::run()
         // Applied to COORDINATES only: each point starts from it, is measured on
         // the target as recorded, and is carried back below. Nothing resampled.
         CorrelationResult result;
-        Similarity2D camera;
+        // A homography: a similarity is one with no tilt, so one path serves
+        // both, and the perspective fit is only a different one handed in.
+        Homography2D camera;
         if (m_settings.separateSessions) {
             SessionAlignmentRecord &record = result.alignment;
             record.targetWidth = tar_img.width;
@@ -223,10 +225,25 @@ void CorrelationRunner::run()
             // as far as keeps a large image to a few thousand of them.
             const int alignStep = alignmentStep(m_settings.gridStep, fitBounds);
 
+            // ⚑ Perspective on ground only: on the specimen a homography takes up
+            // every uniform strain. Refused rather than quietly fitting a
+            // similarity to a camera the reader said had tilted.
+            if (m_settings.perspective && record.fittedOn != SessionAlignmentRecord::Ground) {
+                emit failed(tr("\"%1\" is on, and fits the camera move on ground marked as "
+                               "stationary; none is marked. Fitted on the specimen it would "
+                               "take up every uniform strain as the camera's. %2 on the "
+                               "toolbar marks ground, or turn the setting off in the "
+                               "Reference section.")
+                                .arg(perspectiveLabel(), markGroundLabel()));
+                return;
+            }
+            record.shapeOrder = m_settings.shapeOrder;
+
             emit progress(0, 1, tr("aligning the two sessions"));
             SessionAlignment2D aligner(m_settings.subsetRadius, alignStep, threads);
             aligner.setImages(ref_img, tar_img);
             aligner.setGround(fitOn.get());
+            aligner.setPerspective(m_settings.perspective);
 
             // The known length gives the scale where the fit cannot: not on
             // ground, which measures the scale itself from far more than two points.
@@ -307,11 +324,62 @@ void CorrelationRunner::run()
                 return;
             }
 
-            camera = fit.transform;
-            record.scale = camera.scale;
-            record.angleDegrees = camera.angle * 180.0 / M_PI;
-            record.shiftX = camera.tx;
-            record.shiftY = camera.ty;
+            record.scale = fit.transform.scale;
+            record.angleDegrees = fit.transform.angle * 180.0 / M_PI;
+            record.shiftX = fit.transform.tx;
+            record.shiftY = fit.transform.ty;
+            camera = fit.perspective ? fit.projective : Homography2D::from(fit.transform);
+
+            // The region measured, sampled on a 9 x 9 lattice over its box (the
+            // whole image without one), for what the camera move does across
+            // it: the local scale under a tilt, or how far the perspective
+            // check departs from a similarity.
+            const RegionOfInterest &measured = m_roi;
+            const QRect over = measured.isValid()
+                ? measured.bounds().intersected(QRect(0, 0, ref_img.width, ref_img.height))
+                : QRect(0, 0, ref_img.width, ref_img.height);
+            QVector<Point2D> across;
+            for (int j = 0; j <= 8; j++) {
+                for (int i = 0; i <= 8; i++) {
+                    const int x = over.left() + (over.width() - 1) * i / 8;
+                    const int y = over.top() + (over.height() - 1) * j / 8;
+                    if (!measured.isValid() || regionContains(measured, x, y))
+                        across.append(Point2D(float(x), float(y)));
+                }
+            }
+            if (fit.perspective) {
+                record.perspective = true;
+                for (int k = 0; k < 9; k++)
+                    record.homography[k] = fit.projective.h[k];
+                double least = 0, most = 0;
+                for (int k = 0; k < across.size(); k++) {
+                    double jac[4];
+                    fit.projective.jacobian(across.at(k), jac);
+                    const double local = std::sqrt(std::abs(jac[0] * jac[3] - jac[1] * jac[2]));
+                    least = k == 0 ? local : std::min(least, local);
+                    most = k == 0 ? local : std::max(most, local);
+                }
+                record.scaleLeast = least;
+                record.scaleMost = most;
+                // ⚑ Under a tilt there is no one turn: the tilt itself turns the
+                // picture locally, by different amounts in different places (the
+                // test pair's camera turned 3.5 degrees, and its homography turns
+                // the region's centre by 2.3). So the turn reported is the local
+                // one at the region's centre, and said to be.
+                double centre[4];
+                fit.projective.jacobian(Point2D(float(over.center().x()), float(over.center().y())),
+                                        centre);
+                record.angleDegrees =
+                    std::atan2(centre[2] - centre[1], centre[0] + centre[3]) * 180.0 / M_PI;
+            } else if (fit.projective_fitted
+                       && record.fittedOn == SessionAlignmentRecord::Ground) {
+                double apart = 0;
+                for (const Point2D &at : across) {
+                    const Point2D a = fit.projective.map(at), b = fit.transform.map(at);
+                    apart = std::max(apart, double(std::hypot(a.x - b.x, a.y - b.y)));
+                }
+                record.perspectiveDeparture = apart;
+            }
             emit progress(1, 1, tr("aligning the two sessions"));
         }
 

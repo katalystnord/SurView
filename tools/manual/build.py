@@ -1953,16 +1953,45 @@ part4_body = """
     either way.
   </p>
 
-  <div class="callout">
-    <p class="callout-label">What the alignment models</p>
-    <p>
-      The camera move is a similarity: a scale, a turn and a shift. A
-      camera that was also tilted between the sessions sees the scene in
-      perspective, which a similarity does not describe. The run report
-      gives the refined fit's residual, in pixels, about the subsets it
-      was fitted on, and a perspective change shows there first.
-    </p>
-  </div>
+  <h2>A camera that also tilted</h2>
+  <p>
+    A camera set up again by hand is rarely square to the specimen in the
+    same way twice. Tilted, it sees one side of the scene a little larger
+    than the other, which a scale, a turn and a shift cannot describe: on
+    a test pair whose scale runs 5 per cent across the picture, the
+    similarity is wrong by several pixels at the edges.
+  </p>
+  <p>
+    Every run aligned on ground also fits a <strong>perspective</strong>
+    move through the same ground, as a check, and the report says how far
+    it departs from the similarity over the region measured: under a
+    thousandth of a pixel on a camera that did not tilt, about 7 px on the
+    test pair. Where that is not small beside the movement being
+    measured, turn on <strong>Camera tilted between the sessions
+    (perspective)</strong>, beneath the sessions switch. The move is then
+    fitted as a homography, and the report gives its scale as a range
+    across the region measured, with the homography itself.
+  </p>
+  <ul>
+    <li>
+      <strong>On ground only.</strong> A perspective move fitted on the
+      specimen would take up every uniform strain, not only the
+      dilatation, so a run asking for it with no ground marked is refused,
+      and the switch's note says so before the run.
+    </li>
+    <li>
+      <strong>With second-order subsets.</strong> Under a tilt the
+      camera's own warp curves across each subset, which a first-order
+      subset cannot follow: on the test pair, first-order subsets measured
+      the specimen 0.024 px off on average where second-order ones measured
+      0.005 px. The report says so when a tilted run used first order.
+    </li>
+    <li>
+      <strong>The plane, not what stands off it.</strong> A homography
+      maps one plane exactly. The ground and the specimen surface should
+      lie in about the same plane, as a specimen on its bench does.
+    </li>
+  </ul>
 
   {nav}
 </main>
@@ -2301,6 +2330,10 @@ appendix_body = """
     <dd>Two points whose distance did not change between two sessions,
     such as the ends of a scale bar. Where no ground is marked, the
     camera's scale is taken from it.</dd>
+    <dt>Perspective (camera tilted)</dt>
+    <dd>A camera move between two sessions that includes a tilt, fitted
+      as a homography on stationary ground, so the camera's scale varies
+      across the picture. Chapter 14.</dd>
 
     <dt>Displacement field</dt>
     <dd>The measured movement, in pixels, at every point of the grid.</dd>
@@ -2378,6 +2411,7 @@ appendix_body = """
       <tr><td>See provenance for an imported image</td><td><strong>Record</strong> panel</td></tr>
       <tr><td>Export a field</td><td>File menu: <code>.vtu</code> for ParaView and FreeCAD, or <code>.csv</code></td></tr>
       <tr><td>Measure a target photographed after the camera moved</td><td><strong>Analysis</strong> panel, "Reference" group: <strong>Reference and target from separate sessions</strong></td></tr>
+      <tr><td>Fit a camera that also tilted between the sessions</td><td><strong>Analysis</strong> panel, "Reference" group: <strong>Camera tilted between the sessions (perspective)</strong></td></tr>
       <tr><td>Mark ground that did not move between the sessions</td><td>Toolbar: <strong>Mark Ground</strong> (rectangle, ellipse or polygon; with the switch above on)</td></tr>
       <tr><td>Mark a length that did not change, where there is no ground</td><td>Toolbar: <strong>Mark Ground</strong> menu, <strong>Mark Known Length</strong>, then two clicks</td></tr>
     </tbody>

@@ -21,6 +21,11 @@ The scene, in reference pixels (the reference camera sees the world directly):
 
 Reference 240 x 200, target 280 x 240.
 
+And session_tilted_target.tif: the same deformed scene seen by a camera that
+also TILTED, a homography x = H W with the similarity above plus perspective
+terms (2.0e-4, -1.5e-4), so the target's scale runs about 5 % across the
+picture, with the specimen's centre again at (140, 120).
+
 Exact for the reason the other fixtures are: the speckle is a sum of Gaussian
 dots at MATERIAL positions (the specimen's) or WORLD positions (the rig's),
 and each target sample shows the pattern at the point that has moved to it,
@@ -56,6 +61,25 @@ COS, SIN = math.cos(ANGLE), math.sin(ANGLE)
 # t places the specimen centre at (140, 120)
 TX = 140.0 - SCALE * (COS * CX - SIN * CY)
 TY = 120.0 - SCALE * (SIN * CX + COS * CY)
+
+
+# the tilted camera: the similarity's matrix with a perspective row, its shift
+# chosen so the specimen centre lands at (140, 120)
+P1, P2 = 2.0e-4, -1.5e-4
+_W = P1 * CX + P2 * CY + 1.0
+H = np.array([[SCALE * COS, -SCALE * SIN, 0.0],
+              [SCALE * SIN, SCALE * COS, 0.0],
+              [P1, P2, 1.0]])
+H[0, 2] = 140.0 * _W - (H[0, 0] * CX + H[0, 1] * CY)
+H[1, 2] = 120.0 * _W - (H[1, 0] * CX + H[1, 1] * CY)
+H_INV = np.linalg.inv(H)
+
+
+def unmap_tilted(px, py):
+    """Tilted target pixel -> world (reference) position."""
+    w = H_INV[2, 0] * px + H_INV[2, 1] * py + H_INV[2, 2]
+    return ((H_INV[0, 0] * px + H_INV[0, 1] * py + H_INV[0, 2]) / w,
+            (H_INV[1, 0] * px + H_INV[1, 1] * py + H_INV[1, 2]) / w)
 
 
 def unmap(px, py):
@@ -125,6 +149,10 @@ def main():
     wx, wy = unmap(px, py)
     mx, my = undeform(wx, wy)
     to_image(scene(wx, wy, mx, my, rig, specimen)).save(out / "session_target.tif")
+
+    wx, wy = unmap_tilted(px, py)
+    mx, my = undeform(wx, wy)
+    to_image(scene(wx, wy, mx, my, rig, specimen)).save(out / "session_tilted_target.tif")
 
 
 if __name__ == "__main__":

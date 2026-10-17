@@ -462,6 +462,8 @@ private slots:
     void a_target_from_another_session_is_measured_once_the_screen_says_how();
     void ground_is_marked_where_the_screen_says_and_the_run_is_aligned_on_it();
     void a_known_length_is_marked_where_the_screen_says_and_gives_the_scale();
+    void ground_a_known_length_and_a_tilt_come_back_with_the_project();
+    void a_tilted_camera_is_fitted_where_the_screen_says();
     void the_separate_sessions_switch_is_saved_with_the_project();
 
     void the_settings_window_is_on_the_file_menu_and_names_every_default();
@@ -4555,6 +4557,125 @@ void TestWorkspaceWalkthrough::a_known_length_is_marked_where_the_screen_says_an
     QVERIFY(!window.roi().knownLength.marked);
     QVERIFY(!projectLine(&window, QStringLiteral("Region of interest")).contains(QStringLiteral("known length")));
     QVERIFY(!remove->isEnabled());
+}
+
+void TestWorkspaceWalkthrough::ground_a_known_length_and_a_tilt_come_back_with_the_project()
+{
+    // ⚑ Ground needs no region, nor does a known length (the whole image is
+    // measured), so a project may hold either with nothing added. Found while
+    // adding the perspective switch: the project opened its region only when it
+    // was VALID, which takes an added shape, so ground or a known length alone
+    // came back as nothing, and the reopened project aligned on the specimen.
+    // Negative check: the old condition, red here on the ground.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("session_reference.tif")));
+    CollapsibleSection *reference = sectionTitled(&window, QStringLiteral("Reference"));
+    if (reference->isCollapsed())
+        reference->findChild<QToolButton *>()->click();
+    byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    const auto click = [viewport](double x, double y) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, x, y));
+    };
+    actionLabelled(&window, QStringLiteral("Ground Rectangle"))->trigger();
+    click(3, 3);
+    click(46, 196);
+    actionLabelled(&window, markKnownLengthLabel())->trigger();
+    click(22, 24);
+    click(214, 178);
+    // The perspective switch, live under the sessions switch now that it is on.
+    auto *tilt = byVisibleText<QCheckBox>(&window, perspectiveLabel());
+    QVERIFY2(tilt && tilt->isEnabled(), "the perspective switch is not offered");
+    tilt->click();
+    QVERIFY(window.roi().hasGround() && window.roi().knownLength.isValid() && !window.roi().isValid());
+
+    QTemporaryDir dir;
+    const QString path = dir.filePath(QStringLiteral("ground-only.svproj"));
+    QVERIFY(window.saveProjectTo(path));
+
+    const KnownLength marked = window.roi().knownLength;
+
+    // New Project, then open it again in the same window: a second window
+    // that opens an image dies with GLX BadAccess under xvfb.
+    QAction *fresh = nullptr;
+    for (QAction *action : window.menuBar()->actions().first()->menu()->actions()) {
+        if (action->text().contains(QStringLiteral("New Project")))
+            fresh = action;
+    }
+    QVERIFY(fresh);
+    fresh->trigger();
+    QVERIFY(!window.roi().hasGround() && !window.roi().knownLength.marked);
+    QVERIFY(window.openProjectFrom(path));
+    QVERIFY2(window.roi().hasGround(), "the ground did not come back with the project");
+    QVERIFY2(window.roi().knownLength == marked, qPrintable(window.roi().knownLength.describe()));
+    QVERIFY2(byVisibleText<QCheckBox>(&window, perspectiveLabel())->isChecked(),
+             "the project reopened with the camera taken as level");
+}
+
+void TestWorkspaceWalkthrough::a_tilted_camera_is_fitted_where_the_screen_says()
+{
+    // A target from a camera that also tilted. Everything here is something
+    // the screen said: the perspective switch sits under the sessions switch,
+    // greyed until that is on; its note says it needs ground, and after ground
+    // is marked, which shape function to use with it; the run's log says the
+    // camera was fitted as tilted. Negative checks (2026-10-17), each red here:
+    // the switch live with the sessions off; the note not saying it needs
+    // ground; the run never handed the setting.
+    MainWindow window;
+    window.resize(1200, 800);
+    window.show();
+    QVERIFY(QTest::qWaitForWindowExposed(&window));
+    window.openReferenceImage(fixture(QStringLiteral("session_reference.tif")));
+    MessageReader warning;
+    warning.arm();
+    window.addTargetImages({fixture(QStringLiteral("session_tilted_target.tif"))});
+
+    CollapsibleSection *reference = sectionTitled(&window, QStringLiteral("Reference"));
+    if (reference->isCollapsed())
+        reference->findChild<QToolButton *>()->click();
+    auto *tilt = byVisibleText<QCheckBox>(&window, perspectiveLabel());
+    QVERIFY2(tilt, "nothing on the panel fits a tilted camera");
+    QVERIFY(!tilt->isEnabled());
+    byVisibleText<QCheckBox>(&window, separateSessionsLabel())->click();
+    QVERIFY(tilt->isEnabled());
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("Perspective needs ground marked")),
+             "the switch does not say it needs ground");
+
+    auto *viewport = window.findChild<ImageViewport *>();
+    const auto click = [viewport](double x, double y) {
+        QTest::mouseClick(viewport, Qt::LeftButton, Qt::NoModifier,
+                          widgetPointForPixel(viewport, x, y));
+    };
+    for (const QRect &band : {QRect(QPoint(3, 3), QPoint(46, 196)),
+                              QRect(QPoint(194, 3), QPoint(236, 196))}) {
+        actionLabelled(&window, QStringLiteral("Ground Rectangle"))->trigger();
+        click(band.left(), band.top());
+        click(band.right(), band.bottom());
+    }
+    actionLabelled(&window, QStringLiteral("Add Ellipse"))->trigger();
+    click(80, 60);
+    click(160, 140);
+    tilt->click();
+    QVERIFY2(somethingOnScreenSays(&window, QStringLiteral("Use the second-order shape function")),
+             "the switch does not say which shape function to use with it");
+    auto *shape = controlLabelled<QComboBox>(&window, QStringLiteral("Shape function"));
+    shape->setCurrentIndex(shape->findData(2));
+
+    QAction *run = actionLabelled(&window, QStringLiteral("Run Correlation"));
+    run->trigger();
+    QVERIFY(QTest::qWaitFor([&window] { return window.measuredFrames() >= 1; }, 120000));
+    QVERIFY(QTest::qWaitFor([run] { return run->isEnabled(); }, 120000));
+    QVERIFY(window.lastResult().alignment.perspective);
+    const QString logged = logView(&window)->toPlainText();
+    QVERIFY2(logged.contains(QStringLiteral("as a camera tilted between the sessions"))
+                 && logged.contains(QStringLiteral("Homography from reference to target pixels")),
+             qPrintable(logged));
+    QVERIFY(!logged.contains(QStringLiteral("cannot follow the camera's tilt")));
 }
 
 void TestWorkspaceWalkthrough::the_separate_sessions_switch_is_saved_with_the_project()

@@ -241,6 +241,10 @@ footer a:hover { color: var(--accent-strong); }
     <dd>Two points whose distance did not change between two sessions,
     such as the ends of a scale bar. Where no ground is marked, the
     camera's scale is taken from it.</dd>
+    <dt>Perspective (camera tilted)</dt>
+    <dd>A camera move between two sessions that includes a tilt, fitted
+      as a homography on stationary ground, so the camera's scale varies
+      across the picture. Chapter 14.</dd>
 
     <dt>Displacement field</dt>
     <dd>The measured movement, in pixels, at every point of the grid.</dd>
@@ -318,6 +322,7 @@ footer a:hover { color: var(--accent-strong); }
       <tr><td>See provenance for an imported image</td><td><strong>Record</strong> panel</td></tr>
       <tr><td>Export a field</td><td>File menu: <code>.vtu</code> for ParaView and FreeCAD, or <code>.csv</code></td></tr>
       <tr><td>Measure a target photographed after the camera moved</td><td><strong>Analysis</strong> panel, "Reference" group: <strong>Reference and target from separate sessions</strong></td></tr>
+      <tr><td>Fit a camera that also tilted between the sessions</td><td><strong>Analysis</strong> panel, "Reference" group: <strong>Camera tilted between the sessions (perspective)</strong></td></tr>
       <tr><td>Mark ground that did not move between the sessions</td><td>Toolbar: <strong>Mark Ground</strong> (rectangle, ellipse or polygon; with the switch above on)</td></tr>
       <tr><td>Mark a length that did not change, where there is no ground</td><td>Toolbar: <strong>Mark Ground</strong> menu, <strong>Mark Known Length</strong>, then two clicks</td></tr>
     </tbody>

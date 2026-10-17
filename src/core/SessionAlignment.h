@@ -86,6 +86,28 @@ struct SessionAlignmentRecord
     double knownLengthCorrelation = 0.0; // the poorer of its two ends
     int knownLengthEndsInside = 0;       // ends inside the region measured
 
+    // ⚑ A camera TILTED between the sessions (CorrelationSettings::perspective):
+    // the move is a homography, its scale is no longer one number, and scale
+    // and shiftX/Y above are the similarity through the same ground, kept as a
+    // summary only; angleDegrees is the homography's own turn at the centre of
+    // the region measured, since under a tilt the turn varies from place to place. The homography itself, row-major, last
+    // element 1, reference pixel to target pixel; and the local scale it gives,
+    // least and most, across the region measured.
+    bool perspective = false;
+    double homography[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};
+    double scaleLeast = 1.0;
+    double scaleMost = 1.0;
+
+    // Fitted on ground as a similarity: how far the engine's perspective check
+    // through the same ground departs from it, at most, over the region
+    // measured, in target pixels. What tells a tilted camera from a level one
+    // in a single run. Negative when the check could not be fitted.
+    double perspectiveDeparture = -1.0;
+
+    // The run's shape function order, for what a tilt does to first-order
+    // subsets.
+    int shapeOrder = 1;
+
     bool isAligned() const { return fittedOn != NotAligned; }
 };
 
@@ -104,6 +126,11 @@ QString tooFewGroundSubsetsNote(int count, int subsetRadius);
 
 // The Analysis panel's switch, as it reads there and wherever it is named.
 QString separateSessionsLabel();
+
+// The Analysis panel's perspective switch, as it reads there and wherever it
+// is named; and the note beside it, saying what it does or why it cannot.
+QString perspectiveLabel();
+QString perspectiveNote(bool separateSessions, bool groundMarked, bool on);
 
 // The toolbar tool that marks stationary ground (core/Roi.h), as it reads
 // there and wherever the screen names it.

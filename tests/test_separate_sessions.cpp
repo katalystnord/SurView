@@ -77,6 +77,14 @@
 // recorded; recorded with the kept ones among them; the farthest taken as the
 // first; the overlap, or the known length's ends inside, never recorded; each
 // of the three report lines removed.
+//
+// A camera that also tilted (2026-10-17), each run and reverted, each red here:
+// the setting never handed to the engine; the similarity used though the
+// homography was fitted (4.4 px out); no refusal without ground; the scale
+// range taken from one point; the departure never recorded, or its line
+// removed; the first-order caution always given, never given, or given for
+// want of the run's shape order. The walkthrough and test_defaults /
+// test_project record their own.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -178,6 +186,30 @@ Outcome run(const RegionOfInterest &roi, const QString &reference, const QString
     return outcome;
 }
 
+// As run(), with the settings given: the perspective cases need the switch,
+// the perspective fit and the shape function each set apart.
+Outcome runWith(const CorrelationSettings &s, const RegionOfInterest &roi,
+                const QString &reference, const QString &target)
+{
+    CorrelationRunner runner(s, roi, fixture(reference), fixture(target));
+    Outcome outcome;
+    QObject::connect(&runner, &CorrelationRunner::finished,
+                     [&outcome](const CorrelationResult &r) { outcome.result = r; });
+    QObject::connect(&runner, &CorrelationRunner::failed,
+                     [&outcome](const QString &reason) { outcome.failure = reason; });
+    runner.run();
+    return outcome;
+}
+
+CorrelationSettings tilted(bool perspective, int shapeOrder)
+{
+    CorrelationSettings s = settings();
+    s.separateSessions = true;
+    s.perspective = perspective;
+    s.shapeOrder = shapeOrder;
+    return s;
+}
+
 struct Means
 {
     int solved = 0;
@@ -242,6 +274,10 @@ private slots:
     void ground_clear_of_the_specimen_reports_nothing_moved_and_no_overlap();
     void a_known_length_end_on_the_specimen_is_said();
     void ground_too_narrow_for_a_subset_is_refused_saying_why();
+    void a_tilted_camera_is_measured_through_the_perspective_fit_on_ground();
+    void a_tilted_camera_fitted_as_a_similarity_is_said_in_pixels();
+    void first_order_subsets_under_a_tilt_are_cautioned();
+    void perspective_without_ground_is_refused_saying_why();
 };
 
 void TestSeparateSessions::a_target_of_another_size_is_refused_unless_aligned()
@@ -744,6 +780,113 @@ void TestSeparateSessions::ground_too_narrow_for_a_subset_is_refused_saying_why(
     QCOMPARE(groundSubsetCount(roi, settings().subsetRadius,
                                alignmentStep(settings().gridStep, narrow.bounds()), QSize(240, 200)),
              0);
+}
+
+// session_tilted_target.tif (tools/make-session-fixture.py) is the same
+// deformed scene seen by a camera that also TILTED: the similarity of the
+// other target plus perspective terms (2.0e-4, -1.5e-4), so its scale runs
+// about 5 % across the picture.
+
+void TestSeparateSessions::a_tilted_camera_is_measured_through_the_perspective_fit_on_ground()
+{
+    // Fitted as a homography on the rig, with second-order subsets, the
+    // specimen reads its own deformation, as on the untilted pair.
+    const Outcome o = runWith(tilted(true, 2), withGround(specimenRegion()),
+                              QStringLiteral("session_reference.tif"),
+                              QStringLiteral("session_tilted_target.tif"));
+    QVERIFY2(o.failure.isEmpty(), qPrintable(o.failure));
+    const SessionAlignmentRecord &a = o.result.alignment;
+    QVERIFY(a.perspective);
+    const Means m = measure(o.result);
+    qInfo("tilted, perspective, second order: %d solved, error %.5f px, exx %.5f eyy %.5f exy %.5f",
+          m.solved, m.displacementError, m.exx, m.eyy, m.exy);
+    QVERIFY2(m.displacementError < 0.01, qPrintable(QString::number(m.displacementError)));
+    QVERIFY2(std::abs(m.exx - kE11) < 3e-4 && std::abs(m.eyy - kE22) < 3e-4
+                 && std::abs(m.exy - 0.5 * (kE12 + kE21)) < 3e-4,
+             qPrintable(QStringLiteral("%1 %2 %3").arg(m.exx).arg(m.eyy).arg(m.exy)));
+    // The scale is no longer one number: across the region measured it runs
+    // over a range, and the report gives the range and the homography itself.
+    QVERIFY2(a.scaleLeast > 1.0 && a.scaleMost > a.scaleLeast + 0.005,
+             qPrintable(QStringLiteral("%1 to %2").arg(a.scaleLeast).arg(a.scaleMost)));
+    // The turn at the region's centre, the true homography's there being
+    // 2.307 degrees (worked from the fixture's matrix; the camera's own 3.5
+    // degrees is not one number once it also tilted). Negative check: the
+    // similarity's angle reported instead, 2.36, red here.
+    QVERIFY2(std::abs(a.angleDegrees - 2.307) < 0.02, qPrintable(QString::number(a.angleDegrees)));
+    const QString report = alignmentReport(a).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("as a camera tilted between the sessions"))
+                 && report.contains(QStringLiteral("Homography from reference to target pixels")),
+             qPrintable(report));
+}
+
+void TestSeparateSessions::a_tilted_camera_fitted_as_a_similarity_is_said_in_pixels()
+{
+    // Not asked for perspective, the run still fits a homography through the
+    // same ground as a check, and the report says how far it departs from the
+    // similarity over the region measured: pixels on the tilted pair, nothing
+    // to speak of on the untilted one. The reader sees the tilt from one run,
+    // and the report names the setting that fits it.
+    const Outcome flat = runWith(tilted(false, 1), withGround(specimenRegion()),
+                                 QStringLiteral("session_reference.tif"),
+                                 QStringLiteral("session_tilted_target.tif"));
+    QVERIFY2(flat.failure.isEmpty(), qPrintable(flat.failure));
+    const SessionAlignmentRecord &a = flat.result.alignment;
+    QVERIFY(!a.perspective);
+    qInfo("tilted, similarity: departure %.3f px", a.perspectiveDeparture);
+    QVERIFY2(a.perspectiveDeparture > 0.3, qPrintable(QString::number(a.perspectiveDeparture)));
+    const QString report = alignmentReport(a).join(QLatin1Char('\n'));
+    QVERIFY2(report.contains(QStringLiteral("A perspective fit through the same ground departs from "
+                                            "this one by up to %1 px")
+                                 .arg(a.perspectiveDeparture, 0, 'f', 3))
+                 && report.contains(perspectiveLabel()),
+             qPrintable(report));
+
+    const Outcome level = run(withGround(specimenRegion()), QStringLiteral("session_reference.tif"),
+                              QStringLiteral("session_target.tif"), true);
+    QVERIFY2(level.failure.isEmpty(), qPrintable(level.failure));
+    qInfo("untilted, similarity: departure %.4f px", level.result.alignment.perspectiveDeparture);
+    QVERIFY2(level.result.alignment.perspectiveDeparture >= 0
+                 && level.result.alignment.perspectiveDeparture < 0.01,
+             qPrintable(QString::number(level.result.alignment.perspectiveDeparture)));
+}
+
+void TestSeparateSessions::first_order_subsets_under_a_tilt_are_cautioned()
+{
+    // Under a tilt the camera's own warp curves across each subset, which a
+    // first-order subset cannot follow: measured through a correct fit, it is
+    // off by an amount the second order is not. Said, with the setting.
+    const Outcome first = runWith(tilted(true, 1), withGround(specimenRegion()),
+                                  QStringLiteral("session_reference.tif"),
+                                  QStringLiteral("session_tilted_target.tif"));
+    const Outcome second = runWith(tilted(true, 2), withGround(specimenRegion()),
+                                   QStringLiteral("session_reference.tif"),
+                                   QStringLiteral("session_tilted_target.tif"));
+    QVERIFY2(first.failure.isEmpty() && second.failure.isEmpty(),
+             qPrintable(first.failure + second.failure));
+    const Means m1 = measure(first.result), m2 = measure(second.result);
+    qInfo("tilted, first order: error %.5f px; second order: %.5f px",
+          m1.displacementError, m2.displacementError);
+    // The report quotes these two figures, 0.024 and 0.005 px: held here so
+    // the sentence cannot drift from what the pair measures.
+    QVERIFY2(std::abs(m1.displacementError - 0.024) < 0.003
+                 && std::abs(m2.displacementError - 0.005) < 0.002,
+             qPrintable(QStringLiteral("%1 against %2").arg(m1.displacementError).arg(m2.displacementError)));
+    const QString caution = QStringLiteral("cannot follow the camera's tilt across a subset");
+    QVERIFY2(alignmentReport(first.result.alignment).join(QLatin1Char(' ')).contains(caution),
+             qPrintable(alignmentReport(first.result.alignment).join(QLatin1Char('\n'))));
+    QVERIFY(!alignmentReport(second.result.alignment).join(QLatin1Char(' ')).contains(caution));
+}
+
+void TestSeparateSessions::perspective_without_ground_is_refused_saying_why()
+{
+    // Fitted on the specimen, a homography would take up every uniform
+    // strain, so it is fitted on ground only, and a run asking for it with
+    // none marked is refused rather than quietly fitting a similarity.
+    const Outcome o = runWith(tilted(true, 2), specimenRegion(),
+                              QStringLiteral("session_reference.tif"),
+                              QStringLiteral("session_tilted_target.tif"));
+    QVERIFY2(o.failure.contains(perspectiveLabel()) && o.failure.contains(markGroundLabel()),
+             qPrintable(o.failure));
 }
 
 QTEST_MAIN(TestSeparateSessions)

@@ -855,11 +855,23 @@ Understood well enough to start, large enough to need their own care.
     and grid step, and the refusal says what a ground subset is and how big.
     And the status bar no longer outlives a failed run ("aligning the two
     sessions - 0 of 1 points", a one-step stage counted as points).
-  - Still open: a homography, on ground only, for a camera that was tilted
-    between the sessions. The engine half is built (fork `0dd4f37`): a
-    homography fitted through the ground with second-order subsets, and
-    unasked, the same homography as a check on every similarity. The SurView
-    half is next.
+  - **A camera that also tilted, 2026-10-17.** "Camera tilted between the
+    sessions (perspective)", beneath the sessions switch, saved with the
+    project (version 5). Fork `0dd4f37` fits a homography on the ground, its
+    refinement with second-order subsets (first-order ones moved the fit by
+    0.021 px under a 5 % tilt; 0.0017 px now). On ground only, refused
+    without. The report gives the scale as a range across the region and the
+    homography itself, and cautions a first-order run (on the tilted
+    fixture, 0.024 px off on average against 0.005 px at second order).
+    Unasked, every run on ground fits the homography as a check and states
+    how far it departs from the similarity: 0.0005 px on the level fixture,
+    about 7 px on the tilted one. A committed tilted fixture,
+    `session_tilted_target.tif`, from the same generator.
+    ⚑ Found on the way: a project holding only ground or a known length,
+    with nothing added, reopened as nothing, since opening restored the region
+    only when it was VALID. Ground and a known length each need no region.
+  - Still open: nothing of the plan. Possible next: draw the ground subsets
+    the fit set aside on the image, rather than naming only the farthest.
 
   ⚑ **Found by the spike, an engine trap:** `SIFT2D` reads an image's
   `cv_mat`, and an `Image2D` built in memory with only `eg_mat` filled gets zero
