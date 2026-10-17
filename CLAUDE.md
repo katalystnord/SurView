@@ -1236,14 +1236,13 @@ tests. It deliberately does **not** run the engine suite (~8.5 min) - too slow t
 sit in front of every commit, and it would train everyone to use `--no-verify`.
 The full run stays the author's job, per step 3 above.
 
-### Deliberately not done yet
+### What else gates a change
 
-- **Mutation testing.** PlotTracer has Stryker; the C++ equivalent (mull) needs
-  LLVM instrumentation and is a real piece of work. Noted, not silently omitted.
-- **Coverage reporting.** `gcov` is present; `lcov`/`gcovr` are not.
-- **CI.** No workflow yet, so the hook and the author are the only gates - which
-  is the arrangement that survives a fresh clone and `--no-verify` least well,
-  and should be fixed.
+Once listed here as not done yet, all three now exist: `tools/mutants.py` (mutation testing, run by hand; scores in `ROADMAP.md`
+under *Test and tooling debt*), `tools/coverage.sh` (gcovr), and CI in
+`.github/workflows/check.yml`, which on every push to main and every pull request
+runs the em-dash check, SurView's suite, SurView again under address and
+undefined-behaviour sanitizers, and the pinned engine's smoke tests.
 
 ## Roadmap: cross-vendor GPU acceleration
 

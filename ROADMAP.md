@@ -695,10 +695,13 @@ Understood well enough to start, large enough to need their own care.
   Shares its whole shape with the N-view project model recorded under stereo
   below: panels are a list, not a left and a right.
 
-- **A reference and target photographed in SEPARATE sessions.** Today the run
-  refuses a target whose pixel dimensions differ from the reference: "They must
-  describe the same pixel grid." That is right for a fixed rig, where a size
-  change means somebody altered the setup mid-test, and wrong for anything
+- **A reference and target photographed in SEPARATE sessions.** BUILT
+  2026-10-12 to 2026-10-16: the switch, ground, the known length, the report
+  and both files, and manual chapter 14. What is left is at the end of this
+  entry. The text below is the reasoning it was built from. Before it, the run
+  refused a target whose pixel dimensions differed from the reference: "They
+  must describe the same pixel grid." That is right for a fixed rig, where a
+  size change means somebody altered the setup mid-test, and wrong for anything
   photographed twice by hand.
 
   The size check is the lesser half. Two sessions differ in scale, rotation and
