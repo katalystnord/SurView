@@ -408,6 +408,25 @@ converge with a correlation of 0.96 to 1.00 and a displacement of zero.
   `a_field_measured_without_a_region_says_it_covers_the_whole_image`).
 - What a region cannot settle, glare ON the specimen, is under *Next*.
 
+**5. Drawing the ground the alignment set aside.** Raised 2026-10-17. After a
+run on ground, the report names every ground subset the fit set aside, how far
+from the fit each was found, and where the FARTHEST is; the rest are only
+counted. Drawn on the image they would answer "where did the ground move" at a
+glance. The catch: the fit also sets aside its own noise tail, subsets a few
+hundredths of a pixel off on perfectly stationary ground (on the session
+fixture, a clean rig sets aside a handful at under 0.1 px, while ground on the
+moving disc is set aside at 1.36 to 1.59 px against 0.0018 px rms). Drawn alike,
+clean ground would look as though it moved. The options, each honest in its
+own way:
+
+- Draw every one, sized or shaded by its offset against the largest, so the
+  noise tail is faint beside real movement and nothing needs a threshold.
+- Draw only those beyond a multiple of the kept subsets' rms, which is the
+  run's own number but a multiple chosen here.
+- Draw none, and keep the farthest's position in the report (today).
+
+The first needs no invented number and is the author's lean.
+
 ## Now
 
 Small, well understood, and each one changes what a person sees the next
@@ -1670,6 +1689,15 @@ as a backlog with everything in it.
   unambiguous, and the panel says "Click to pin it" so the test is still only
   doing what the screen tells it to. The last case still reading a hover was
   found on 2026-09-02 by CI failing where the developer's machine passed.
+
+- **`Correlation.cpp`'s separate-sessions half, swept 2026-10-18** with the new
+  `--lines` option of `tools/mutants.py` (the file against the complete suite is
+  minutes per mutant, and most of it was swept in September): 32 of 56 killed,
+  24 survivors against the complete suite as well. Ten more killed by sharper
+  cases, the rest closed by argument in `tests/test_separate_sessions.cpp`. It
+  found a real defect: a known length refused at its SECOND end blamed the first
+  (fork `known_length_failed_end`), and a scale range understated by sampling
+  the region too coarsely.
 
 ## Fixed, kept here because the reason is worth remembering
 

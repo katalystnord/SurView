@@ -26,6 +26,8 @@ Usage:
   tools/mutants.py --engine             # the pinned OpenCorr fork instead
   tools/mutants.py --files src/core/PoiGrid.cpp
   tools/mutants.py --include-slow       # do not skip the slow tests
+  tools/mutants.py --files src/core/Correlation.cpp --lines 184-420
+                                        # only the part of a file that changed
 """
 
 import argparse
@@ -281,6 +283,11 @@ def main():
     ap.add_argument("--engine", action="store_true",
                     help="mutate the pinned OpenCorr fork instead of SurView")
     ap.add_argument("--limit", type=int, default=0, help="sample this many mutants")
+    ap.add_argument("--lines", metavar="FIRST-LAST",
+                    help="mutate only these lines (inclusive) of the files given. "
+                         "For sweeping the part of a large file that changed: "
+                         "Correlation.cpp against the complete suite is minutes "
+                         "per mutant, and most of it was swept already.")
     ap.add_argument("--seed", type=int, default=20260818)
     ap.add_argument("--include-slow", action="store_true",
                     help="do not exclude the slow tests")
@@ -427,6 +434,9 @@ def main():
         mutants = []
         for f in files:
             mutants.extend(find_mutants(f))
+        if args.lines:
+            first, last = (int(n) for n in args.lines.split("-"))
+            mutants = [m for m in mutants if first <= m["line"] <= last]
         total_found = len(mutants)
 
     if args.limit and args.limit < len(mutants):

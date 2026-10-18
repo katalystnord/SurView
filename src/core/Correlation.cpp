@@ -283,9 +283,12 @@ void CorrelationRunner::run()
             }
 
             if (fit.status == AlignmentStatus::known_length_unmeasured) {
-                // Which end, in the reader's own coordinates; a subset that cannot
-                // be placed reads as a status code rather than a correlation.
-                const int end = fit.known_length_zncc[0] >= 0.9f ? 1 : 0;
+                // Which end, in the reader's own coordinates, as the engine says:
+                // ⚑ not inferred from the correlations, which read zero for both
+                // when the second end is refused at the edge before either is
+                // correlated (it blamed the first, which was fine). A subset that
+                // cannot be placed reads as a status code, not a correlation.
+                const int end = fit.known_length_failed_end == 1 ? 1 : 0;
                 const QPoint at = end == 0 ? known.a : known.b;
                 const float zncc = fit.known_length_zncc[end];
                 emit failed(tr("The known length could not be measured on the target: "
@@ -330,19 +333,22 @@ void CorrelationRunner::run()
             record.shiftY = fit.transform.ty;
             camera = fit.perspective ? fit.projective : Homography2D::from(fit.transform);
 
-            // The region measured, sampled on a 9 x 9 lattice over its box (the
+            // The region measured, sampled on a 33 x 33 lattice over its box (the
             // whole image without one), for what the camera move does across
             // it: the local scale under a tilt, or how far the perspective
-            // check departs from a similarity.
+            // check departs from a similarity. 9 x 9 was tried first and missed
+            // the tilted fixture's scale range by 0.0016 at each end, since the
+            // extremes lie on the region's edge between lattice points.
             const RegionOfInterest &measured = m_roi;
             const QRect over = measured.isValid()
                 ? measured.bounds().intersected(QRect(0, 0, ref_img.width, ref_img.height))
                 : QRect(0, 0, ref_img.width, ref_img.height);
             QVector<Point2D> across;
-            for (int j = 0; j <= 8; j++) {
-                for (int i = 0; i <= 8; i++) {
-                    const int x = over.left() + (over.width() - 1) * i / 8;
-                    const int y = over.top() + (over.height() - 1) * j / 8;
+            constexpr int kAcross = 32;
+            for (int j = 0; j <= kAcross; j++) {
+                for (int i = 0; i <= kAcross; i++) {
+                    const int x = over.left() + (over.width() - 1) * i / kAcross;
+                    const int y = over.top() + (over.height() - 1) * j / kAcross;
                     if (!measured.isValid() || regionContains(measured, x, y))
                         across.append(Point2D(float(x), float(y)));
                 }

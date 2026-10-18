@@ -85,6 +85,31 @@
 // removed; the first-order caution always given, never given, or given for
 // want of the run's shape order. The walkthrough and test_defaults /
 // test_project record their own.
+//
+// ⚑ Mutation sweep of this file's half of Correlation.cpp (2026-10-18,
+// `tools/mutants.py --files src/core/Correlation.cpp --lines 150-385`, then the
+// survivors against the complete suite): 32 of 56 killed, all 24 survivors
+// standing against the complete suite too. Strengthened here: the known-length
+// refusal now names the END by position (and doing so found a defect: a second
+// end refused at the image edge blamed the first, fixed with the engine's
+// known_length_failed_end), the featureless refusal its own words, the
+// homography and the scale range pinned against the fixture's true matrix, and
+// no perspective check on a specimen fit. 10 of the 15 replayable killed. The
+// rest, each closed by argument:
+// - `ref_img.width <= 0 || ...` (three mutants): unreachable. The engine's
+//   Image2D throws on a file it cannot decode, before the guard, and a decoded
+//   image is never empty.
+// - `refined_points < kMinGroundSubsets` at `<=`: the boundary of exactly six
+//   subsets on ground that then fails to agree, which no committed fixture
+//   reaches; and `&&` to `||` on the line above, which gives the size refusal to
+//   a failure the size explains equally well.
+// - `k < 9` at `<=` when copying the homography: a write one past the array,
+//   into the next member, which is assigned afterwards. Undefined, and
+//   invisible in every output.
+// - The 33 x 33 sampling lattice reaching one sample more or less at the
+//   region's edge (six mutants): the range moves by less than the 0.0007 the
+//   case holds it to against a dense walk of the true matrix, which is the
+//   property that matters; the lattice's exact reach is not.
 
 #include "core/Correlation.h"
 #include "core/Roi.h"
@@ -328,6 +353,10 @@ void TestSeparateSessions::aligned_on_the_specimen_the_uniform_dilatation_is_los
 
     const SessionAlignmentRecord &a = o.result.alignment;
     QCOMPARE(a.fittedOn, SessionAlignmentRecord::MeasuredRegion);
+    // The perspective check is a check against GROUND: fitted on the specimen
+    // it would be taken up by the specimen's own strain, so it is not stated.
+    QCOMPARE(a.perspectiveDeparture, -1.0);
+    QVERIFY(!alignmentReport(a).join(QLatin1Char(' ')).contains(QStringLiteral("A perspective fit")));
     const QString limitation = alignmentLimitation(a);
     QVERIFY2(limitation.contains(QStringLiteral("uniform dilatation")), qPrintable(limitation));
     QVERIFY2(limitation.contains(QStringLiteral("rigid")), qPrintable(limitation));
@@ -383,6 +412,8 @@ void TestSeparateSessions::an_alignment_that_finds_nothing_is_refused_in_its_own
     const Outcome o = run(RegionOfInterest(), QStringLiteral("shift_reference.tif"),
                           QStringLiteral("blank_frame.tif"), true);
     QVERIFY2(o.failure.contains(QStringLiteral("could not be aligned")), qPrintable(o.failure));
+    // In its own words: features, not subsets, since it never got that far.
+    QVERIFY2(o.failure.contains(QStringLiteral("features were found in common")), qPrintable(o.failure));
     QCOMPARE(o.result.total(), 0);
 }
 
@@ -603,6 +634,19 @@ void TestSeparateSessions::a_known_length_whose_end_cannot_be_found_refuses_the_
                  && o.failure.contains(markKnownLengthLabel()),
              qPrintable(o.failure));
     QCOMPARE(o.result.total(), 0);
+    // ⚑ And the end refused is the one at fault, by position (2026-10-18, from a
+    // mutation sweep: nothing checked WHICH end was named). The first end at
+    // the edge:
+    QVERIFY2(o.failure.contains(QStringLiteral("its end at (3, 3) could not be correlated there")),
+             qPrintable(o.failure));
+    // and the SECOND end at the edge, the first one fine. Found by writing this:
+    // the engine stopped at the second end before correlating either, both
+    // read zero, and the refusal blamed the first end, which was fine.
+    const Outcome second = run(withKnownLength(specimenRegion(), QPoint(22, 24), QPoint(236, 196)),
+                               QStringLiteral("session_reference.tif"),
+                               QStringLiteral("session_target.tif"), true);
+    QVERIFY2(second.failure.contains(QStringLiteral("its end at (236, 196)")),
+             qPrintable(second.failure));
 }
 
 void TestSeparateSessions::a_sequence_carries_the_known_length_to_every_frame()
@@ -808,6 +852,42 @@ void TestSeparateSessions::a_tilted_camera_is_measured_through_the_perspective_f
     // over a range, and the report gives the range and the homography itself.
     QVERIFY2(a.scaleLeast > 1.0 && a.scaleMost > a.scaleLeast + 0.005,
              qPrintable(QStringLiteral("%1 to %2").arg(a.scaleLeast).arg(a.scaleMost)));
+
+    // ⚑ And the numbers themselves, against the fixture's own camera (2026-10-18,
+    // from a mutation sweep: the homography in the record and the scale range
+    // were held only to being plausible). The true matrix from the generator's
+    // constants: 1.07 R(3.5 deg), perspective row (2e-4, -1.5e-4, 1), shifted to
+    // put (120, 100) at (140, 120).
+    const double c = std::cos(3.5 * M_PI / 180.0), sn = std::sin(3.5 * M_PI / 180.0);
+    double t[9] = {1.07 * c, -1.07 * sn, 0, 1.07 * sn, 1.07 * c, 0, 2.0e-4, -1.5e-4, 1};
+    const double w0 = t[6] * kCX + t[7] * kCY + 1;
+    t[2] = 140 * w0 - (t[0] * kCX + t[1] * kCY);
+    t[5] = 120 * w0 - (t[3] * kCX + t[4] * kCY);
+    for (int k = 0; k < 8; k++) {
+        const double tolerance = k == 2 || k == 5 ? 0.05 : k >= 6 ? 3e-6 : 5e-4;
+        QVERIFY2(std::abs(a.homography[k] - t[k]) < tolerance,
+                 qPrintable(QStringLiteral("h[%1] %2 against %3").arg(k).arg(a.homography[k]).arg(t[k])));
+    }
+    // The local scale, sqrt(det J), least and most over the measured ellipse,
+    // walked densely here from the true matrix.
+    double least = 1e9, most = 0;
+    for (int y = 60; y <= 140; y++) {
+        for (int x = 80; x <= 160; x++) {
+            if (!regionContains(specimenRegion(), x, y))
+                continue;
+            const double w = t[6] * x + t[7] * y + 1;
+            const double px = (t[0] * x + t[1] * y + t[2]) / w, py = (t[3] * x + t[4] * y + t[5]) / w;
+            const double j0 = (t[0] - px * t[6]) / w, j1 = (t[1] - px * t[7]) / w;
+            const double j2 = (t[3] - py * t[6]) / w, j3 = (t[4] - py * t[7]) / w;
+            const double local = std::sqrt(j0 * j3 - j1 * j2);
+            least = std::min(least, local);
+            most = std::max(most, local);
+        }
+    }
+    qInfo("scale %.5f to %.5f, truth %.5f to %.5f", a.scaleLeast, a.scaleMost, least, most);
+    QVERIFY2(std::abs(a.scaleLeast - least) < 0.0007 && std::abs(a.scaleMost - most) < 0.0007,
+             qPrintable(QStringLiteral("%1 to %2, truth %3 to %4")
+                            .arg(a.scaleLeast).arg(a.scaleMost).arg(least).arg(most)));
     // The turn at the region's centre, the true homography's there being
     // 2.307 degrees (worked from the fixture's matrix; the camera's own 3.5
     // degrees is not one number once it also tilted). Negative check: the
